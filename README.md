@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, and 4B backend slices: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, and linked patch-planning metadata.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, and 5A backend slices: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, and approval-gated dry-run execution planning.
 
 ## Current scope
 
@@ -19,6 +19,8 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - structured candidate issues with titles, summaries, labels, acceptance criteria, and finding traceability
 - deterministic PR-candidate drafting with readiness, risk, expected file changes, and rollback/test guidance
 - linked patch-planning records with patchability, patch plans, validation-status preparation, and traceability back to PR candidates
+- `POST /api/execution/plan` for approval-gated dry-run execution planning across issue candidates, PR candidates, and linked patch plans
+- structured execution action plans and execution-log style results for later write-enabled milestones
 - Vite + React Milestone 1 UI for repository analysis
 - shared typed schemas across API and web
 
@@ -37,7 +39,7 @@ pnpm run build
 
 ## Next step
 
-Milestone 5A can build approval-gated execution planning and execution logging on top of the existing issue candidates, PR candidates, and patch plans without enabling GitHub write-back by default.
+Milestone 5B can build real GitHub write-back on top of the existing approval-gated execution planning and dry-run execution results.
 
 ## Current limitations
 
@@ -46,3 +48,4 @@ The deterministic rule set is narrow by design and favors low-noise findings ove
 Workflow checks are regex/text-based in this step, not full YAML semantic analysis.
 Review selection is heuristic and workspace-near-risk prioritization is shallow.
 No GitHub issue creation, remote patch application, or GitHub write-back behavior was added. 
+Execution planning is dry-run only in Milestone 5A; `execute_approved` returns a structured blocked result.

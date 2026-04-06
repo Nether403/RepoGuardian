@@ -15,6 +15,7 @@
     "@repo-guardian/advisory": "workspace:*",
     "@repo-guardian/dependencies": "workspace:*",
     "@repo-guardian/ecosystems": "workspace:*",
+    "@repo-guardian/execution": "workspace:*",
     "@repo-guardian/github": "workspace:*",
     "@repo-guardian/issues": "workspace:*",
     "@repo-guardian/patches": "workspace:*",

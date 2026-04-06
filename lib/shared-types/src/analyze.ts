@@ -553,6 +553,101 @@ export const PRPatchPlanSummarySchema = z.object({
   byValidationStatus: z.array(PRPatchPlanCountByValidationStatusSchema)
 });
 
+export const ExecutionModeSchema = z.enum(["dry_run", "execute_approved"]);
+
+export const ApprovalStatusSchema = z.enum([
+  "required",
+  "not_required",
+  "granted",
+  "denied"
+]);
+
+export const ExecutionActionTypeSchema = z.enum([
+  "create_issue",
+  "create_pr",
+  "prepare_patch",
+  "validate_patch",
+  "skip"
+]);
+
+export const ExecutionTargetTypeSchema = z.enum([
+  "issue_candidate",
+  "pr_candidate",
+  "patch_plan",
+  "request"
+]);
+
+export const ExecutionEligibilitySchema = z.enum([
+  "eligible",
+  "ineligible",
+  "blocked"
+]);
+
+export const ExecutionStatusSchema = z.enum([
+  "planned",
+  "blocked",
+  "completed",
+  "failed"
+]);
+
+export const ExecutionPlanningContextSchema = z.object({
+  repository: RepositoryMetadataSchema,
+  issueCandidates: z.array(IssueCandidateSchema),
+  prCandidates: z.array(PRCandidateSchema),
+  prPatchPlans: z.array(PRPatchPlanSchema)
+});
+
+export const ExecutionRequestSchema = z.object({
+  analysis: ExecutionPlanningContextSchema,
+  mode: ExecutionModeSchema,
+  selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
+  selectedPRCandidateIds: z.array(z.string().min(1)).default([])
+});
+
+export const ExecutionActionPlanSchema = z.object({
+  id: z.string().min(1),
+  actionType: ExecutionActionTypeSchema,
+  targetType: ExecutionTargetTypeSchema,
+  targetId: z.string().min(1),
+  title: z.string().min(1),
+  eligibility: ExecutionEligibilitySchema,
+  reason: z.string().min(1),
+  plannedSteps: z.array(z.string().min(1)),
+  affectedPaths: z.array(z.string().min(1)),
+  affectedPackages: z.array(z.string().min(1)),
+  linkedIssueCandidateIds: z.array(z.string().min(1)),
+  linkedPRCandidateIds: z.array(z.string().min(1)),
+  approvalRequired: z.boolean(),
+  approvalStatus: ApprovalStatusSchema,
+  approvalNotes: z.array(z.string().min(1))
+});
+
+export const ExecutionSummarySchema = z.object({
+  totalSelections: z.number().int().nonnegative(),
+  issueSelections: z.number().int().nonnegative(),
+  prSelections: z.number().int().nonnegative(),
+  totalActions: z.number().int().nonnegative(),
+  eligibleActions: z.number().int().nonnegative(),
+  blockedActions: z.number().int().nonnegative(),
+  skippedActions: z.number().int().nonnegative(),
+  approvalRequiredActions: z.number().int().nonnegative()
+});
+
+export const ExecutionResultSchema = z.object({
+  executionId: z.string().min(1),
+  mode: ExecutionModeSchema,
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime(),
+  status: ExecutionStatusSchema,
+  approvalRequired: z.boolean(),
+  approvalStatus: ApprovalStatusSchema,
+  approvalNotes: z.array(z.string().min(1)),
+  actions: z.array(ExecutionActionPlanSchema),
+  warnings: z.array(z.string()),
+  errors: z.array(z.string()),
+  summary: ExecutionSummarySchema
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
@@ -769,4 +864,17 @@ export type PRPatchPlanCountByValidationStatus = z.infer<
   typeof PRPatchPlanCountByValidationStatusSchema
 >;
 export type PRPatchPlanSummary = z.infer<typeof PRPatchPlanSummarySchema>;
+export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+export type ExecutionActionType = z.infer<typeof ExecutionActionTypeSchema>;
+export type ExecutionTargetType = z.infer<typeof ExecutionTargetTypeSchema>;
+export type ExecutionEligibility = z.infer<typeof ExecutionEligibilitySchema>;
+export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
+export type ExecutionPlanningContext = z.infer<
+  typeof ExecutionPlanningContextSchema
+>;
+export type ExecutionRequest = z.infer<typeof ExecutionRequestSchema>;
+export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
+export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
+export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;

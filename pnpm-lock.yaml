@@ -89,6 +89,9 @@ importers:
       '@repo-guardian/ecosystems':
         specifier: workspace:*
         version: link:../../lib/ecosystems
+      '@repo-guardian/execution':
+        specifier: workspace:*
+        version: link:../../lib/execution
       '@repo-guardian/github':
         specifier: workspace:*
         version: link:../../lib/github
@@ -148,6 +151,12 @@ importers:
         version: 2.8.3
 
   lib/ecosystems:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  lib/execution:
     dependencies:
       '@repo-guardian/shared-types':
         specifier: workspace:*
