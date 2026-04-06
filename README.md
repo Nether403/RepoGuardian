@@ -34,3 +34,11 @@ pnpm run build
 ## Next step
 
 Milestone 3B adds candidate issue generation on top of the existing dependency and code-review findings without introducing PR drafting or GitHub write-back yet.
+
+## Current limitations
+
+Review is still intentionally targeted, not repository-wide.
+The deterministic rule set is narrow by design and favors low-noise findings over broad coverage.
+Workflow checks are regex/text-based in this step, not full YAML semantic analysis.
+Review selection is heuristic and workspace-near-risk prioritization is shallow.
+No model-assisted review, issue drafting, PR drafting, or write-back behavior was added. 
