@@ -43,8 +43,8 @@ pnpm run build
 
 The next step after this Milestone 5B slice is to broaden safe PR write-back beyond workflow hardening, most likely by adding deterministic dependency-update support without guessing at lockfile changes.
 
-## Current limitations
 
+<<<<<<< HEAD
 Review is still intentionally targeted, not repository-wide.
 The deterministic rule set is narrow by design and favors low-noise findings over broad coverage.
 Workflow checks are regex/text-based in this step, not full YAML semantic analysis.
@@ -52,3 +52,5 @@ Review selection is heuristic and workspace-near-risk prioritization is shallow.
 Real write-back is intentionally narrow in this step.
 Automated PR write-back currently supports only a bounded workflow-hardening path with deterministic file edits.
 Dependency-upgrade PR candidates still stay in planning mode until the repo can refresh lockfiles without guessing.
+=======
+>>>>>>> 7d8b1e5eb7979a750695ed6f58075b7daddfd733
