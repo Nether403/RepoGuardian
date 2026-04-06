@@ -87,15 +87,6 @@ describe("POST /api/analyze", () => {
       .mockResolvedValueOnce(
         createTextResponse(
           JSON.stringify({
-            dependencies: {
-              react: "^19.0.0"
-            }
-          })
-        )
-      )
-      .mockResolvedValueOnce(
-        createTextResponse(
-          JSON.stringify({
             packages: {
               "": {
                 dependencies: {
@@ -106,6 +97,15 @@ describe("POST /api/analyze", () => {
                 name: "react",
                 version: "19.0.0"
               }
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            dependencies: {
+              react: "^19.0.0"
             }
           })
         )
@@ -169,16 +169,16 @@ describe("POST /api/analyze", () => {
           {
             dependencyCount: 1,
             ecosystem: "node",
-            kind: "package-lock.json",
+            kind: "package.json",
             packageManager: "npm",
-            path: "package-lock.json"
+            path: "package.json"
           },
           {
             dependencyCount: 1,
             ecosystem: "node",
-            kind: "package.json",
+            kind: "package-lock.json",
             packageManager: "npm",
-            path: "package.json"
+            path: "package-lock.json"
           }
         ],
         filesSkipped: [],
