@@ -564,6 +564,8 @@ export const ApprovalStatusSchema = z.enum([
 
 export const ExecutionActionTypeSchema = z.enum([
   "create_issue",
+  "create_branch",
+  "commit_patch",
   "create_pr",
   "prepare_patch",
   "validate_patch",
@@ -591,6 +593,8 @@ export const ExecutionStatusSchema = z.enum([
 ]);
 
 export const ExecutionPlanningContextSchema = z.object({
+  codeReviewFindings: z.array(CodeReviewFindingSchema).default([]),
+  dependencyFindings: z.array(DependencyFindingSchema).default([]),
   repository: RepositoryMetadataSchema,
   issueCandidates: z.array(IssueCandidateSchema),
   prCandidates: z.array(PRCandidateSchema),
@@ -599,6 +603,7 @@ export const ExecutionPlanningContextSchema = z.object({
 
 export const ExecutionRequestSchema = z.object({
   analysis: ExecutionPlanningContextSchema,
+  approvalGranted: z.boolean().default(false),
   mode: ExecutionModeSchema,
   selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
   selectedPRCandidateIds: z.array(z.string().min(1)).default([])
@@ -619,7 +624,17 @@ export const ExecutionActionPlanSchema = z.object({
   linkedPRCandidateIds: z.array(z.string().min(1)),
   approvalRequired: z.boolean(),
   approvalStatus: ApprovalStatusSchema,
-  approvalNotes: z.array(z.string().min(1))
+  approvalNotes: z.array(z.string().min(1)),
+  attempted: z.boolean(),
+  succeeded: z.boolean(),
+  blocked: z.boolean(),
+  errorMessage: z.string().min(1).nullable(),
+  issueNumber: z.number().int().positive().nullable(),
+  issueUrl: z.string().url().nullable(),
+  branchName: z.string().min(1).nullable(),
+  commitSha: z.string().min(1).nullable(),
+  pullRequestNumber: z.number().int().positive().nullable(),
+  pullRequestUrl: z.string().url().nullable()
 });
 
 export const ExecutionSummarySchema = z.object({

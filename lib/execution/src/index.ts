@@ -1,4 +1,5 @@
 export {
   createExecutionPlanResult,
-  type ExecutionPlanInput
+  type ExecutionPlanInput,
+  type ExecutionServiceDependencies
 } from "./service.js";

@@ -25,6 +25,7 @@ describe("execution schemas", () => {
         }
       },
       mode: "dry_run",
+      approvalGranted: false,
       selectedIssueCandidateIds: [],
       selectedPRCandidateIds: []
     });
@@ -42,12 +43,22 @@ describe("execution schemas", () => {
           approvalNotes: ["No write action will run in this milestone."],
           approvalRequired: false,
           approvalStatus: "not_required",
+          attempted: false,
+          blocked: true,
+          branchName: null,
+          commitSha: null,
+          errorMessage: null,
           eligibility: "blocked",
           id: "execution:skip:request:no-selections",
+          issueNumber: null,
+          issueUrl: null,
           linkedIssueCandidateIds: [],
           linkedPRCandidateIds: [],
           plannedSteps: ["Select at least one candidate before planning execution."],
+          pullRequestNumber: null,
+          pullRequestUrl: null,
           reason: "No issue or PR candidates were selected for execution planning.",
+          succeeded: false,
           targetId: "selection",
           targetType: "request",
           title: "Skip empty execution request"

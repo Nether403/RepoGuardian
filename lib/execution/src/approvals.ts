@@ -5,50 +5,85 @@ import type {
 } from "@repo-guardian/shared-types";
 
 type ApprovalGate = {
+  approvalNotes: string[];
   approvalRequired: boolean;
   approvalStatus: ApprovalStatus;
-  approvalNotes: string[];
 };
 
-export function createApprovalGate(actionType: ExecutionActionPlan["actionType"]): ApprovalGate {
-  const writeOriented = actionType === "create_issue" || actionType === "create_pr";
+function isWriteAction(actionType: ExecutionActionPlan["actionType"]): boolean {
+  return (
+    actionType === "create_issue" ||
+    actionType === "create_branch" ||
+    actionType === "commit_patch" ||
+    actionType === "create_pr"
+  );
+}
 
-  if (writeOriented) {
+export function createApprovalGate(input: {
+  actionType: ExecutionActionPlan["actionType"];
+  approvalGranted: boolean;
+  mode: ExecutionMode;
+}): ApprovalGate {
+  if (!isWriteAction(input.actionType)) {
+    return {
+      approvalNotes: [
+        input.mode === "dry_run"
+          ? "This is a planning-only step; no remote write is performed."
+          : "This step does not perform a remote write."
+      ],
+      approvalRequired: false,
+      approvalStatus: "not_required"
+    };
+  }
+
+  if (input.mode === "dry_run") {
     return {
       approvalNotes: [
         "Dry-run planning does not perform remote writes.",
-        "Explicit user approval is required before this action can run in a later milestone."
+        "Explicit user approval would be required before this action could execute."
       ],
       approvalRequired: true,
       approvalStatus: "required"
+    };
+  }
+
+  if (input.approvalGranted) {
+    return {
+      approvalNotes: [
+        "Explicit user approval was required for this write action.",
+        "Explicit user approval was granted for this execution request."
+      ],
+      approvalRequired: true,
+      approvalStatus: "granted"
     };
   }
 
   return {
     approvalNotes: [
-      "This step is planned only; no remote write is performed in Milestone 5A."
+      "Explicit user approval is required before this write action can run.",
+      "Approval was not granted in the execution request, so the write action remains blocked."
     ],
-    approvalRequired: false,
-    approvalStatus: "not_required"
+    approvalRequired: true,
+    approvalStatus: "denied"
   };
 }
 
 export function createExecutionApprovalSummary(input: {
   actions: ExecutionActionPlan[];
+  approvalGranted: boolean;
   mode: ExecutionMode;
 }): ApprovalGate {
-  if (input.mode === "execute_approved") {
+  const hasWriteActions = input.actions.some((action) => action.approvalRequired);
+
+  if (!hasWriteActions) {
     return {
-      approvalNotes: [
-        "Real execution is not supported in Milestone 5A.",
-        "Dry-run planning is the only supported execution mode in this milestone."
-      ],
-      approvalRequired: true,
-      approvalStatus: "required"
+      approvalNotes: ["No write-oriented actions were included in this execution result."],
+      approvalRequired: false,
+      approvalStatus: "not_required"
     };
   }
 
-  if (input.actions.some((action) => action.approvalRequired)) {
+  if (input.mode === "dry_run") {
     return {
       approvalNotes: [
         "Approval is not needed to generate a dry-run plan.",
@@ -59,9 +94,23 @@ export function createExecutionApprovalSummary(input: {
     };
   }
 
+  if (input.approvalGranted) {
+    return {
+      approvalNotes: [
+        "Write-oriented actions required explicit approval.",
+        "Approval was granted for this execution request."
+      ],
+      approvalRequired: true,
+      approvalStatus: "granted"
+    };
+  }
+
   return {
-    approvalNotes: ["No write-oriented actions were included in this dry-run plan."],
-    approvalRequired: false,
-    approvalStatus: "not_required"
+    approvalNotes: [
+      "Write-oriented actions required explicit approval.",
+      "Approval was not granted, so no write-oriented action was executed."
+    ],
+    approvalRequired: true,
+    approvalStatus: "denied"
   };
 }

@@ -1,31 +1,66 @@
 import type {
   ExecutionActionPlan,
   ExecutionPlanningContext,
+  ExecutionRequest,
   PRCandidate,
   PRPatchPlan
 } from "@repo-guardian/shared-types";
 import { createApprovalGate } from "./approvals.js";
+import { evaluatePRExecutionSupport } from "./patch-synthesis.js";
+
+type ActionBuildContext = {
+  approvalGranted: boolean;
+  mode: ExecutionRequest["mode"];
+};
 
 function createAction(
+  context: ActionBuildContext,
   input: Omit<
     ExecutionActionPlan,
-    "approvalNotes" | "approvalRequired" | "approvalStatus"
+    | "approvalNotes"
+    | "approvalRequired"
+    | "approvalStatus"
+    | "attempted"
+    | "blocked"
+    | "branchName"
+    | "commitSha"
+    | "errorMessage"
+    | "issueNumber"
+    | "issueUrl"
+    | "pullRequestNumber"
+    | "pullRequestUrl"
+    | "succeeded"
   >
 ): ExecutionActionPlan {
-  const approval = createApprovalGate(input.actionType);
+  const approval = createApprovalGate({
+    actionType: input.actionType,
+    approvalGranted: context.approvalGranted,
+    mode: context.mode
+  });
 
   return {
     ...input,
     approvalNotes: approval.approvalNotes,
     approvalRequired: approval.approvalRequired,
-    approvalStatus: approval.approvalStatus
+    approvalStatus: approval.approvalStatus,
+    attempted: false,
+    blocked: input.eligibility === "blocked",
+    branchName: null,
+    commitSha: null,
+    errorMessage: null,
+    issueNumber: null,
+    issueUrl: null,
+    pullRequestNumber: null,
+    pullRequestUrl: null,
+    succeeded: false
   };
 }
 
 function buildIssueAction(
+  context: ActionBuildContext,
   candidate: ExecutionPlanningContext["issueCandidates"][number]
 ): ExecutionActionPlan {
-  return createAction({
+  return createAction(context, {
     actionType: "create_issue",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
@@ -34,20 +69,23 @@ function buildIssueAction(
     linkedIssueCandidateIds: [candidate.id],
     linkedPRCandidateIds: [],
     plannedSteps: [
-      "Review the candidate title, summary, labels, and acceptance criteria.",
-      "Confirm the issue scope is still the preferred tracking unit for the current repository state.",
-      "Create the GitHub issue only after explicit approval in a later write-enabled milestone."
+      "Review the candidate title, summary, and acceptance criteria.",
+      "Confirm the issue scope still matches the current repository state.",
+      "Create the GitHub issue only after explicit approval is present."
     ],
     reason:
-      "The selected issue candidate exists in the provided analysis context and is concrete enough to become a tracked issue later.",
+      "The selected issue candidate exists in the provided analysis context and is concrete enough to create directly as a GitHub issue.",
     targetId: candidate.id,
     targetType: "issue_candidate",
     title: candidate.title
   });
 }
 
-function buildUnknownIssueAction(id: string): ExecutionActionPlan {
-  return createAction({
+function buildUnknownIssueAction(
+  context: ActionBuildContext,
+  id: string
+): ExecutionActionPlan {
+  return createAction(context, {
     actionType: "skip",
     affectedPackages: [],
     affectedPaths: [],
@@ -55,7 +93,7 @@ function buildUnknownIssueAction(id: string): ExecutionActionPlan {
     id: `execution:skip:issue:${id}`,
     linkedIssueCandidateIds: [],
     linkedPRCandidateIds: [],
-    plannedSteps: ["Remove or correct the unknown issue candidate ID before planning execution again."],
+    plannedSteps: ["Remove or correct the unknown issue candidate ID before trying execution again."],
     reason: "The selected issue candidate ID does not exist in the provided analysis context.",
     targetId: id,
     targetType: "issue_candidate",
@@ -63,8 +101,11 @@ function buildUnknownIssueAction(id: string): ExecutionActionPlan {
   });
 }
 
-function buildUnknownPRAction(id: string): ExecutionActionPlan {
-  return createAction({
+function buildUnknownPRAction(
+  context: ActionBuildContext,
+  id: string
+): ExecutionActionPlan {
+  return createAction(context, {
     actionType: "skip",
     affectedPackages: [],
     affectedPaths: [],
@@ -72,7 +113,7 @@ function buildUnknownPRAction(id: string): ExecutionActionPlan {
     id: `execution:skip:pr:${id}`,
     linkedIssueCandidateIds: [],
     linkedPRCandidateIds: [],
-    plannedSteps: ["Remove or correct the unknown PR candidate ID before planning execution again."],
+    plannedSteps: ["Remove or correct the unknown PR candidate ID before trying execution again."],
     reason: "The selected PR candidate ID does not exist in the provided analysis context.",
     targetId: id,
     targetType: "pr_candidate",
@@ -80,8 +121,11 @@ function buildUnknownPRAction(id: string): ExecutionActionPlan {
   });
 }
 
-function buildMissingPatchPlanAction(candidate: PRCandidate): ExecutionActionPlan {
-  return createAction({
+function buildMissingPatchPlanAction(
+  context: ActionBuildContext,
+  candidate: PRCandidate
+): ExecutionActionPlan {
+  return createAction(context, {
     actionType: "skip",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
@@ -90,7 +134,7 @@ function buildMissingPatchPlanAction(candidate: PRCandidate): ExecutionActionPla
     linkedIssueCandidateIds: candidate.linkedIssueCandidateIds,
     linkedPRCandidateIds: [candidate.id],
     plannedSteps: [
-      "Generate or recover a linked patch plan before attempting PR execution planning."
+      "Generate or recover a linked patch plan before attempting PR execution."
     ],
     reason: "The selected PR candidate has no linked patch plan in the provided analysis context.",
     targetId: candidate.id,
@@ -100,10 +144,11 @@ function buildMissingPatchPlanAction(candidate: PRCandidate): ExecutionActionPla
 }
 
 function buildNonPatchableAction(
+  context: ActionBuildContext,
   candidate: PRCandidate,
   patchPlan: PRPatchPlan
 ): ExecutionActionPlan {
-  return createAction({
+  return createAction(context, {
     actionType: "skip",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
@@ -124,14 +169,17 @@ function buildNonPatchableAction(
 }
 
 function buildPreparePatchAction(
+  context: ActionBuildContext,
   candidate: PRCandidate,
-  patchPlan: PRPatchPlan
+  patchPlan: PRPatchPlan,
+  eligibility: ExecutionActionPlan["eligibility"],
+  reason: string
 ): ExecutionActionPlan {
-  return createAction({
+  return createAction(context, {
     actionType: "prepare_patch",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
-    eligibility: "eligible",
+    eligibility,
     id: `execution:prepare_patch:${candidate.id}`,
     linkedIssueCandidateIds: patchPlan.linkedIssueCandidateIds,
     linkedPRCandidateIds: [candidate.id],
@@ -142,10 +190,7 @@ function buildPreparePatchAction(
             ...patchPlan.patchPlan.requiredHumanReview
           ]
         : ["Prepare the bounded patch draft from the linked patch plan."],
-    reason:
-      patchPlan.patchability === "patch_candidate"
-        ? "The linked patch plan is concrete enough for later patch preparation."
-        : "The linked patch plan is bounded, but human review is still needed before later patch synthesis.",
+    reason,
     targetId: patchPlan.prCandidateId,
     targetType: "patch_plan",
     title: `Prepare patch for ${candidate.title}`
@@ -153,6 +198,7 @@ function buildPreparePatchAction(
 }
 
 function buildValidatePatchAction(
+  context: ActionBuildContext,
   candidate: PRCandidate,
   patchPlan: PRPatchPlan
 ): ExecutionActionPlan {
@@ -161,7 +207,7 @@ function buildValidatePatchAction(
       ? patchPlan.patchPlan.requiredValidationSteps
       : ["Run the focused validation steps defined for the candidate once a patch draft exists."];
 
-  return createAction({
+  return createAction(context, {
     actionType: "validate_patch",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
@@ -173,134 +219,181 @@ function buildValidatePatchAction(
     reason:
       patchPlan.validationStatus === "blocked"
         ? patchPlan.validationNotes[0] ?? "Validation is blocked for the linked patch plan."
-        : "Validation steps are defined for the linked patch plan and can run after patch preparation.",
+        : "Validation steps are defined for the linked patch plan and remain manual in Milestone 5B.",
     targetId: patchPlan.prCandidateId,
     targetType: "patch_plan",
     title: `Validate patch for ${candidate.title}`
   });
 }
 
-function buildCreatePRAction(
+function buildCreateBranchAction(
+  context: ActionBuildContext,
   candidate: PRCandidate,
-  patchPlan: PRPatchPlan
+  patchPlan: PRPatchPlan,
+  eligibility: ExecutionActionPlan["eligibility"],
+  reason: string
 ): ExecutionActionPlan {
-  const eligible =
-    patchPlan.patchability === "patch_candidate" &&
-    patchPlan.validationStatus !== "blocked";
+  return createAction(context, {
+    actionType: "create_branch",
+    affectedPackages: candidate.affectedPackages,
+    affectedPaths: candidate.affectedPaths,
+    eligibility,
+    id: `execution:create_branch:${candidate.id}`,
+    linkedIssueCandidateIds: patchPlan.linkedIssueCandidateIds,
+    linkedPRCandidateIds: [candidate.id],
+    plannedSteps: [
+      `Create a branch from ${context.mode === "dry_run" ? "the repository default branch" : "the latest default-branch head"}.`,
+      "Keep the branch scoped to the selected PR candidate only."
+    ],
+    reason,
+    targetId: patchPlan.prCandidateId,
+    targetType: "patch_plan",
+    title: `Create branch for ${candidate.title}`
+  });
+}
 
-  return createAction({
+function buildCommitPatchAction(
+  context: ActionBuildContext,
+  candidate: PRCandidate,
+  patchPlan: PRPatchPlan,
+  eligibility: ExecutionActionPlan["eligibility"],
+  reason: string
+): ExecutionActionPlan {
+  return createAction(context, {
+    actionType: "commit_patch",
+    affectedPackages: candidate.affectedPackages,
+    affectedPaths: candidate.affectedPaths,
+    eligibility,
+    id: `execution:commit_patch:${candidate.id}`,
+    linkedIssueCandidateIds: patchPlan.linkedIssueCandidateIds,
+    linkedPRCandidateIds: [candidate.id],
+    plannedSteps: [
+      "Apply only the bounded file updates justified by the linked patch plan.",
+      "Create a single commit that preserves traceability back to the selected PR candidate."
+    ],
+    reason,
+    targetId: patchPlan.prCandidateId,
+    targetType: "patch_plan",
+    title: `Commit patch for ${candidate.title}`
+  });
+}
+
+function buildCreatePRAction(
+  context: ActionBuildContext,
+  candidate: PRCandidate,
+  patchPlan: PRPatchPlan,
+  eligibility: ExecutionActionPlan["eligibility"],
+  reason: string
+): ExecutionActionPlan {
+  return createAction(context, {
     actionType: "create_pr",
     affectedPackages: candidate.affectedPackages,
     affectedPaths: candidate.affectedPaths,
-    eligibility: eligible ? "eligible" : "blocked",
+    eligibility,
     id: `execution:create_pr:${candidate.id}`,
     linkedIssueCandidateIds: patchPlan.linkedIssueCandidateIds,
     linkedPRCandidateIds: [candidate.id],
     plannedSteps: [
       "Review the linked patch plan and validation notes.",
-      "Require explicit approval before any pull request write action runs.",
-      eligible
-        ? "Create the pull request in a later write-enabled milestone once patch preparation and validation are complete."
-        : "Keep PR creation blocked until the linked patch plan becomes patch-capable."
+      "Open a pull request from the generated branch only after explicit approval is present."
     ],
-    reason: eligible
-      ? "The selected PR candidate has a usable patch plan and can progress to pull request creation later."
-      : "The selected PR candidate does not yet have a patch-capable plan that justifies later pull request creation.",
+    reason,
     targetId: candidate.id,
     targetType: "pr_candidate",
     title: `Create PR for ${candidate.title}`
   });
 }
 
-function buildUnsupportedModeActions(
-  context: ExecutionPlanningContext,
-  selectedIssueCandidateIds: string[],
-  selectedPRCandidateIds: string[]
+function buildPatchPlanOnlyActions(
+  context: ActionBuildContext,
+  candidate: PRCandidate,
+  patchPlan: PRPatchPlan
 ): ExecutionActionPlan[] {
-  const issueMap = new Map(context.issueCandidates.map((candidate) => [candidate.id, candidate]));
-  const prMap = new Map(context.prCandidates.map((candidate) => [candidate.id, candidate]));
-  const actions: ExecutionActionPlan[] = [];
-
-  for (const id of selectedIssueCandidateIds) {
-    const candidate = issueMap.get(id);
-    const approval = createApprovalGate("create_issue");
-
-    actions.push({
-      actionType: "create_issue",
-      affectedPackages: candidate?.affectedPackages ?? [],
-      affectedPaths: candidate?.affectedPaths ?? [],
-      approvalNotes: [
-        ...approval.approvalNotes,
-        "The requested execution mode is not yet supported in Milestone 5A."
-      ],
-      approvalRequired: approval.approvalRequired,
-      approvalStatus: approval.approvalStatus,
-      eligibility: "blocked",
-      id: `execution:blocked:issue:${id}`,
-      linkedIssueCandidateIds: candidate ? [candidate.id] : [],
-      linkedPRCandidateIds: [],
-      plannedSteps: [
-        "Switch to dry_run mode to inspect the plan without remote execution."
-      ],
-      reason: "execute_approved is not supported in Milestone 5A.",
-      targetId: id,
-      targetType: "issue_candidate",
-      title: candidate?.title ?? `Blocked issue execution for ${id}`
-    });
-  }
-
-  for (const id of selectedPRCandidateIds) {
-    const candidate = prMap.get(id);
-    const approval = createApprovalGate("create_pr");
-
-    actions.push({
-      actionType: "create_pr",
-      affectedPackages: candidate?.affectedPackages ?? [],
-      affectedPaths: candidate?.affectedPaths ?? [],
-      approvalNotes: [
-        ...approval.approvalNotes,
-        "The requested execution mode is not yet supported in Milestone 5A."
-      ],
-      approvalRequired: approval.approvalRequired,
-      approvalStatus: approval.approvalStatus,
-      eligibility: "blocked",
-      id: `execution:blocked:pr:${id}`,
-      linkedIssueCandidateIds: candidate?.linkedIssueCandidateIds ?? [],
-      linkedPRCandidateIds: candidate ? [candidate.id] : [],
-      plannedSteps: [
-        "Switch to dry_run mode to inspect the plan without remote execution."
-      ],
-      reason: "execute_approved is not supported in Milestone 5A.",
-      targetId: id,
-      targetType: "pr_candidate",
-      title: candidate?.title ?? `Blocked PR execution for ${id}`
-    });
-  }
-
-  if (actions.length > 0) {
-    return actions;
-  }
+  const blockedReason =
+    patchPlan.patchWarnings[0] ??
+    "The linked patch plan is planning-only and does not justify real write-back yet.";
 
   return [
-    createAction({
-      actionType: "skip",
-      affectedPackages: [],
-      affectedPaths: [],
-      eligibility: "blocked",
-      id: "execution:blocked:request:execute_approved",
-      linkedIssueCandidateIds: [],
-      linkedPRCandidateIds: [],
-      plannedSteps: ["Use dry_run mode to generate an execution plan in this milestone."],
-      reason: "execute_approved is not supported in Milestone 5A.",
-      targetId: "execute_approved",
-      targetType: "request",
-      title: "Blocked execute_approved request"
-    })
+    buildPreparePatchAction(
+      context,
+      candidate,
+      patchPlan,
+      "eligible",
+      "The linked patch plan is concrete enough to review, but not concrete enough for real GitHub writes."
+    ),
+    buildValidatePatchAction(context, candidate, patchPlan),
+    buildCreateBranchAction(context, candidate, patchPlan, "blocked", blockedReason),
+    buildCommitPatchAction(context, candidate, patchPlan, "blocked", blockedReason),
+    buildCreatePRAction(context, candidate, patchPlan, "blocked", blockedReason)
   ];
 }
 
-function buildEmptySelectionAction(): ExecutionActionPlan {
-  return createAction({
+function buildUnsupportedPRExecutionActions(
+  context: ActionBuildContext,
+  candidate: PRCandidate,
+  patchPlan: PRPatchPlan,
+  reason: string
+): ExecutionActionPlan[] {
+  return [
+    buildPreparePatchAction(context, candidate, patchPlan, "blocked", reason),
+    buildValidatePatchAction(context, candidate, patchPlan),
+    buildCreateBranchAction(context, candidate, patchPlan, "blocked", reason),
+    buildCommitPatchAction(context, candidate, patchPlan, "blocked", reason),
+    buildCreatePRAction(context, candidate, patchPlan, "blocked", reason)
+  ];
+}
+
+function buildSupportedPRExecutionActions(
+  context: ActionBuildContext,
+  candidate: PRCandidate,
+  patchPlan: PRPatchPlan
+): ExecutionActionPlan[] {
+  const validationBlocked = patchPlan.validationStatus === "blocked";
+  const validationReason =
+    patchPlan.validationNotes[0] ??
+    "Validation remains blocked for the linked patch plan.";
+
+  return [
+    buildPreparePatchAction(
+      context,
+      candidate,
+      patchPlan,
+      "eligible",
+      "The linked patch plan is concrete enough for bounded patch synthesis."
+    ),
+    buildValidatePatchAction(context, candidate, patchPlan),
+    buildCreateBranchAction(
+      context,
+      candidate,
+      patchPlan,
+      validationBlocked ? "blocked" : "eligible",
+      validationBlocked
+        ? validationReason
+        : "The selected PR candidate is eligible for a scoped branch creation step."
+    ),
+    buildCommitPatchAction(
+      context,
+      candidate,
+      patchPlan,
+      validationBlocked ? "blocked" : "eligible",
+      validationBlocked
+        ? validationReason
+        : "The selected PR candidate is eligible for a bounded commit once patch synthesis succeeds."
+    ),
+    buildCreatePRAction(
+      context,
+      candidate,
+      patchPlan,
+      validationBlocked ? "blocked" : "eligible",
+      validationBlocked
+        ? validationReason
+        : "The selected PR candidate can open a pull request after the branch and commit steps succeed."
+    )
+  ];
+}
+
+function buildEmptySelectionAction(context: ActionBuildContext): ExecutionActionPlan {
+  return createAction(context, {
     actionType: "skip",
     affectedPackages: [],
     affectedPaths: [],
@@ -316,11 +409,17 @@ function buildEmptySelectionAction(): ExecutionActionPlan {
   });
 }
 
-export function buildDryRunActions(input: {
+function buildPlannedActions(input: {
   analysis: ExecutionPlanningContext;
+  approvalGranted: boolean;
+  mode: ExecutionRequest["mode"];
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
 }): ExecutionActionPlan[] {
+  const context: ActionBuildContext = {
+    approvalGranted: input.approvalGranted,
+    mode: input.mode
+  };
   const issueMap = new Map(
     input.analysis.issueCandidates.map((candidate) => [candidate.id, candidate])
   );
@@ -330,57 +429,159 @@ export function buildDryRunActions(input: {
   const patchPlanMap = new Map(
     input.analysis.prPatchPlans.map((plan) => [plan.prCandidateId, plan])
   );
-
   const actions: ExecutionActionPlan[] = [];
 
   if (
     input.selectedIssueCandidateIds.length === 0 &&
     input.selectedPRCandidateIds.length === 0
   ) {
-    return [buildEmptySelectionAction()];
+    return [buildEmptySelectionAction(context)];
   }
 
   for (const id of input.selectedIssueCandidateIds) {
     const candidate = issueMap.get(id);
-    actions.push(candidate ? buildIssueAction(candidate) : buildUnknownIssueAction(id));
+    actions.push(candidate ? buildIssueAction(context, candidate) : buildUnknownIssueAction(context, id));
   }
 
   for (const id of input.selectedPRCandidateIds) {
     const candidate = prMap.get(id);
 
     if (!candidate) {
-      actions.push(buildUnknownPRAction(id));
+      actions.push(buildUnknownPRAction(context, id));
       continue;
     }
 
     const patchPlan = patchPlanMap.get(candidate.id);
 
     if (!patchPlan) {
-      actions.push(buildMissingPatchPlanAction(candidate));
+      actions.push(buildMissingPatchPlanAction(context, candidate));
       continue;
     }
 
     if (patchPlan.patchability === "not_patchable") {
-      actions.push(buildNonPatchableAction(candidate, patchPlan));
+      actions.push(buildNonPatchableAction(context, candidate, patchPlan));
       continue;
     }
 
-    actions.push(buildPreparePatchAction(candidate, patchPlan));
-    actions.push(buildValidatePatchAction(candidate, patchPlan));
-    actions.push(buildCreatePRAction(candidate, patchPlan));
+    if (patchPlan.patchability === "patch_plan_only") {
+      actions.push(...buildPatchPlanOnlyActions(context, candidate, patchPlan));
+      continue;
+    }
+
+    const support = evaluatePRExecutionSupport({
+      analysis: input.analysis,
+      candidate,
+      patchPlan
+    });
+
+    if (!support.supported) {
+      actions.push(
+        ...buildUnsupportedPRExecutionActions(
+          context,
+          candidate,
+          patchPlan,
+          support.reason
+        )
+      );
+      continue;
+    }
+
+    actions.push(...buildSupportedPRExecutionActions(context, candidate, patchPlan));
   }
 
   return actions;
 }
 
-export function buildUnsupportedExecutionActions(input: {
+export function buildDryRunActions(input: {
   analysis: ExecutionPlanningContext;
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
 }): ExecutionActionPlan[] {
-  return buildUnsupportedModeActions(
-    input.analysis,
-    input.selectedIssueCandidateIds,
-    input.selectedPRCandidateIds
+  return buildPlannedActions({
+    ...input,
+    approvalGranted: false,
+    mode: "dry_run"
+  });
+}
+
+export function buildApprovalBlockedActions(input: {
+  analysis: ExecutionPlanningContext;
+  selectedIssueCandidateIds: string[];
+  selectedPRCandidateIds: string[];
+}): ExecutionActionPlan[] {
+  const context: ActionBuildContext = {
+    approvalGranted: false,
+    mode: "execute_approved"
+  };
+  const issueMap = new Map(
+    input.analysis.issueCandidates.map((candidate) => [candidate.id, candidate])
   );
+  const prMap = new Map(
+    input.analysis.prCandidates.map((candidate) => [candidate.id, candidate])
+  );
+  const actions: ExecutionActionPlan[] = [];
+
+  for (const id of input.selectedIssueCandidateIds) {
+    const candidate = issueMap.get(id);
+
+    actions.push(
+      createAction(context, {
+        actionType: "create_issue",
+        affectedPackages: candidate?.affectedPackages ?? [],
+        affectedPaths: candidate?.affectedPaths ?? [],
+        eligibility: "blocked",
+        id: `execution:blocked:issue:${id}`,
+        linkedIssueCandidateIds: candidate ? [candidate.id] : [],
+        linkedPRCandidateIds: [],
+        plannedSteps: [
+          "Switch to dry_run mode to inspect the plan without remote execution."
+        ],
+        reason: "Execution is blocked because explicit approval was not granted.",
+        targetId: id,
+        targetType: "issue_candidate",
+        title: candidate?.title ?? `Blocked issue execution for ${id}`
+      })
+    );
+  }
+
+  for (const id of input.selectedPRCandidateIds) {
+    const candidate = prMap.get(id);
+
+    actions.push(
+      createAction(context, {
+        actionType: "create_pr",
+        affectedPackages: candidate?.affectedPackages ?? [],
+        affectedPaths: candidate?.affectedPaths ?? [],
+        eligibility: "blocked",
+        id: `execution:blocked:pr:${id}`,
+        linkedIssueCandidateIds: candidate?.linkedIssueCandidateIds ?? [],
+        linkedPRCandidateIds: candidate ? [candidate.id] : [],
+        plannedSteps: [
+          "Switch to dry_run mode to inspect the plan without remote execution."
+        ],
+        reason: "Execution is blocked because explicit approval was not granted.",
+        targetId: id,
+        targetType: "pr_candidate",
+        title: candidate?.title ?? `Blocked PR execution for ${id}`
+      })
+    );
+  }
+
+  if (actions.length > 0) {
+    return actions;
+  }
+
+  return [buildEmptySelectionAction(context)];
+}
+
+export function buildExecutableActions(input: {
+  analysis: ExecutionPlanningContext;
+  selectedIssueCandidateIds: string[];
+  selectedPRCandidateIds: string[];
+}): ExecutionActionPlan[] {
+  return buildPlannedActions({
+    ...input,
+    approvalGranted: true,
+    mode: "execute_approved"
+  });
 }
