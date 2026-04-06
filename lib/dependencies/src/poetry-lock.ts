@@ -1,8 +1,13 @@
 import { parse as parseToml } from "smol-toml";
-import type { DetectedLockfile, NormalizedDependency } from "@repo-guardian/shared-types";
+import type {
+  AnalysisWarning,
+  DetectedLockfile,
+  NormalizedDependency
+} from "@repo-guardian/shared-types";
 import type { ParseContext, ParserResult } from "./utils.js";
 import {
   createDependency,
+  createDependencyParseWarning,
   dedupeDependencies,
   isRecord,
   normalizeDependencyName,
@@ -35,12 +40,19 @@ export function parsePoetryLock(
   }
 
   const dependencies: NormalizedDependency[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
   const workspacePath = normalizeWorkspacePath(file.path);
 
   for (const packageEntry of parsed.package) {
     if (!isRecord(packageEntry)) {
-      warnings.push(`Skipped Poetry package entry in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped Poetry package entry in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -54,7 +66,14 @@ export function parsePoetryLock(
         : null;
 
     if (!name || !version) {
-      warnings.push(`Skipped Poetry package entry in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped Poetry package entry in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -88,6 +107,6 @@ export function parsePoetryLock(
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager: "poetry",
-    warnings
+    warningDetails
   };
 }

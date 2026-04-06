@@ -1,10 +1,15 @@
 import type {
+  AnalysisWarning,
   DependencySnapshot,
   DependencyType,
   EcosystemId,
   NormalizedDependency,
   PackageManagerId,
   ParseConfidence
+} from "@repo-guardian/shared-types";
+import {
+  createAnalysisWarning,
+  getWarningMessages
 } from "@repo-guardian/shared-types";
 import { buildAdvisoryQueryKey } from "./provider.js";
 import { extractConcreteVersion, getProviderEcosystem, isLockfileSource } from "./version.js";
@@ -32,6 +37,7 @@ export type AdvisoryLookupTarget = {
 type AdvisoryLookupPlan = {
   isPartial: boolean;
   targets: AdvisoryLookupTarget[];
+  warningDetails: AnalysisWarning[];
   warnings: string[];
 };
 
@@ -148,7 +154,7 @@ function chooseBestDependency(
 export function createAdvisoryLookupPlan(
   dependencySnapshot: DependencySnapshot
 ): AdvisoryLookupPlan {
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
   const targets: AdvisoryLookupTarget[] = [];
   let isPartial = dependencySnapshot.isPartial;
 
@@ -158,16 +164,19 @@ export function createAdvisoryLookupPlan(
     const bestDependency = chooseBestDependency(group.dependencies);
 
     if (!providerEcosystem) {
-      warnings.push(
-        `Advisory lookup skipped for ${group.packageName}: ecosystem ${group.ecosystem} is not supported in Milestone 2B.`
-      );
       isPartial = true;
       continue;
     }
 
     if (!bestDependency) {
-      warnings.push(
-        `Declaration-only advisory coverage for ${group.packageName} in ${paths.join(", ")}; no exact resolved version was available.`
+      warningDetails.push(
+        createAnalysisWarning({
+          code: "DECLARATION_ONLY_VERSION",
+          message: `Declaration-only advisory coverage for ${group.packageName} in ${paths.join(", ")}; no exact resolved version was available.`,
+          paths,
+          source: group.packageName,
+          stage: "advisory"
+        })
       );
       isPartial = true;
       continue;
@@ -180,8 +189,14 @@ export function createAdvisoryLookupPlan(
     );
 
     if (distinctVersions.length > 1) {
-      warnings.push(
-        `Multiple resolved versions detected for ${group.packageName} in ${paths.join(", ")}; using ${bestDependency.version} for advisory lookup.`
+      warningDetails.push(
+        createAnalysisWarning({
+          code: "MULTIPLE_RESOLVED_VERSIONS",
+          message: `Multiple resolved versions detected for ${group.packageName} in ${paths.join(", ")}; using ${bestDependency.version} for advisory lookup.`,
+          paths,
+          source: group.packageName,
+          stage: "advisory"
+        })
       );
       isPartial = true;
     }
@@ -216,6 +231,7 @@ export function createAdvisoryLookupPlan(
   return {
     isPartial,
     targets: targets.sort((left, right) => left.query.key.localeCompare(right.query.key)),
-    warnings: uniqueSorted(warnings)
+    warningDetails,
+    warnings: getWarningMessages(warningDetails)
   };
 }

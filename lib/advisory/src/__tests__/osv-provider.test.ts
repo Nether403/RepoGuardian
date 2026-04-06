@@ -80,6 +80,7 @@ describe("OsvAdvisoryProvider", () => {
     ]);
 
     expect(result.isPartial).toBe(false);
+    expect(result.warningDetails).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(result.advisoriesByQueryKey.get("node:react:19.0.0")).toEqual([
       {
@@ -133,6 +134,11 @@ describe("OsvAdvisoryProvider", () => {
 
     expect(result.advisoriesByQueryKey.get("node:react:19.0.0")).toEqual([]);
     expect(result.isPartial).toBe(true);
+    expect(result.warningDetails).toEqual([
+      expect.objectContaining({
+        code: "ADVISORY_PROVIDER_FAILED"
+      })
+    ]);
     expect(result.warnings).toEqual([
       "Advisory lookup skipped malformed vulnerability payload for GHSA-test-1234."
     ]);

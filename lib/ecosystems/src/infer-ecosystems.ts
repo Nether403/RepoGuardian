@@ -1,4 +1,5 @@
 import type {
+  AnalysisWarning,
   DetectedEcosystem,
   DetectedLockfile,
   DetectedManifest,
@@ -7,7 +8,11 @@ import type {
   ManifestCountByEcosystem,
   PackageManagerId
 } from "@repo-guardian/shared-types";
-import { EcosystemDetectionSchema } from "@repo-guardian/shared-types";
+import {
+  createAnalysisWarning,
+  EcosystemDetectionSchema,
+  getWarningMessages
+} from "@repo-guardian/shared-types";
 import type { RawDetectionFiles } from "./detect-files.js";
 import {
   dirname,
@@ -108,7 +113,7 @@ function createManifestCounts(
 function createManifestWithoutLockfileWarnings(
   manifests: DetectedManifest[],
   lockfiles: DetectedLockfile[]
-): string[] {
+): AnalysisWarning[] {
   const lockfilesByDirectory = new Map<string, Set<DetectedLockfile["kind"]>>();
 
   for (const lockfile of lockfiles) {
@@ -118,7 +123,7 @@ function createManifestWithoutLockfileWarnings(
     lockfilesByDirectory.set(directory, knownLockfiles);
   }
 
-  const warnings: string[] = [];
+  const warnings: AnalysisWarning[] = [];
 
   for (const manifest of manifests) {
     const expectedPair = manifestLockfilePairs[manifest.kind];
@@ -133,11 +138,19 @@ function createManifestWithoutLockfileWarnings(
     );
 
     if (!hasMatchingLockfile) {
-      warnings.push(`Manifest without lockfile: ${manifest.path}`);
+      warnings.push(
+        createAnalysisWarning({
+          code: "MANIFEST_WITHOUT_LOCKFILE",
+          message: `Manifest without lockfile: ${manifest.path}`,
+          paths: [manifest.path],
+          source: manifest.kind,
+          stage: "detection"
+        })
+      );
     }
   }
 
-  return warnings.sort((left, right) => left.localeCompare(right));
+  return warnings.sort((left, right) => left.message.localeCompare(right.message));
 }
 
 function createMultiplePackageManagerWarnings(
@@ -181,8 +194,9 @@ export function inferEcosystems(detectionFiles: RawDetectionFiles): EcosystemDet
     left.path.localeCompare(right.path)
   );
   const ecosystems = createDetectedEcosystems(createBuckets(manifests, lockfiles));
+  const warningDetails = createManifestWithoutLockfileWarnings(manifests, lockfiles);
   const warnings = [
-    ...createManifestWithoutLockfileWarnings(manifests, lockfiles),
+    ...getWarningMessages(warningDetails),
     ...createMultiplePackageManagerWarnings(ecosystems),
     ...createMonorepoWarning(manifests)
   ];
@@ -197,6 +211,7 @@ export function inferEcosystems(detectionFiles: RawDetectionFiles): EcosystemDet
     manifestCounts: createManifestCounts(ecosystems, manifests, lockfiles),
     manifests,
     signals,
+    warningDetails,
     warnings
   });
 }

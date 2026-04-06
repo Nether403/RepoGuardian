@@ -1,10 +1,12 @@
 import type {
+  AnalysisWarning,
   DependencyType,
   DetectedLockfile,
   NormalizedDependency
 } from "@repo-guardian/shared-types";
 import type { ParseContext, ParserResult } from "./utils.js";
 import {
+  createDependencyParseWarning,
   createDependency,
   dedupeDependencies,
   isRecord,
@@ -111,7 +113,7 @@ function parsePackagesObject(
   context: ParseContext
 ): ParserResult {
   const workspacePath = normalizeWorkspacePath(file.path);
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
   const dependencies: NormalizedDependency[] = [];
   const rootEntry = packagesObject[""];
   const directSets = buildDirectDependencySets(
@@ -125,7 +127,14 @@ function parsePackagesObject(
     }
 
     if (!isRecord(value)) {
-      warnings.push(`Skipped package-lock entry "${packagePath}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped package-lock entry "${packagePath}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -139,7 +148,14 @@ function parsePackagesObject(
         : null;
 
     if (!name || !version) {
-      warnings.push(`Skipped package-lock entry "${packagePath}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped package-lock entry "${packagePath}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -164,7 +180,7 @@ function parsePackagesObject(
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager: "npm",
-    warnings
+    warningDetails
   };
 }
 
@@ -173,12 +189,19 @@ function visitLegacyDependencies(
   file: DetectedLockfile,
   depth: number,
   directSets: DirectDependencySets,
-  warnings: string[],
+  warningDetails: AnalysisWarning[],
   dependencies: ReturnType<typeof dedupeDependencies>
 ): void {
   for (const [name, value] of Object.entries(dependenciesObject)) {
     if (!isRecord(value)) {
-      warnings.push(`Skipped package-lock dependency "${name}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped package-lock dependency "${name}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -188,7 +211,14 @@ function visitLegacyDependencies(
         : null;
 
     if (!version) {
-      warnings.push(`Skipped package-lock dependency "${name}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped package-lock dependency "${name}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -215,7 +245,7 @@ function visitLegacyDependencies(
         file,
         depth + 1,
         directSets,
-        warnings,
+        warningDetails,
         dependencies
       );
     }
@@ -249,15 +279,22 @@ export function parsePackageLockJson(
 
   if (isRecord(parsed.dependencies)) {
     const dependencies: NormalizedDependency[] = [];
-    const warnings: string[] = [];
+    const warningDetails: AnalysisWarning[] = [];
     const directSets = buildDirectDependencySets(null, context);
 
-    visitLegacyDependencies(parsed.dependencies, file, 0, directSets, warnings, dependencies);
+    visitLegacyDependencies(
+      parsed.dependencies,
+      file,
+      0,
+      directSets,
+      warningDetails,
+      dependencies
+    );
 
     return {
       dependencies: dedupeDependencies(dependencies),
       packageManager: "npm",
-      warnings
+      warningDetails
     };
   }
 

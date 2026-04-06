@@ -1,4 +1,7 @@
 import {
+  createAnalysisWarning,
+  getWarningMessages,
+  type AnalysisWarning,
   type RepositoryMetadata,
   type RepositoryTreeEntry,
   type RepositoryTreeSummary
@@ -122,28 +125,40 @@ export function createTreePayload(
 ): {
   entries: RepositoryTreeEntry[];
   isPartial: boolean;
+  warningDetails: AnalysisWarning[];
   warnings: string[];
 } {
   const safeMaxEntries = Math.max(1, maxEntries);
   const limitedEntries = entries.slice(0, safeMaxEntries);
   const payloadCapped = limitedEntries.length < entries.length;
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
 
   if (summary.truncated) {
-    warnings.push(
-      "GitHub returned a truncated recursive tree; the repository snapshot is partial."
+    warningDetails.push(
+      createAnalysisWarning({
+        code: "TREE_TRUNCATED",
+        message: "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
+        source: "github-tree",
+        stage: "intake"
+      })
     );
   }
 
   if (payloadCapped) {
-    warnings.push(
-      `Returned the first ${safeMaxEntries} tree entries to keep the payload UI-friendly.`
+    warningDetails.push(
+      createAnalysisWarning({
+        code: "PAYLOAD_CAPPED",
+        message: `Returned the first ${safeMaxEntries} tree entries to keep the payload UI-friendly.`,
+        source: "github-tree",
+        stage: "intake"
+      })
     );
   }
 
   return {
     entries: limitedEntries,
     isPartial: summary.truncated || payloadCapped,
-    warnings
+    warningDetails,
+    warnings: getWarningMessages(warningDetails)
   };
 }

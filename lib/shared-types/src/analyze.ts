@@ -13,6 +13,38 @@ export const AnalyzeRepoRequestSchema = z.object({
   repoInput: z.string().trim().min(1, "Repository input is required")
 });
 
+export const AnalysisWarningCodeSchema = z.enum([
+  "TREE_TRUNCATED",
+  "PAYLOAD_CAPPED",
+  "MANIFEST_WITHOUT_LOCKFILE",
+  "LOCKFILE_WITHOUT_MANIFEST",
+  "UNSUPPORTED_FILE_KIND",
+  "FILE_FETCH_SKIPPED",
+  "FILE_PARSE_FAILED",
+  "DECLARATION_ONLY_VERSION",
+  "MULTIPLE_RESOLVED_VERSIONS",
+  "ADVISORY_LOOKUP_PARTIAL",
+  "ADVISORY_PROVIDER_FAILED"
+]);
+
+export const AnalysisWarningStageSchema = z.enum([
+  "intake",
+  "detection",
+  "dependency-parse",
+  "advisory"
+]);
+
+export const AnalysisWarningSeveritySchema = z.enum(["info", "warning"]);
+
+export const AnalysisWarningSchema = z.object({
+  code: AnalysisWarningCodeSchema,
+  message: z.string().min(1),
+  stage: AnalysisWarningStageSchema,
+  severity: AnalysisWarningSeveritySchema,
+  paths: z.array(z.string().min(1)),
+  source: z.string().min(1).nullable()
+});
+
 export const RepositoryMetadataSchema = z.object({
   owner: z.string().min(1),
   repo: z.string().min(1),
@@ -134,6 +166,7 @@ export const EcosystemDetectionSchema = z.object({
   }),
   manifests: z.array(DetectedManifestSchema),
   signals: z.array(DetectedSignalSchema),
+  warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string())
 });
 
@@ -141,6 +174,7 @@ export const RepositoryIntakeSnapshotSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: RepositoryTreeSummarySchema,
   treeEntries: z.array(RepositoryTreeEntrySchema),
+  warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   fetchedAt: z.string().datetime(),
   isPartial: z.boolean()
@@ -232,6 +266,7 @@ export const DependencySnapshotSchema = z.object({
   dependencies: z.array(NormalizedDependencySchema),
   filesParsed: z.array(ParsedDependencyFileSchema),
   filesSkipped: z.array(SkippedDependencyFileSchema),
+  parseWarningDetails: z.array(AnalysisWarningSchema).default([]),
   parseWarnings: z.array(z.string()),
   isPartial: z.boolean()
 });
@@ -319,13 +354,116 @@ export const AnalyzeRepoResponseSchema = z.object({
   dependencySnapshot: DependencySnapshotSchema,
   dependencyFindings: z.array(DependencyFindingSchema),
   dependencyFindingSummary: DependencyFindingSummarySchema,
+  warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
   fetchedAt: z.string().datetime()
 });
 
+const coverageWarningCodes = new Set<z.infer<typeof AnalysisWarningCodeSchema>>([
+  "TREE_TRUNCATED",
+  "PAYLOAD_CAPPED",
+  "MANIFEST_WITHOUT_LOCKFILE",
+  "LOCKFILE_WITHOUT_MANIFEST",
+  "UNSUPPORTED_FILE_KIND",
+  "FILE_FETCH_SKIPPED",
+  "FILE_PARSE_FAILED",
+  "DECLARATION_ONLY_VERSION",
+  "MULTIPLE_RESOLVED_VERSIONS",
+  "ADVISORY_LOOKUP_PARTIAL",
+  "ADVISORY_PROVIDER_FAILED"
+]);
+
+function sortStrings(values: Iterable<string>): string[] {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function createWarningDeduplicationKey(warning: z.infer<typeof AnalysisWarningSchema>): string {
+  return [
+    warning.code,
+    warning.stage,
+    sortStrings(warning.paths).join("|"),
+    warning.source ?? ""
+  ].join("::");
+}
+
+export function createAnalysisWarning(input: {
+  code: z.infer<typeof AnalysisWarningCodeSchema>;
+  message: string;
+  paths?: string[];
+  severity?: z.infer<typeof AnalysisWarningSeveritySchema>;
+  source?: string | null;
+  stage: z.infer<typeof AnalysisWarningStageSchema>;
+}): z.infer<typeof AnalysisWarningSchema> {
+  return AnalysisWarningSchema.parse({
+    code: input.code,
+    message: input.message,
+    paths: sortStrings(
+      new Set((input.paths ?? []).filter((path) => path.trim().length > 0))
+    ),
+    severity: input.severity ?? "warning",
+    source: input.source ?? null,
+    stage: input.stage
+  });
+}
+
+export function dedupeAnalysisWarnings(
+  warnings: z.infer<typeof AnalysisWarningSchema>[]
+): z.infer<typeof AnalysisWarningSchema>[] {
+  const deduped = new Map<string, z.infer<typeof AnalysisWarningSchema>>();
+
+  for (const warning of warnings) {
+    if (warning.message.trim().length === 0) {
+      continue;
+    }
+
+    deduped.set(createWarningDeduplicationKey(warning), warning);
+  }
+
+  return [...deduped.values()].sort((left, right) => {
+    const leftKey = [
+      left.stage,
+      left.code,
+      left.paths.join("|"),
+      left.source ?? "",
+      left.message
+    ].join("::");
+    const rightKey = [
+      right.stage,
+      right.code,
+      right.paths.join("|"),
+      right.source ?? "",
+      right.message
+    ].join("::");
+
+    return leftKey.localeCompare(rightKey);
+  });
+}
+
+export function getWarningMessages(
+  warnings: z.infer<typeof AnalysisWarningSchema>[]
+): string[] {
+  return sortStrings(new Set(warnings.map((warning) => warning.message)));
+}
+
+export function isCoverageWarningCode(
+  code: z.infer<typeof AnalysisWarningCodeSchema>
+): boolean {
+  return coverageWarningCodes.has(code);
+}
+
+export function hasCoverageWarnings(
+  warnings: z.infer<typeof AnalysisWarningSchema>[]
+): boolean {
+  return warnings.some((warning) => isCoverageWarningCode(warning.code));
+}
+
 export type NormalizedRepoInput = z.infer<typeof NormalizedRepoInputSchema>;
 export type AnalyzeRepoRequest = z.infer<typeof AnalyzeRepoRequestSchema>;
+export type AnalysisWarningCode = z.infer<typeof AnalysisWarningCodeSchema>;
+export type AnalysisWarningStage = z.infer<typeof AnalysisWarningStageSchema>;
+export type AnalysisWarningSeverity = z.infer<typeof AnalysisWarningSeveritySchema>;
+export type AnalysisWarning = z.infer<typeof AnalysisWarningSchema>;
 export type RepositoryMetadata = z.infer<typeof RepositoryMetadataSchema>;
 export type RepositoryTreeEntry = z.infer<typeof RepositoryTreeEntrySchema>;
 export type RepositoryTreeSummary = z.infer<typeof RepositoryTreeSummarySchema>;

@@ -1,5 +1,6 @@
 import { parse as parseToml } from "smol-toml";
 import type {
+  AnalysisWarning,
   DependencyType,
   DetectedManifest,
   NormalizedDependency,
@@ -8,6 +9,7 @@ import type {
 import type { ParseContext, ParserResult } from "./utils.js";
 import {
   createDependency,
+  createDependencyParseWarning,
   dedupeDependencies,
   isRecord,
   normalizeWorkspacePath
@@ -16,7 +18,7 @@ import { parsePythonRequirement } from "./python-utils.js";
 
 function pushRequirementString(
   dependencies: ReturnType<typeof dedupeDependencies>,
-  warnings: string[],
+  warningDetails: AnalysisWarning[],
   file: DetectedManifest,
   workspacePath: string,
   packageManager: PackageManagerId | null,
@@ -26,7 +28,14 @@ function pushRequirementString(
   const parsedRequirement = parsePythonRequirement(declaration);
 
   if (!parsedRequirement) {
-    warnings.push(`Skipped unsupported dependency declaration "${declaration}" in ${file.path}.`);
+    warningDetails.push(
+      createDependencyParseWarning({
+        code: "FILE_PARSE_FAILED",
+        message: `Skipped unsupported dependency declaration "${declaration}" in ${file.path}.`,
+        path: file.path,
+        source: file.kind
+      })
+    );
     return;
   }
 
@@ -60,7 +69,7 @@ function readPoetryDependencyVersion(value: unknown): string | null {
 function pushPoetryMapping(
   mapping: unknown,
   dependencies: ReturnType<typeof dedupeDependencies>,
-  warnings: string[],
+  warningDetails: AnalysisWarning[],
   file: DetectedManifest,
   workspacePath: string,
   dependencyType: DependencyType
@@ -77,7 +86,14 @@ function pushPoetryMapping(
     const version = readPoetryDependencyVersion(value);
 
     if (!version) {
-      warnings.push(`Skipped unsupported Poetry dependency "${name}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped unsupported Poetry dependency "${name}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -124,7 +140,7 @@ export function parsePyprojectToml(
 
   const workspacePath = normalizeWorkspacePath(file.path);
   const dependencies: NormalizedDependency[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
   let packageManager: PackageManagerId | null = null;
   let parsedSupportedSection = false;
 
@@ -134,13 +150,20 @@ export function parsePyprojectToml(
 
       for (const declaration of parsed.project.dependencies) {
         if (typeof declaration !== "string") {
-          warnings.push(`Skipped non-string project dependency in ${file.path}.`);
+          warningDetails.push(
+            createDependencyParseWarning({
+              code: "FILE_PARSE_FAILED",
+              message: `Skipped non-string project dependency in ${file.path}.`,
+              path: file.path,
+              source: file.kind
+            })
+          );
           continue;
         }
 
         pushRequirementString(
           dependencies,
-          warnings,
+          warningDetails,
           file,
           workspacePath,
           null,
@@ -155,19 +178,33 @@ export function parsePyprojectToml(
 
       for (const optionalGroup of Object.values(parsed.project["optional-dependencies"])) {
         if (!Array.isArray(optionalGroup)) {
-          warnings.push(`Skipped non-array project optional dependency group in ${file.path}.`);
+          warningDetails.push(
+            createDependencyParseWarning({
+              code: "FILE_PARSE_FAILED",
+              message: `Skipped non-array project optional dependency group in ${file.path}.`,
+              path: file.path,
+              source: file.kind
+            })
+          );
           continue;
         }
 
         for (const declaration of optionalGroup) {
           if (typeof declaration !== "string") {
-            warnings.push(`Skipped non-string optional dependency in ${file.path}.`);
+            warningDetails.push(
+              createDependencyParseWarning({
+                code: "FILE_PARSE_FAILED",
+                message: `Skipped non-string optional dependency in ${file.path}.`,
+                path: file.path,
+                source: file.kind
+              })
+            );
             continue;
           }
 
           pushRequirementString(
             dependencies,
-            warnings,
+            warningDetails,
             file,
             workspacePath,
             null,
@@ -186,7 +223,7 @@ export function parsePyprojectToml(
     pushPoetryMapping(
       parsed.tool.poetry.dependencies,
       dependencies,
-      warnings,
+      warningDetails,
       file,
       workspacePath,
       "production"
@@ -194,7 +231,7 @@ export function parsePyprojectToml(
     pushPoetryMapping(
       parsed.tool.poetry["dev-dependencies"],
       dependencies,
-      warnings,
+      warningDetails,
       file,
       workspacePath,
       "development"
@@ -203,14 +240,21 @@ export function parsePyprojectToml(
     if (isRecord(parsed.tool.poetry.group)) {
       for (const [groupName, groupValue] of Object.entries(parsed.tool.poetry.group)) {
         if (!isRecord(groupValue)) {
-          warnings.push(`Skipped unsupported Poetry group "${groupName}" in ${file.path}.`);
+          warningDetails.push(
+            createDependencyParseWarning({
+              code: "FILE_PARSE_FAILED",
+              message: `Skipped unsupported Poetry group "${groupName}" in ${file.path}.`,
+              path: file.path,
+              source: file.kind
+            })
+          );
           continue;
         }
 
         pushPoetryMapping(
           groupValue.dependencies,
           dependencies,
-          warnings,
+          warningDetails,
           file,
           workspacePath,
           groupName === "dev" ? "development" : "optional"
@@ -220,12 +264,19 @@ export function parsePyprojectToml(
   }
 
   if (!parsedSupportedSection) {
-    warnings.push(`No supported dependency sections parsed from ${file.path}.`);
+    warningDetails.push(
+      createDependencyParseWarning({
+        code: "FILE_PARSE_FAILED",
+        message: `No supported dependency sections parsed from ${file.path}.`,
+        path: file.path,
+        source: file.kind
+      })
+    );
   }
 
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager,
-    warnings
+    warningDetails
   };
 }

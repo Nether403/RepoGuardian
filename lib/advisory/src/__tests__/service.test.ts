@@ -30,6 +30,7 @@ function createSnapshot(
     filesParsed: [],
     filesSkipped: [],
     isPartial,
+    parseWarningDetails: [],
     parseWarnings: [],
     summary: {
       byEcosystem: [],
@@ -93,6 +94,7 @@ describe("createDependencyFindingResult", () => {
         ]
       ]),
       isPartial: false,
+      warningDetails: [],
       warnings: []
     });
 
@@ -151,6 +153,7 @@ describe("createDependencyFindingResult", () => {
         ]
       ]),
       isPartial: false,
+      warningDetails: [],
       warnings: []
     });
 
@@ -182,6 +185,7 @@ describe("createDependencyFindingResult", () => {
     const provider = new FakeAdvisoryProvider({
       advisoriesByQueryKey: new Map(),
       isPartial: false,
+      warningDetails: [],
       warnings: []
     });
 
@@ -191,6 +195,11 @@ describe("createDependencyFindingResult", () => {
     expect(result.isPartial).toBe(true);
     expect(result.warnings).toEqual([
       "Declaration-only advisory coverage for requests in requirements.txt; no exact resolved version was available."
+    ]);
+    expect(result.warningDetails).toEqual([
+      expect.objectContaining({
+        code: "DECLARATION_ONLY_VERSION"
+      })
     ]);
   });
 
@@ -213,6 +222,7 @@ describe("createDependencyFindingResult", () => {
         [buildAdvisoryQueryKey("node", "react", "19.0.0"), []]
       ]),
       isPartial: false,
+      warningDetails: [],
       warnings: []
     });
 
@@ -241,6 +251,17 @@ describe("createDependencyFindingResult", () => {
         [buildAdvisoryQueryKey("node", "react", "19.0.0"), []]
       ]),
       isPartial: true,
+      warningDetails: [
+        {
+          code: "ADVISORY_LOOKUP_PARTIAL",
+          message:
+            "Advisory results for react@19.0.0 were paginated; only the first page was processed.",
+          paths: [],
+          severity: "warning",
+          source: "OSV",
+          stage: "advisory"
+        }
+      ],
       warnings: [
         "Advisory results for react@19.0.0 were paginated; only the first page was processed."
       ]
@@ -252,6 +273,11 @@ describe("createDependencyFindingResult", () => {
     expect(result.summary.isPartial).toBe(true);
     expect(result.warnings).toEqual([
       "Advisory results for react@19.0.0 were paginated; only the first page was processed."
+    ]);
+    expect(result.warningDetails).toEqual([
+      expect.objectContaining({
+        code: "ADVISORY_LOOKUP_PARTIAL"
+      })
     ]);
   });
 });

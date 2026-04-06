@@ -1,4 +1,6 @@
 import type {
+  AnalysisWarning,
+  AnalysisWarningCode,
   DependencySnapshot,
   DependencySnapshotSummary,
   DependencyType,
@@ -13,6 +15,12 @@ import type {
   ParseConfidence,
   ParsedDependencyFile,
   SkippedDependencyFile
+} from "@repo-guardian/shared-types";
+import {
+  createAnalysisWarning,
+  dedupeAnalysisWarnings,
+  getWarningMessages,
+  hasCoverageWarnings
 } from "@repo-guardian/shared-types";
 
 export type SupportedManifestKind =
@@ -41,7 +49,7 @@ export type ParserWarning = {
 export type ParserResult = {
   dependencies: NormalizedDependency[];
   packageManager: PackageManagerId | null;
-  warnings: string[];
+  warningDetails: AnalysisWarning[];
 };
 
 export type ParseContext = {
@@ -189,6 +197,21 @@ export function createFileKey(path: string, kind: string): string {
   return `${kind}:${path}`;
 }
 
+export function createDependencyParseWarning(input: {
+  code: AnalysisWarningCode;
+  message: string;
+  path?: string;
+  source?: string | null;
+}): AnalysisWarning {
+  return createAnalysisWarning({
+    code: input.code,
+    message: input.message,
+    paths: input.path ? [input.path] : [],
+    source: input.source ?? null,
+    stage: "dependency-parse"
+  });
+}
+
 const supportedManifestKinds = new Set<SupportedManifestKind>([
   "package.json",
   "pyproject.toml",
@@ -222,10 +245,10 @@ export function createUnsupportedFileWarnings(
   detection: EcosystemDetection
 ): {
   filesSkipped: SkippedDependencyFile[];
-  warnings: string[];
+  warningDetails: AnalysisWarning[];
 } {
   const filesSkipped: SkippedDependencyFile[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
 
   for (const manifest of detection.manifests) {
     if (isSupportedManifestKind(manifest.kind)) {
@@ -234,7 +257,14 @@ export function createUnsupportedFileWarnings(
 
     const reason = `Detected ${manifest.kind} but parsing is not supported in Milestone 2A.`;
     filesSkipped.push(createSkippedFile(manifest, reason));
-    warnings.push(reason);
+    warningDetails.push(
+      createDependencyParseWarning({
+        code: "UNSUPPORTED_FILE_KIND",
+        message: reason,
+        path: manifest.path,
+        source: manifest.kind
+      })
+    );
   }
 
   for (const lockfile of detection.lockfiles) {
@@ -244,18 +274,25 @@ export function createUnsupportedFileWarnings(
 
     const reason = `Detected ${lockfile.kind} but parsing is not supported in Milestone 2A.`;
     filesSkipped.push(createSkippedFile(lockfile, reason));
-    warnings.push(reason);
+    warningDetails.push(
+      createDependencyParseWarning({
+        code: "UNSUPPORTED_FILE_KIND",
+        message: reason,
+        path: lockfile.path,
+        source: lockfile.kind
+      })
+    );
   }
 
   return {
     filesSkipped,
-    warnings
+    warningDetails
   };
 }
 
 export function createLockfileWithoutManifestWarnings(
   detection: EcosystemDetection
-): string[] {
+): AnalysisWarning[] {
   const manifestDirectories = new Map<EcosystemId, Set<string>>();
 
   for (const manifest of detection.manifests) {
@@ -264,18 +301,25 @@ export function createLockfileWithoutManifestWarnings(
     manifestDirectories.set(manifest.ecosystem, knownDirectories);
   }
 
-  const warnings: string[] = [];
+  const warnings: AnalysisWarning[] = [];
 
   for (const lockfile of detection.lockfiles) {
     const workspacePath = normalizeWorkspacePath(lockfile.path);
     const knownDirectories = manifestDirectories.get(lockfile.ecosystem);
 
     if (!knownDirectories?.has(workspacePath)) {
-      warnings.push(`Lockfile without matching manifest: ${lockfile.path}`);
+      warnings.push(
+        createDependencyParseWarning({
+          code: "LOCKFILE_WITHOUT_MANIFEST",
+          message: `Lockfile without matching manifest: ${lockfile.path}`,
+          path: lockfile.path,
+          source: lockfile.kind
+        })
+      );
     }
   }
 
-  return warnings.sort((left, right) => left.localeCompare(right));
+  return warnings.sort((left, right) => left.message.localeCompare(right.message));
 }
 
 const lockfilePackageManagers: Record<SupportedLockfileKind, PackageManagerId> = {
@@ -409,15 +453,16 @@ export function createDependencySummary(
   };
 }
 
-export function isCoverageWarning(warning: string): boolean {
-  return (
-    warning.startsWith("Detected ") ||
-    warning.startsWith("Lockfile without matching manifest:") ||
-    warning.startsWith("Manifest without lockfile:") ||
-    warning.startsWith("Skipped ") ||
-    warning.startsWith("No supported dependency sections parsed from") ||
-    warning.startsWith("Could not parse ")
-  );
+export function uniqueWarningDetails(warnings: AnalysisWarning[]): AnalysisWarning[] {
+  return dedupeAnalysisWarnings(warnings);
+}
+
+export function getWarningMessagesFromDetails(warnings: AnalysisWarning[]): string[] {
+  return getWarningMessages(uniqueWarningDetails(warnings));
+}
+
+export function hasPartialCoverageWarnings(warnings: AnalysisWarning[]): boolean {
+  return hasCoverageWarnings(uniqueWarningDetails(warnings));
 }
 
 export function createEmptyDependencySnapshot(): DependencySnapshot {
@@ -426,6 +471,7 @@ export function createEmptyDependencySnapshot(): DependencySnapshot {
     filesParsed: [],
     filesSkipped: [],
     isPartial: false,
+    parseWarningDetails: [],
     parseWarnings: [],
     summary: {
       byEcosystem: [],

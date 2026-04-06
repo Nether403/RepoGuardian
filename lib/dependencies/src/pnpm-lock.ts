@@ -1,11 +1,18 @@
 import { parse as parseYaml } from "yaml";
 import type {
+  AnalysisWarning,
   DependencyType,
   DetectedLockfile,
   NormalizedDependency
 } from "@repo-guardian/shared-types";
 import type { ParserResult } from "./utils.js";
-import { createDependency, dedupeDependencies, isRecord, normalizeDependencyName } from "./utils.js";
+import {
+  createDependency,
+  createDependencyParseWarning,
+  dedupeDependencies,
+  isRecord,
+  normalizeDependencyName
+} from "./utils.js";
 
 type ImporterDependencyIndex = Map<string, Map<string, DependencyType>>;
 
@@ -92,18 +99,32 @@ export function parsePnpmLockYaml(
 
   const importerIndex = buildImporterDependencyIndex(parsed);
   const dependencies: NormalizedDependency[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
 
   for (const [packageKey, packageValue] of Object.entries(parsed.packages)) {
     if (!isRecord(packageValue)) {
-      warnings.push(`Skipped pnpm package entry "${packageKey}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped pnpm package entry "${packageKey}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
     const parsedPackageKey = parsePnpmPackageKey(packageKey);
 
     if (!parsedPackageKey) {
-      warnings.push(`Skipped pnpm package entry "${packageKey}" in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped pnpm package entry "${packageKey}" in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -150,6 +171,6 @@ export function parsePnpmLockYaml(
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager: "pnpm",
-    warnings
+    warningDetails
   };
 }

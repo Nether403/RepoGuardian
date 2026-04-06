@@ -1,5 +1,6 @@
 import {
   DependencySnapshotSchema,
+  type AnalysisWarning,
   type DependencySnapshot,
   type EcosystemDetection,
   type NormalizedDependency,
@@ -19,15 +20,17 @@ import {
   createFileKey,
   createLockfileWithoutManifestWarnings,
   createParsedFile,
+  createDependencyParseWarning,
   createSkippedFile,
   createUnsupportedFileWarnings,
   dedupeDependencies,
   getDirectDependencyNames,
+  getWarningMessagesFromDetails,
+  hasPartialCoverageWarnings,
   indexDirectDependencies,
-  isCoverageWarning,
   listDependencyFilesToFetch,
   normalizeWorkspacePath,
-  uniqueWarnings,
+  uniqueWarningDetails,
   type FetchedDependencyFile,
   type ParseContext,
   type ParserResult,
@@ -38,6 +41,7 @@ type CreateDependencySnapshotOptions = {
   detection: EcosystemDetection;
   fetchedFiles: FetchedDependencyFile[];
   prefetchWarnings?: string[];
+  prefetchWarningDetails?: AnalysisWarning[];
   skippedFiles?: SkippedDependencyFile[];
 };
 
@@ -73,7 +77,7 @@ export function createDependencySnapshot(
     return createEmptyDependencySnapshot();
   }
 
-  const { filesSkipped: unsupportedFiles, warnings: unsupportedWarnings } =
+  const { filesSkipped: unsupportedFiles, warningDetails: unsupportedWarningDetails } =
     createUnsupportedFileWarnings(options.detection);
   const fetchedFilesByKey = new Map(
     options.fetchedFiles.map((file) => [createFileKey(file.path, file.kind), file])
@@ -90,13 +94,11 @@ export function createDependencySnapshot(
   const dependencies: NormalizedDependency[] = [];
   const filesParsed: ParsedDependencyFile[] = [];
   const filesSkipped: SkippedDependencyFile[] = [...unsupportedFiles, ...providedSkippedFiles];
-  const parseWarnings = [
-    ...options.detection.warnings.filter((warning) =>
-      warning.startsWith("Manifest without lockfile:")
-    ),
+  const parseWarningDetails: AnalysisWarning[] = [
+    ...(options.detection.warningDetails ?? []),
     ...createLockfileWithoutManifestWarnings(options.detection),
-    ...unsupportedWarnings,
-    ...(options.prefetchWarnings ?? [])
+    ...unsupportedWarningDetails,
+    ...(options.prefetchWarningDetails ?? [])
   ];
 
   for (const file of supportedFiles.sort((left, right) => {
@@ -121,7 +123,14 @@ export function createDependencySnapshot(
       );
 
       filesSkipped.push(skippedFile);
-      parseWarnings.push(skippedFile.reason);
+      parseWarningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_FETCH_SKIPPED",
+          message: skippedFile.reason,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
@@ -142,19 +151,27 @@ export function createDependencySnapshot(
       filesParsed.push(
         createParsedFile(file, result.dependencies.length, result.packageManager)
       );
-      parseWarnings.push(...result.warnings);
+      parseWarningDetails.push(...result.warningDetails);
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : `Could not parse ${file.path}.`;
       const skippedFile = createSkippedFile(file, reason);
 
       filesSkipped.push(skippedFile);
-      parseWarnings.push(reason);
+      parseWarningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: reason,
+          path: file.path,
+          source: file.kind
+        })
+      );
     }
   }
 
   const dedupedDependencies = dedupeDependencies(dependencies);
-  const dedupedWarnings = uniqueWarnings(parseWarnings);
+  const dedupedWarningDetails = uniqueWarningDetails(parseWarningDetails);
+  const dedupedWarnings = getWarningMessagesFromDetails(dedupedWarningDetails);
 
   return DependencySnapshotSchema.parse({
     dependencies: dedupedDependencies,
@@ -162,9 +179,8 @@ export function createDependencySnapshot(
     filesSkipped: filesSkipped.sort((left, right) =>
       left.path.localeCompare(right.path)
     ),
-    isPartial:
-      filesSkipped.length > 0 ||
-      dedupedWarnings.some((warning) => isCoverageWarning(warning)),
+    isPartial: filesSkipped.length > 0 || hasPartialCoverageWarnings(dedupedWarningDetails),
+    parseWarningDetails: dedupedWarningDetails,
     parseWarnings: dedupedWarnings,
     summary: createDependencySummary(dedupedDependencies, filesParsed, filesSkipped)
   });

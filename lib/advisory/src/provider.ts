@@ -1,4 +1,5 @@
 import type {
+  AnalysisWarning,
   AdvisoryReference,
   EcosystemId,
   FindingSeverity
@@ -26,6 +27,7 @@ export type NormalizedAdvisory = {
 export type AdvisoryLookupResult = {
   advisoriesByQueryKey: Map<string, NormalizedAdvisory[]>;
   isPartial: boolean;
+  warningDetails: AnalysisWarning[];
   warnings: string[];
 };
 

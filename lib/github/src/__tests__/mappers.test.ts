@@ -128,6 +128,11 @@ describe("GitHub response mappers", () => {
         }
       ],
       isPartial: true,
+      warningDetails: [
+        expect.objectContaining({
+          code: "PAYLOAD_CAPPED"
+        })
+      ],
       warnings: [
         "Returned the first 1 tree entries to keep the payload UI-friendly."
       ]

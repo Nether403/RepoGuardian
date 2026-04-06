@@ -12,6 +12,10 @@ import {
 } from "@repo-guardian/github";
 import {
   AnalyzeRepoResponseSchema,
+  createAnalysisWarning,
+  dedupeAnalysisWarnings,
+  getWarningMessages,
+  type AnalysisWarning,
   type AnalyzeRepoResponse,
   type DependencySnapshot,
   type EcosystemDetection,
@@ -47,13 +51,29 @@ function buildSamplePaths(
   return uniqueSorted(fallbackPaths).slice(0, 8);
 }
 
+function mergeWarningDetails(
+  intake: RepositoryIntakeSnapshot,
+  detection: EcosystemDetection,
+  dependencySnapshot: DependencySnapshot,
+  dependencyFindings: DependencyFindingResult
+): AnalysisWarning[] {
+  return dedupeAnalysisWarnings([
+    ...intake.warningDetails,
+    ...detection.warningDetails,
+    ...dependencySnapshot.parseWarningDetails,
+    ...dependencyFindings.warningDetails
+  ]);
+}
+
 function mergeWarnings(
+  warningDetails: AnalysisWarning[],
   intake: RepositoryIntakeSnapshot,
   detection: EcosystemDetection,
   dependencySnapshot: DependencySnapshot,
   dependencyFindings: DependencyFindingResult
 ): string[] {
   return uniqueSorted([
+    ...getWarningMessages(warningDetails),
     ...intake.warnings,
     ...detection.warnings,
     ...dependencySnapshot.parseWarnings,
@@ -70,6 +90,7 @@ async function fetchDependencyFiles(
     ReturnType<typeof listDependencyFilesToFetch>[number] & { content: string }
   >;
   prefetchWarnings: string[];
+  prefetchWarningDetails: AnalysisWarning[];
   skippedFiles: Array<{
     ecosystem: ReturnType<typeof listDependencyFilesToFetch>[number]["ecosystem"];
     kind: ReturnType<typeof listDependencyFilesToFetch>[number]["kind"];
@@ -81,6 +102,7 @@ async function fetchDependencyFiles(
     ReturnType<typeof listDependencyFilesToFetch>[number] & { content: string }
   > = [];
   const prefetchWarnings: string[] = [];
+  const prefetchWarningDetails: AnalysisWarning[] = [];
   const skippedFiles: Array<{
     ecosystem: ReturnType<typeof listDependencyFilesToFetch>[number]["ecosystem"];
     kind: ReturnType<typeof listDependencyFilesToFetch>[number]["kind"];
@@ -109,6 +131,15 @@ async function fetchDependencyFiles(
       if (error.code === "not_found" || error.code === "upstream_invalid_response") {
         const reason = `Skipped ${file.path}: ${error.message}`;
         prefetchWarnings.push(reason);
+        prefetchWarningDetails.push(
+          createAnalysisWarning({
+            code: "FILE_FETCH_SKIPPED",
+            message: reason,
+            paths: [file.path],
+            source: file.kind,
+            stage: "dependency-parse"
+          })
+        );
         skippedFiles.push({
           ecosystem: file.ecosystem,
           kind: file.kind,
@@ -125,6 +156,7 @@ async function fetchDependencyFiles(
   return {
     fetchedFiles,
     prefetchWarnings,
+    prefetchWarningDetails,
     skippedFiles
   };
 }
@@ -145,11 +177,18 @@ export async function analyzeRepository(
     detection,
     fetchedFiles: dependencyFiles.fetchedFiles,
     prefetchWarnings: dependencyFiles.prefetchWarnings,
+    prefetchWarningDetails: dependencyFiles.prefetchWarningDetails,
     skippedFiles: dependencyFiles.skippedFiles
   });
   const dependencyFindings = await createDependencyFindingResult(
     dependencySnapshot,
     advisoryProvider
+  );
+  const warningDetails = mergeWarningDetails(
+    intake,
+    detection,
+    dependencySnapshot,
+    dependencyFindings
   );
   const isPartial =
     intake.isPartial || dependencySnapshot.isPartial || dependencyFindings.isPartial;
@@ -179,7 +218,9 @@ export async function analyzeRepository(
       totalFiles: intake.treeSummary.fileCount,
       truncated: intake.treeSummary.truncated
     },
+    warningDetails,
     warnings: mergeWarnings(
+      warningDetails,
       intake,
       detection,
       dependencySnapshot,

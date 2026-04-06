@@ -1,7 +1,13 @@
 import type {
+  AnalysisWarning,
   DependencyFinding,
   DependencyFindingSummary,
   DependencySnapshot
+} from "@repo-guardian/shared-types";
+import {
+  createAnalysisWarning,
+  dedupeAnalysisWarnings,
+  getWarningMessages
 } from "@repo-guardian/shared-types";
 import { AdvisoryProviderError, type AdvisoryProvider } from "./provider.js";
 import { matchAdvisoriesToTargets, buildDependencyFindingSummary } from "./findings.js";
@@ -11,28 +17,27 @@ export type DependencyFindingResult = {
   findings: DependencyFinding[];
   isPartial: boolean;
   summary: DependencyFindingSummary;
+  warningDetails: AnalysisWarning[];
   warnings: string[];
 };
-
-function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
-}
 
 export async function createDependencyFindingResult(
   dependencySnapshot: DependencySnapshot,
   provider: AdvisoryProvider
 ): Promise<DependencyFindingResult> {
   const plan = createAdvisoryLookupPlan(dependencySnapshot);
-  const warnings = [...plan.warnings];
+  const warningDetails = [...plan.warningDetails];
 
   if (plan.targets.length === 0) {
     const isPartial = dependencySnapshot.isPartial || plan.isPartial;
+    const dedupedWarningDetails = dedupeAnalysisWarnings(warningDetails);
 
     return {
       findings: [],
       isPartial,
       summary: buildDependencyFindingSummary([], isPartial),
-      warnings: uniqueSorted(warnings)
+      warningDetails: dedupedWarningDetails,
+      warnings: getWarningMessages(dedupedWarningDetails)
     };
   }
 
@@ -47,25 +52,37 @@ export async function createDependencyFindingResult(
       lookupResult.advisoriesByQueryKey,
       isPartial
     );
+    const dedupedWarningDetails = dedupeAnalysisWarnings([
+      ...warningDetails,
+      ...(lookupResult.warningDetails ?? [])
+    ]);
 
     return {
       findings,
       isPartial,
       summary: buildDependencyFindingSummary(findings, isPartial),
-      warnings: uniqueSorted([...warnings, ...lookupResult.warnings])
+      warningDetails: dedupedWarningDetails,
+      warnings: getWarningMessages(dedupedWarningDetails)
     };
   } catch (error) {
     if (error instanceof AdvisoryProviderError) {
       const isPartial = true;
+      const dedupedWarningDetails = dedupeAnalysisWarnings([
+        ...warningDetails,
+        createAnalysisWarning({
+          code: "ADVISORY_PROVIDER_FAILED",
+          message: `Advisory lookup could not be completed: ${error.message}`,
+          source: provider.name,
+          stage: "advisory"
+        })
+      ]);
 
       return {
         findings: [],
         isPartial,
         summary: buildDependencyFindingSummary([], isPartial),
-        warnings: uniqueSorted([
-          ...warnings,
-          `Advisory lookup could not be completed: ${error.message}`
-        ])
+        warningDetails: dedupedWarningDetails,
+        warnings: getWarningMessages(dedupedWarningDetails)
       };
     }
 

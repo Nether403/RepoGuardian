@@ -1,4 +1,14 @@
-import type { AdvisoryReference, EcosystemId, FindingSeverity } from "@repo-guardian/shared-types";
+import type {
+  AdvisoryReference,
+  AnalysisWarning,
+  EcosystemId,
+  FindingSeverity
+} from "@repo-guardian/shared-types";
+import {
+  createAnalysisWarning,
+  dedupeAnalysisWarnings,
+  getWarningMessages
+} from "@repo-guardian/shared-types";
 import {
   AdvisoryProviderError,
   type AdvisoryLookupResult,
@@ -222,6 +232,7 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
       return {
         advisoriesByQueryKey: new Map(),
         isPartial: false,
+        warningDetails: [],
         warnings: []
       };
     }
@@ -269,7 +280,7 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
     }
 
     const advisoriesByQueryKey = new Map<string, NormalizedAdvisory[]>();
-    const warnings: string[] = [];
+    const warningDetails: AnalysisWarning[] = [];
     let isPartial = false;
     const vulnerabilityCache = new Map<string, OsvVulnerability>();
 
@@ -281,8 +292,13 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
       }
 
       if (typeof result.next_page_token === "string" && result.next_page_token.length > 0) {
-        warnings.push(
-          `Advisory results for ${query.packageName}@${query.version} were paginated; only the first page was processed.`
+        warningDetails.push(
+          createAnalysisWarning({
+            code: "ADVISORY_LOOKUP_PARTIAL",
+            message: `Advisory results for ${query.packageName}@${query.version} were paginated; only the first page was processed.`,
+            source: this.name,
+            stage: "advisory"
+          })
         );
         isPartial = true;
       }
@@ -309,16 +325,26 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
               }
             );
           } catch {
-            warnings.push(
-              `Advisory lookup failed for ${advisoryId}: failed to reach the advisory provider.`
+            warningDetails.push(
+              createAnalysisWarning({
+                code: "ADVISORY_PROVIDER_FAILED",
+                message: `Advisory lookup failed for ${advisoryId}: failed to reach the advisory provider.`,
+                source: this.name,
+                stage: "advisory"
+              })
             );
             isPartial = true;
             continue;
           }
 
           if (!vulnerabilityResponse.ok) {
-            warnings.push(
-              `Advisory lookup failed for ${advisoryId}: provider returned status ${vulnerabilityResponse.status}.`
+            warningDetails.push(
+              createAnalysisWarning({
+                code: "ADVISORY_PROVIDER_FAILED",
+                message: `Advisory lookup failed for ${advisoryId}: provider returned status ${vulnerabilityResponse.status}.`,
+                source: this.name,
+                stage: "advisory"
+              })
             );
             isPartial = true;
             continue;
@@ -327,8 +353,13 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
           const rawVulnerability = await readJson(vulnerabilityResponse);
 
           if (!isRecord(rawVulnerability)) {
-            warnings.push(
-              `Advisory lookup failed for ${advisoryId}: provider returned an invalid vulnerability payload.`
+            warningDetails.push(
+              createAnalysisWarning({
+                code: "ADVISORY_PROVIDER_FAILED",
+                message: `Advisory lookup failed for ${advisoryId}: provider returned an invalid vulnerability payload.`,
+                source: this.name,
+                stage: "advisory"
+              })
             );
             isPartial = true;
             continue;
@@ -341,8 +372,13 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
         const normalized = normalizeVulnerability(vulnerability, query);
 
         if (!normalized) {
-          warnings.push(
-            `Advisory lookup skipped malformed vulnerability payload for ${advisoryId}.`
+          warningDetails.push(
+            createAnalysisWarning({
+              code: "ADVISORY_PROVIDER_FAILED",
+              message: `Advisory lookup skipped malformed vulnerability payload for ${advisoryId}.`,
+              source: this.name,
+              stage: "advisory"
+            })
           );
           isPartial = true;
           continue;
@@ -357,10 +393,13 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
       );
     }
 
+    const dedupedWarningDetails = dedupeAnalysisWarnings(warningDetails);
+
     return {
       advisoriesByQueryKey,
       isPartial,
-      warnings: [...new Set(warnings)].sort((left, right) => left.localeCompare(right))
+      warningDetails: dedupedWarningDetails,
+      warnings: getWarningMessages(dedupedWarningDetails)
     };
   }
 }

@@ -54,6 +54,7 @@ describe("createDependencySnapshot", () => {
       },
       manifests: [createManifest("package.json", "package.json")],
       signals: [],
+      warningDetails: [],
       warnings: []
     };
 
@@ -171,6 +172,16 @@ describe("createDependencySnapshot", () => {
         createManifest("pyproject.toml", "services/api/pyproject.toml")
       ],
       signals: [],
+      warningDetails: [
+        {
+          code: "MANIFEST_WITHOUT_LOCKFILE",
+          message: "Manifest without lockfile: package.json",
+          paths: ["package.json"],
+          severity: "warning",
+          source: "package.json",
+          stage: "detection"
+        }
+      ],
       warnings: ["Manifest without lockfile: package.json"]
     };
     const skippedFiles: SkippedDependencyFile[] = [
@@ -202,7 +213,16 @@ describe("createDependencySnapshot", () => {
           path: "services/api/pyproject.toml"
         }
       ],
-      prefetchWarnings: ["Skipped services/api/poetry.lock: GitHub returned invalid file content"],
+      prefetchWarningDetails: [
+        {
+          code: "FILE_FETCH_SKIPPED",
+          message: "Skipped services/api/poetry.lock: GitHub returned invalid file content",
+          paths: ["services/api/poetry.lock"],
+          severity: "warning",
+          source: "poetry.lock",
+          stage: "dependency-parse"
+        }
+      ],
       skippedFiles
     });
 
@@ -226,8 +246,29 @@ describe("createDependencySnapshot", () => {
     expect(snapshot.parseWarnings).toEqual(
       expect.arrayContaining([
         "Detected yarn.lock but parsing is not supported in Milestone 2A.",
+        "Lockfile without matching manifest: yarn.lock",
         "Manifest without lockfile: package.json",
         "Skipped services/api/poetry.lock: GitHub returned invalid file content"
+      ])
+    );
+    expect(snapshot.parseWarningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "UNSUPPORTED_FILE_KIND",
+          message: "Detected yarn.lock but parsing is not supported in Milestone 2A."
+        }),
+        expect.objectContaining({
+          code: "LOCKFILE_WITHOUT_MANIFEST",
+          message: "Lockfile without matching manifest: yarn.lock"
+        }),
+        expect.objectContaining({
+          code: "MANIFEST_WITHOUT_LOCKFILE",
+          message: "Manifest without lockfile: package.json"
+        }),
+        expect.objectContaining({
+          code: "FILE_FETCH_SKIPPED",
+          message: "Skipped services/api/poetry.lock: GitHub returned invalid file content"
+        })
       ])
     );
   });

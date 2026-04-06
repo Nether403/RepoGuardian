@@ -1,6 +1,15 @@
-import type { DetectedManifest, NormalizedDependency } from "@repo-guardian/shared-types";
+import type {
+  AnalysisWarning,
+  DetectedManifest,
+  NormalizedDependency
+} from "@repo-guardian/shared-types";
 import type { ParserResult } from "./utils.js";
-import { createDependency, dedupeDependencies, normalizeWorkspacePath } from "./utils.js";
+import {
+  createDependency,
+  createDependencyParseWarning,
+  dedupeDependencies,
+  normalizeWorkspacePath
+} from "./utils.js";
 import { parsePythonRequirement } from "./python-utils.js";
 
 const unsupportedRequirementPrefixes = [
@@ -23,7 +32,7 @@ export function parseRequirementsTxt(
 ): ParserResult {
   const workspacePath = normalizeWorkspacePath(file.path);
   const dependencies: NormalizedDependency[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
 
   for (const [lineIndex, rawLine] of content.split(/\r?\n/u).entries()) {
     const line = rawLine.trim();
@@ -33,8 +42,13 @@ export function parseRequirementsTxt(
     }
 
     if (unsupportedRequirementPrefixes.some((prefix) => line.startsWith(prefix))) {
-      warnings.push(
-        `Skipped unsupported requirements.txt directive on line ${lineIndex + 1} in ${file.path}.`
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped unsupported requirements.txt directive on line ${lineIndex + 1} in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
       );
       continue;
     }
@@ -42,8 +56,13 @@ export function parseRequirementsTxt(
     const parsedRequirement = parsePythonRequirement(line);
 
     if (!parsedRequirement) {
-      warnings.push(
-        `Skipped unsupported requirements.txt entry on line ${lineIndex + 1} in ${file.path}.`
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped unsupported requirements.txt entry on line ${lineIndex + 1} in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
       );
       continue;
     }
@@ -66,6 +85,6 @@ export function parseRequirementsTxt(
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager: "pip",
-    warnings
+    warningDetails
   };
 }

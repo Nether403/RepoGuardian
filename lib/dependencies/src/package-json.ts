@@ -1,6 +1,11 @@
-import type { DetectedManifest, NormalizedDependency } from "@repo-guardian/shared-types";
+import type {
+  AnalysisWarning,
+  DetectedManifest,
+  NormalizedDependency
+} from "@repo-guardian/shared-types";
 import type { ParserResult, ParseContext } from "./utils.js";
 import {
+  createDependencyParseWarning,
   createDependency,
   dedupeDependencies,
   inferNodeManifestPackageManager,
@@ -22,7 +27,7 @@ export function parsePackageJson(
 ): ParserResult {
   const workspacePath = normalizeWorkspacePath(file.path);
   const dependencies: NormalizedDependency[] = [];
-  const warnings: string[] = [];
+  const warningDetails: AnalysisWarning[] = [];
   const packageManager = inferNodeManifestPackageManager(context, file.path);
 
   let parsed: unknown;
@@ -49,13 +54,27 @@ export function parsePackageJson(
     }
 
     if (!isRecord(section)) {
-      warnings.push(`Skipped non-object ${sectionName} section in ${file.path}.`);
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Skipped non-object ${sectionName} section in ${file.path}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
       continue;
     }
 
     for (const [name, version] of Object.entries(section)) {
       if (typeof version !== "string" || version.trim().length === 0) {
-        warnings.push(`Skipped ${sectionName} entry "${name}" in ${file.path}.`);
+        warningDetails.push(
+          createDependencyParseWarning({
+            code: "FILE_PARSE_FAILED",
+            message: `Skipped ${sectionName} entry "${name}" in ${file.path}.`,
+            path: file.path,
+            source: file.kind
+          })
+        );
         continue;
       }
 
@@ -78,6 +97,6 @@ export function parsePackageJson(
   return {
     dependencies: dedupeDependencies(dependencies),
     packageManager,
-    warnings
+    warningDetails
   };
 }

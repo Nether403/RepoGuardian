@@ -216,9 +216,12 @@ describe("dependency parsers", () => {
         })
       ])
     );
-    expect(result.warnings).toEqual(
+    expect(result.warningDetails).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Skipped unsupported requirements.txt directive")
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining("Skipped unsupported requirements.txt directive")
+        })
       ])
     );
   });

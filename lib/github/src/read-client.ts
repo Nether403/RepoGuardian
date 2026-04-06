@@ -87,6 +87,7 @@ export class GitHubReadClient {
         repository,
         treeSummary: summary,
         treeEntries: tree.entries,
+        warningDetails: tree.warningDetails,
         warnings: tree.warnings,
         fetchedAt: new Date().toISOString(),
         isPartial: tree.isPartial

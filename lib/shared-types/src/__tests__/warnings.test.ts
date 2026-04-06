@@ -1,0 +1,141 @@
+import { describe, expect, it } from "vitest";
+import {
+  AnalyzeRepoResponseSchema,
+  AnalysisWarningSchema,
+  createAnalysisWarning,
+  dedupeAnalysisWarnings,
+  hasCoverageWarnings
+} from "../analyze.js";
+
+describe("analysis warning schemas", () => {
+  it("accepts valid warning codes, stages, and severities", () => {
+    const warning = AnalysisWarningSchema.parse({
+      code: "TREE_TRUNCATED",
+      message: "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
+      paths: [],
+      severity: "warning",
+      source: "github-tree",
+      stage: "intake"
+    });
+
+    expect(warning).toEqual({
+      code: "TREE_TRUNCATED",
+      message: "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
+      paths: [],
+      severity: "warning",
+      source: "github-tree",
+      stage: "intake"
+    });
+  });
+
+  it("dedupes warnings semantically and derives coverage from codes", () => {
+    const warnings = dedupeAnalysisWarnings([
+      createAnalysisWarning({
+        code: "MANIFEST_WITHOUT_LOCKFILE",
+        message: "Manifest without lockfile: package.json",
+        paths: ["package.json"],
+        source: "package.json",
+        stage: "detection"
+      }),
+      createAnalysisWarning({
+        code: "MANIFEST_WITHOUT_LOCKFILE",
+        message: "Manifest without lockfile: package.json",
+        paths: ["package.json"],
+        source: "package.json",
+        stage: "detection"
+      })
+    ]);
+
+    expect(warnings).toHaveLength(1);
+    expect(hasCoverageWarnings(warnings)).toBe(true);
+  });
+});
+
+describe("AnalyzeRepoResponseSchema", () => {
+  it("remains backward compatible with string warning fields while adding structured details", () => {
+    const response = AnalyzeRepoResponseSchema.parse({
+      dependencyFindingSummary: {
+        findingsBySeverity: {
+          critical: 0,
+          high: 0,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        isPartial: true,
+        totalFindings: 0,
+        vulnerableDirectCount: 0,
+        vulnerableTransitiveCount: 0
+      },
+      dependencyFindings: [],
+      dependencySnapshot: {
+        dependencies: [],
+        filesParsed: [],
+        filesSkipped: [],
+        isPartial: true,
+        parseWarningDetails: [
+          createAnalysisWarning({
+            code: "FILE_FETCH_SKIPPED",
+            message: "Skipped package-lock.json: GitHub returned invalid file content",
+            paths: ["package-lock.json"],
+            source: "package-lock.json",
+            stage: "dependency-parse"
+          })
+        ],
+        parseWarnings: ["Skipped package-lock.json: GitHub returned invalid file content"],
+        summary: {
+          byEcosystem: [],
+          directDependencies: 0,
+          parsedFileCount: 0,
+          skippedFileCount: 1,
+          totalDependencies: 0,
+          transitiveDependencies: 0
+        }
+      },
+      detectedFiles: {
+        lockfiles: [],
+        manifests: [],
+        signals: []
+      },
+      ecosystems: [],
+      fetchedAt: "2026-04-06T12:00:00.000Z",
+      isPartial: true,
+      repository: {
+        canonicalUrl: "https://github.com/openai/openai-node",
+        defaultBranch: "main",
+        description: "SDK repository",
+        forks: 12,
+        fullName: "openai/openai-node",
+        htmlUrl: "https://github.com/openai/openai-node",
+        owner: "openai",
+        primaryLanguage: "TypeScript",
+        repo: "openai-node",
+        stars: 42
+      },
+      treeSummary: {
+        samplePaths: ["package.json"],
+        totalDirectories: 0,
+        totalFiles: 1,
+        truncated: true
+      },
+      warningDetails: [
+        createAnalysisWarning({
+          code: "TREE_TRUNCATED",
+          message: "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
+          source: "github-tree",
+          stage: "intake"
+        })
+      ],
+      warnings: ["GitHub returned a truncated recursive tree; the repository snapshot is partial."]
+    });
+
+    expect(response.warningDetails[0]?.code).toBe("TREE_TRUNCATED");
+    expect(response.warnings).toEqual([
+      "GitHub returned a truncated recursive tree; the repository snapshot is partial."
+    ]);
+    expect(response.dependencySnapshot.parseWarningDetails[0]?.code).toBe("FILE_FETCH_SKIPPED");
+    expect(response.dependencySnapshot.parseWarnings).toEqual([
+      "Skipped package-lock.json: GitHub returned invalid file content"
+    ]);
+  });
+});

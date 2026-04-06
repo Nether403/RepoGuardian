@@ -233,6 +233,7 @@ describe("POST /api/analyze", () => {
         ],
         filesSkipped: [],
         isPartial: false,
+        parseWarningDetails: [],
         parseWarnings: [],
         summary: {
           byEcosystem: [
@@ -318,6 +319,7 @@ describe("POST /api/analyze", () => {
         totalFiles: 3,
         truncated: false
       },
+      warningDetails: [],
       warnings: []
     });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
@@ -488,7 +490,27 @@ describe("POST /api/analyze", () => {
       "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
       "Manifest without lockfile: package.json"
     ]);
+    expect(response.body.warningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DECLARATION_ONLY_VERSION"
+        }),
+        expect.objectContaining({
+          code: "TREE_TRUNCATED"
+        }),
+        expect.objectContaining({
+          code: "MANIFEST_WITHOUT_LOCKFILE"
+        })
+      ])
+    );
     expect(response.body.dependencySnapshot.isPartial).toBe(true);
+    expect(response.body.dependencySnapshot.parseWarningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "MANIFEST_WITHOUT_LOCKFILE"
+        })
+      ])
+    );
     expect(response.body.dependencySnapshot.parseWarnings).toEqual([
       "Manifest without lockfile: package.json"
     ]);
