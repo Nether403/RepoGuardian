@@ -95,6 +95,9 @@ importers:
       '@repo-guardian/issues':
         specifier: workspace:*
         version: link:../../lib/issues
+      '@repo-guardian/patches':
+        specifier: workspace:*
+        version: link:../../lib/patches
       '@repo-guardian/prs':
         specifier: workspace:*
         version: link:../../lib/prs
@@ -160,6 +163,12 @@ importers:
         version: 3.25.76
 
   lib/issues:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  lib/patches:
     dependencies:
       '@repo-guardian/shared-types':
         specifier: workspace:*

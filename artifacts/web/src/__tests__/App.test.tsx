@@ -291,6 +291,73 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
       title: "Upgrade react and refresh dependency locks"
     }
   ],
+  prPatchPlanSummary: {
+    byPatchability: [
+      {
+        count: 1,
+        patchability: "patch_candidate"
+      }
+    ],
+    byValidationStatus: [
+      {
+        count: 1,
+        validationStatus: "ready"
+      }
+    ],
+    totalPatchCandidates: 1,
+    totalPlans: 1
+  },
+  prPatchPlans: [
+    {
+      affectedPackages: ["react"],
+      affectedPaths: ["package-lock.json", "package.json"],
+      candidateType: "dependency-upgrade",
+      confidence: "high",
+      linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+      patchPlan: {
+        constraints: [
+          "Keep the change scoped to the identified package and files.",
+          "Avoid unrelated dependency churn while refreshing the lockfile."
+        ],
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "package-lock.json",
+            reason: "Refresh package-lock.json so react resolves to the remediated version."
+          },
+          {
+            changeType: "edit",
+            path: "package.json",
+            reason: "Update the react dependency declaration in package.json."
+          }
+        ],
+        patchStrategy:
+          "Update the identified dependency declaration and refresh the matching lockfile entries only.",
+        requiredHumanReview: [
+          "Confirm the chosen upgrade path is compatible with the affected workspace.",
+          "Review the lockfile diff for unintended package changes."
+        ],
+        requiredValidationSteps: [
+          "Install dependencies and refresh the affected lockfile entries.",
+          "Run the repository validation commands that cover the affected workspace.",
+          "Re-analyze the repository to confirm the advisory no longer matches the resolved version."
+        ]
+      },
+      patchWarnings: [],
+      patchability: "patch_candidate",
+      prCandidateId: "pr:dependency-upgrade:react",
+      readiness: "ready",
+      relatedFindingIds: ["dependency:GHSA-test-1234:react:19.0.0:.:direct"],
+      riskLevel: "low",
+      severity: "high",
+      title: "Upgrade react and refresh dependency locks",
+      validationNotes: [
+        "Validation has not been executed in this step.",
+        "Standard validation steps are identified and the candidate is ready for later patch synthesis."
+      ],
+      validationStatus: "ready"
+    }
+  ],
   repository: {
     canonicalUrl: "https://github.com/openai/openai-node",
     defaultBranch: "main",

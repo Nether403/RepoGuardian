@@ -489,6 +489,70 @@ export const PRCandidateSummarySchema = z.object({
   byRiskLevel: z.array(PRCandidateCountByRiskLevelSchema)
 });
 
+export const PRPatchabilitySchema = z.enum([
+  "not_patchable",
+  "patch_plan_only",
+  "patch_candidate"
+]);
+
+export const ValidationStatusSchema = z.enum([
+  "not_run",
+  "not_applicable",
+  "ready",
+  "ready_with_warnings",
+  "blocked"
+]);
+
+export const PRPatchPlanFileSchema = z.object({
+  path: z.string().min(1),
+  changeType: PRCandidateChangeTypeSchema,
+  reason: z.string().min(1)
+});
+
+export const PatchPlanSchema = z.object({
+  filesPlanned: z.array(PRPatchPlanFileSchema),
+  patchStrategy: z.string().min(1),
+  constraints: z.array(z.string().min(1)),
+  requiredHumanReview: z.array(z.string().min(1)),
+  requiredValidationSteps: z.array(z.string().min(1))
+});
+
+export const PRPatchPlanSchema = z.object({
+  prCandidateId: z.string().min(1),
+  title: z.string().min(1),
+  candidateType: PRCandidateTypeSchema,
+  riskLevel: PRCandidateRiskLevelSchema,
+  readiness: PRCandidateReadinessSchema,
+  patchability: PRPatchabilitySchema,
+  validationStatus: ValidationStatusSchema,
+  validationNotes: z.array(z.string().min(1)),
+  patchWarnings: z.array(z.string().min(1)),
+  patchPlan: PatchPlanSchema.nullable(),
+  linkedIssueCandidateIds: z.array(z.string().min(1)),
+  relatedFindingIds: z.array(z.string().min(1)),
+  affectedPaths: z.array(z.string().min(1)),
+  affectedPackages: z.array(z.string().min(1)),
+  confidence: FindingConfidenceSchema,
+  severity: FindingSeveritySchema
+});
+
+export const PRPatchPlanCountByPatchabilitySchema = z.object({
+  patchability: PRPatchabilitySchema,
+  count: z.number().int().nonnegative()
+});
+
+export const PRPatchPlanCountByValidationStatusSchema = z.object({
+  validationStatus: ValidationStatusSchema,
+  count: z.number().int().nonnegative()
+});
+
+export const PRPatchPlanSummarySchema = z.object({
+  totalPlans: z.number().int().nonnegative(),
+  totalPatchCandidates: z.number().int().nonnegative(),
+  byPatchability: z.array(PRPatchPlanCountByPatchabilitySchema),
+  byValidationStatus: z.array(PRPatchPlanCountByValidationStatusSchema)
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
@@ -504,6 +568,8 @@ export const AnalyzeRepoResponseSchema = z.object({
   issueCandidateSummary: IssueCandidateSummarySchema,
   prCandidates: z.array(PRCandidateSchema),
   prCandidateSummary: PRCandidateSummarySchema,
+  prPatchPlans: z.array(PRPatchPlanSchema),
+  prPatchPlanSummary: PRPatchPlanSummarySchema,
   warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
@@ -691,4 +757,16 @@ export type PRCandidateCountByRiskLevel = z.infer<
   typeof PRCandidateCountByRiskLevelSchema
 >;
 export type PRCandidateSummary = z.infer<typeof PRCandidateSummarySchema>;
+export type PRPatchability = z.infer<typeof PRPatchabilitySchema>;
+export type ValidationStatus = z.infer<typeof ValidationStatusSchema>;
+export type PRPatchPlanFile = z.infer<typeof PRPatchPlanFileSchema>;
+export type PatchPlan = z.infer<typeof PatchPlanSchema>;
+export type PRPatchPlan = z.infer<typeof PRPatchPlanSchema>;
+export type PRPatchPlanCountByPatchability = z.infer<
+  typeof PRPatchPlanCountByPatchabilitySchema
+>;
+export type PRPatchPlanCountByValidationStatus = z.infer<
+  typeof PRPatchPlanCountByValidationStatusSchema
+>;
+export type PRPatchPlanSummary = z.infer<typeof PRPatchPlanSummarySchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;
