@@ -24,14 +24,18 @@ export const AnalysisWarningCodeSchema = z.enum([
   "DECLARATION_ONLY_VERSION",
   "MULTIPLE_RESOLVED_VERSIONS",
   "ADVISORY_LOOKUP_PARTIAL",
-  "ADVISORY_PROVIDER_FAILED"
+  "ADVISORY_PROVIDER_FAILED",
+  "REVIEW_SCOPE_LIMITED",
+  "REVIEW_SELECTION_CAPPED",
+  "REVIEW_FILE_SKIPPED"
 ]);
 
 export const AnalysisWarningStageSchema = z.enum([
   "intake",
   "detection",
   "dependency-parse",
-  "advisory"
+  "advisory",
+  "review"
 ]);
 
 export const AnalysisWarningSeveritySchema = z.enum(["info", "warning"]);
@@ -346,6 +350,40 @@ export const DependencyFindingSummarySchema = z.object({
   isPartial: z.boolean()
 });
 
+export const CodeReviewFindingSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  category: z.string().min(1),
+  severity: FindingSeveritySchema,
+  confidence: FindingConfidenceSchema,
+  sourceType: z.enum(["code", "config", "workflow"]),
+  paths: z.array(z.string().min(1)),
+  lineSpans: z.array(FindingLineSpanSchema),
+  summary: z.string().min(1),
+  evidence: z.array(FindingEvidenceSchema),
+  recommendedAction: z.string().min(1),
+  candidateIssue: z.boolean(),
+  candidatePr: z.boolean()
+});
+
+export const CodeReviewFindingSummarySchema = z.object({
+  totalFindings: z.number().int().nonnegative(),
+  findingsBySeverity: FindingsBySeveritySchema,
+  reviewedFileCount: z.number().int().nonnegative(),
+  isPartial: z.boolean()
+});
+
+export const ReviewCoverageSchema = z.object({
+  strategy: z.literal("targeted"),
+  candidateFileCount: z.number().int().nonnegative(),
+  selectedFileCount: z.number().int().nonnegative(),
+  reviewedFileCount: z.number().int().nonnegative(),
+  skippedFileCount: z.number().int().nonnegative(),
+  selectedPaths: z.array(z.string().min(1)),
+  skippedPaths: z.array(z.string().min(1)),
+  isPartial: z.boolean()
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
@@ -354,6 +392,9 @@ export const AnalyzeRepoResponseSchema = z.object({
   dependencySnapshot: DependencySnapshotSchema,
   dependencyFindings: z.array(DependencyFindingSchema),
   dependencyFindingSummary: DependencyFindingSummarySchema,
+  codeReviewFindings: z.array(CodeReviewFindingSchema),
+  codeReviewFindingSummary: CodeReviewFindingSummarySchema,
+  reviewCoverage: ReviewCoverageSchema,
   warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
@@ -371,7 +412,10 @@ const coverageWarningCodes = new Set<z.infer<typeof AnalysisWarningCodeSchema>>(
   "DECLARATION_ONLY_VERSION",
   "MULTIPLE_RESOLVED_VERSIONS",
   "ADVISORY_LOOKUP_PARTIAL",
-  "ADVISORY_PROVIDER_FAILED"
+  "ADVISORY_PROVIDER_FAILED",
+  "REVIEW_SCOPE_LIMITED",
+  "REVIEW_SELECTION_CAPPED",
+  "REVIEW_FILE_SKIPPED"
 ]);
 
 function sortStrings(values: Iterable<string>): string[] {
@@ -510,4 +554,9 @@ export type FindingsBySeverity = z.infer<typeof FindingsBySeveritySchema>;
 export type DependencyFindingSummary = z.infer<
   typeof DependencyFindingSummarySchema
 >;
+export type CodeReviewFinding = z.infer<typeof CodeReviewFindingSchema>;
+export type CodeReviewFindingSummary = z.infer<
+  typeof CodeReviewFindingSummarySchema
+>;
+export type ReviewCoverage = z.infer<typeof ReviewCoverageSchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;

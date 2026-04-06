@@ -159,6 +159,20 @@ describe("POST /api/analyze", () => {
           ],
           summary: "React test advisory"
         })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "name: ci",
+            "on: pull_request_target",
+            "permissions: write-all",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - uses: actions/checkout@v4"
+          ].join("\n")
+        )
       );
 
     vi.stubGlobal("fetch", fetchMock);
@@ -288,6 +302,40 @@ describe("POST /api/analyze", () => {
           title: "react is affected by GHSA-test-1234"
         }
       ],
+      codeReviewFindingSummary: {
+        findingsBySeverity: {
+          critical: 0,
+          high: 2,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        isPartial: true,
+        reviewedFileCount: 1,
+        totalFindings: 2
+      },
+      codeReviewFindings: [
+        {
+          candidateIssue: false,
+          candidatePr: false,
+          category: "workflow-permissions",
+          confidence: "high",
+          paths: [".github/workflows/ci.yml"],
+          severity: "high",
+          sourceType: "workflow",
+          title: "Broad GitHub Actions permissions detected"
+        },
+        {
+          candidateIssue: false,
+          candidatePr: false,
+          category: "workflow-trigger-risk",
+          confidence: "high",
+          paths: [".github/workflows/ci.yml"],
+          severity: "high",
+          sourceType: "workflow",
+          title: "Risky workflow trigger detected"
+        }
+      ],
       ecosystems: [
         {
           ecosystem: "node",
@@ -297,7 +345,7 @@ describe("POST /api/analyze", () => {
         }
       ],
       fetchedAt: expect.any(String),
-      isPartial: false,
+      isPartial: true,
       repository: {
         canonicalUrl: "https://github.com/openai/openai-node",
         defaultBranch: "main",
@@ -319,11 +367,27 @@ describe("POST /api/analyze", () => {
         totalFiles: 3,
         truncated: false
       },
-      warningDetails: [],
-      warnings: []
+      reviewCoverage: {
+        candidateFileCount: 1,
+        isPartial: true,
+        reviewedFileCount: 1,
+        selectedFileCount: 1,
+        selectedPaths: [".github/workflows/ci.yml"],
+        skippedFileCount: 0,
+        skippedPaths: [],
+        strategy: "targeted"
+      },
+      warningDetails: [
+        expect.objectContaining({
+          code: "REVIEW_SCOPE_LIMITED"
+        })
+      ],
+      warnings: [
+        "Targeted review inspected 1 of 3 repository files; full-repo review was not performed."
+      ]
     });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
   });
 
   it("returns 400 for invalid repo input", async () => {
@@ -488,7 +552,8 @@ describe("POST /api/analyze", () => {
     expect(response.body.warnings).toEqual([
       "Declaration-only advisory coverage for react in package.json; no exact resolved version was available.",
       "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
-      "Manifest without lockfile: package.json"
+      "Manifest without lockfile: package.json",
+      "Targeted review did not inspect any files from the 1-file repository snapshot; full-repo review was not performed."
     ]);
     expect(response.body.warningDetails).toEqual(
       expect.arrayContaining([
@@ -515,6 +580,29 @@ describe("POST /api/analyze", () => {
       "Manifest without lockfile: package.json"
     ]);
     expect(response.body.dependencyFindings).toEqual([]);
+    expect(response.body.codeReviewFindings).toEqual([]);
+    expect(response.body.reviewCoverage).toEqual({
+      candidateFileCount: 0,
+      isPartial: true,
+      reviewedFileCount: 0,
+      selectedFileCount: 0,
+      selectedPaths: [],
+      skippedFileCount: 0,
+      skippedPaths: [],
+      strategy: "targeted"
+    });
+    expect(response.body.codeReviewFindingSummary).toEqual({
+      findingsBySeverity: {
+        critical: 0,
+        high: 0,
+        info: 0,
+        low: 0,
+        medium: 0
+      },
+      isPartial: true,
+      reviewedFileCount: 0,
+      totalFindings: 0
+    });
     expect(response.body.dependencyFindingSummary).toEqual({
       findingsBySeverity: {
         critical: 0,

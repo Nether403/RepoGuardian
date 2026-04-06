@@ -11,6 +11,14 @@ import {
   normalizeRepoInput
 } from "@repo-guardian/github";
 import {
+  createCodeReviewResult,
+  selectReviewTargets,
+  type ReviewFile,
+  type ReviewTarget,
+  type CodeReviewResult,
+  type SkippedReviewFile
+} from "@repo-guardian/review";
+import {
   AnalyzeRepoResponseSchema,
   createAnalysisWarning,
   dedupeAnalysisWarnings,
@@ -55,13 +63,15 @@ function mergeWarningDetails(
   intake: RepositoryIntakeSnapshot,
   detection: EcosystemDetection,
   dependencySnapshot: DependencySnapshot,
-  dependencyFindings: DependencyFindingResult
+  dependencyFindings: DependencyFindingResult,
+  codeReview: CodeReviewResult
 ): AnalysisWarning[] {
   return dedupeAnalysisWarnings([
     ...intake.warningDetails,
     ...detection.warningDetails,
     ...dependencySnapshot.parseWarningDetails,
-    ...dependencyFindings.warningDetails
+    ...dependencyFindings.warningDetails,
+    ...codeReview.warningDetails
   ]);
 }
 
@@ -70,15 +80,25 @@ function mergeWarnings(
   intake: RepositoryIntakeSnapshot,
   detection: EcosystemDetection,
   dependencySnapshot: DependencySnapshot,
-  dependencyFindings: DependencyFindingResult
+  dependencyFindings: DependencyFindingResult,
+  codeReview: CodeReviewResult
 ): string[] {
   return uniqueSorted([
     ...getWarningMessages(warningDetails),
     ...intake.warnings,
     ...detection.warnings,
     ...dependencySnapshot.parseWarnings,
-    ...dependencyFindings.warnings
+    ...dependencyFindings.warnings,
+    ...codeReview.warnings
   ]);
+}
+
+function isBinaryContent(content: string): boolean {
+  return content.includes("\0");
+}
+
+function exceedsReviewSizeLimit(content: string): boolean {
+  return content.length > 200_000;
 }
 
 async function fetchDependencyFiles(
@@ -161,6 +181,64 @@ async function fetchDependencyFiles(
   };
 }
 
+async function fetchReviewFiles(
+  readClient: GitHubReadClient,
+  repository: RepositoryMetadata,
+  targets: ReviewTarget[]
+): Promise<{
+  reviewedFiles: ReviewFile[];
+  skippedFiles: SkippedReviewFile[];
+}> {
+  const reviewedFiles: ReviewFile[] = [];
+  const skippedFiles: SkippedReviewFile[] = [];
+
+  for (const target of targets) {
+    try {
+      const content = await readClient.fetchRepositoryFileText({
+        owner: repository.owner,
+        path: target.path,
+        ref: repository.defaultBranch,
+        repo: repository.repo
+      });
+
+      if (isBinaryContent(content)) {
+        skippedFiles.push({
+          ...target,
+          reason: `Skipped ${target.path} during review: file content appears to be binary.`
+        });
+        continue;
+      }
+
+      if (exceedsReviewSizeLimit(content)) {
+        skippedFiles.push({
+          ...target,
+          reason: `Skipped ${target.path} during review: file content exceeded the review size limit.`
+        });
+        continue;
+      }
+
+      reviewedFiles.push({
+        ...target,
+        content
+      });
+    } catch (error) {
+      if (!isGitHubReadError(error)) {
+        throw error;
+      }
+
+      skippedFiles.push({
+        ...target,
+        reason: `Skipped ${target.path} during review: ${error.message}`
+      });
+    }
+  }
+
+  return {
+    reviewedFiles,
+    skippedFiles
+  };
+}
+
 export async function analyzeRepository(
   readClient: GitHubReadClient,
   repoInput: string
@@ -184,16 +262,39 @@ export async function analyzeRepository(
     dependencySnapshot,
     advisoryProvider
   );
+  const reviewSelection = selectReviewTargets({
+    dependencyFindingPaths: uniqueSorted(
+      dependencyFindings.findings.flatMap((finding) => finding.paths)
+    ),
+    signals: detection.signals,
+    treeEntries: intake.treeEntries
+  });
+  const reviewFiles = await fetchReviewFiles(
+    readClient,
+    intake.repository,
+    reviewSelection.targets
+  );
+  const codeReview = createCodeReviewResult({
+    reviewedFiles: reviewFiles.reviewedFiles,
+    selection: reviewSelection,
+    skippedFiles: reviewFiles.skippedFiles
+  });
   const warningDetails = mergeWarningDetails(
     intake,
     detection,
     dependencySnapshot,
-    dependencyFindings
+    dependencyFindings,
+    codeReview
   );
   const isPartial =
-    intake.isPartial || dependencySnapshot.isPartial || dependencyFindings.isPartial;
+    intake.isPartial ||
+    dependencySnapshot.isPartial ||
+    dependencyFindings.isPartial ||
+    codeReview.coverage.isPartial;
 
   return AnalyzeRepoResponseSchema.parse({
+    codeReviewFindingSummary: codeReview.summary,
+    codeReviewFindings: codeReview.findings,
     dependencyFindingSummary: dependencyFindings.summary,
     dependencyFindings: dependencyFindings.findings,
     detectedFiles: {
@@ -218,13 +319,15 @@ export async function analyzeRepository(
       totalFiles: intake.treeSummary.fileCount,
       truncated: intake.treeSummary.truncated
     },
+    reviewCoverage: codeReview.coverage,
     warningDetails,
     warnings: mergeWarnings(
       warningDetails,
       intake,
       detection,
       dependencySnapshot,
-      dependencyFindings
+      dependencyFindings,
+      codeReview
     )
   });
 }

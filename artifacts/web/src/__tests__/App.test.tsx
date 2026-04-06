@@ -72,6 +72,42 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
       title: "react is affected by GHSA-test-1234"
     }
   ],
+  codeReviewFindingSummary: {
+    findingsBySeverity: {
+      critical: 0,
+      high: 0,
+      info: 0,
+      low: 1,
+      medium: 0
+    },
+    isPartial: true,
+    reviewedFileCount: 1,
+    totalFindings: 1
+  },
+  codeReviewFindings: [
+    {
+      candidateIssue: false,
+      candidatePr: false,
+      category: "workflow-hardening",
+      confidence: "medium",
+      evidence: [
+        {
+          label: "Workflow file",
+          value: ".github/workflows/ci.yml"
+        }
+      ],
+      id: "review:workflow-hardening:.github/workflows/ci.yml:file",
+      lineSpans: [],
+      paths: [".github/workflows/ci.yml"],
+      recommendedAction:
+        "Declare explicit top-level or job-level permissions so the workflow token uses the minimum access needed.",
+      severity: "low",
+      sourceType: "workflow",
+      summary:
+        "The workflow does not declare explicit permissions, which makes hardening harder to verify quickly.",
+      title: "Workflow does not declare explicit permissions"
+    }
+  ],
   dependencySnapshot: {
     dependencies: [
       {
@@ -97,6 +133,7 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
     ],
     filesSkipped: [],
     isPartial: false,
+    parseWarningDetails: [],
     parseWarnings: [],
     summary: {
       byEcosystem: [
@@ -177,6 +214,17 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
     totalFiles: 42,
     truncated: false
   },
+  reviewCoverage: {
+    candidateFileCount: 1,
+    isPartial: true,
+    reviewedFileCount: 1,
+    selectedFileCount: 1,
+    selectedPaths: [".github/workflows/ci.yml"],
+    skippedFileCount: 0,
+    skippedPaths: [],
+    strategy: "targeted"
+  },
+  warningDetails: [],
   warnings: ["Manifest without lockfile: services/api/pyproject.toml"]
 });
 

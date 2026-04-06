@@ -13,6 +13,8 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - normalized dependency snapshot parsing for direct and lockfile-backed package records
 - OSV-backed advisory lookup behind a swappable provider interface
 - structured dependency findings with severity, confidence, evidence, and remediation hints
+- targeted code-review file selection for workflows, config, security-sensitive files, and common entrypoints
+- deterministic code-review findings for secret-like literals, dangerous dynamic execution, unsafe shell execution, and workflow hardening risks
 - Vite + React Milestone 1 UI for repository analysis
 - shared typed schemas across API and web
 
@@ -31,4 +33,4 @@ pnpm run build
 
 ## Next step
 
-Milestone 3 adds targeted code-review findings on top of the dependency analysis without introducing issue drafting, PR drafting, or GitHub write-back yet.
+Milestone 3B adds candidate issue generation on top of the existing dependency and code-review findings without introducing PR drafting or GitHub write-back yet.

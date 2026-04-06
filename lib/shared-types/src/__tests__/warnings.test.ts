@@ -68,6 +68,19 @@ describe("AnalyzeRepoResponseSchema", () => {
         vulnerableTransitiveCount: 0
       },
       dependencyFindings: [],
+      codeReviewFindingSummary: {
+        findingsBySeverity: {
+          critical: 0,
+          high: 0,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        isPartial: true,
+        reviewedFileCount: 0,
+        totalFindings: 0
+      },
+      codeReviewFindings: [],
       dependencySnapshot: {
         dependencies: [],
         filesParsed: [],
@@ -117,6 +130,16 @@ describe("AnalyzeRepoResponseSchema", () => {
         totalDirectories: 0,
         totalFiles: 1,
         truncated: true
+      },
+      reviewCoverage: {
+        candidateFileCount: 0,
+        isPartial: true,
+        reviewedFileCount: 0,
+        selectedFileCount: 0,
+        selectedPaths: [],
+        skippedFileCount: 0,
+        skippedPaths: [],
+        strategy: "targeted"
       },
       warningDetails: [
         createAnalysisWarning({
