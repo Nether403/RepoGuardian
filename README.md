@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, approval-gated dry-run execution planning, approved GitHub Issue creation, and approved real PR write-back for a tightly bounded workflow-hardening path.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` path.
 
 ## Current scope
 
@@ -23,6 +23,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - structured execution action results with per-action success/failure, branch metadata, commit metadata, and issue/PR metadata
 - real GitHub Issue creation for selected issue candidates when `approvalGranted` is explicitly true
 - real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true
+- real branch creation, bounded root `package.json` plus `package-lock.json` patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
 - Vite + React Milestone 1 UI for repository analysis
 - shared typed schemas across API and web
 
@@ -41,6 +42,6 @@ pnpm run build
 
 ## Next step
 
-The next step after this Milestone 5B slice is to broaden safe PR write-back beyond workflow hardening, most likely by adding deterministic dependency-update support without guessing at lockfile changes.
+The next step after this Milestone 5B follow-up is to broaden safe PR write-back beyond the current workflow-hardening and root npm dependency-update slices, while still blocking any path that would require lockfile regeneration, registry lookups, workspace inference, or broader unattended execution.
 
 

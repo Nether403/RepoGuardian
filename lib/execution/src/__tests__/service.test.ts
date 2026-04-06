@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   CodeReviewFinding,
+  DependencyFinding,
   ExecutionPlanningContext,
   IssueCandidate,
   PRCandidate,
@@ -153,6 +154,154 @@ function workflowFinding(
   };
 }
 
+function dependencyFinding(
+  overrides: Partial<DependencyFinding> = {}
+): DependencyFinding {
+  return {
+    advisoryId: "GHSA-test-1234",
+    advisorySource: "OSV",
+    affectedRange: "introduced 0, fixed 2.0.0",
+    candidateIssue: true,
+    candidatePr: true,
+    category: "dependency-vulnerability",
+    confidence: "high",
+    dependencyType: "production",
+    evidence: [],
+    id: "dependency:react:1",
+    installedVersion: "1.0.0",
+    isDirect: true,
+    lineSpans: [],
+    packageName: "react",
+    paths: ["package-lock.json", "package.json"],
+    recommendedAction: "Upgrade react to 2.0.0 and refresh the lockfile.",
+    referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
+    remediationType: "upgrade",
+    remediationVersion: "2.0.0",
+    severity: "high",
+    sourceType: "dependency",
+    summary: "react is affected by a dependency advisory.",
+    title: "react is affected by GHSA-test-1234",
+    ...overrides
+  };
+}
+
+function dependencyIssueCandidate(
+  overrides: Partial<IssueCandidate> = {}
+): IssueCandidate {
+  return {
+    acceptanceCriteria: [
+      "Upgrade react to the remediated version.",
+      "Refresh the root package-lock.json entries for react.",
+      "Re-run the affected validation commands."
+    ],
+    affectedPackages: ["react"],
+    affectedPaths: ["package-lock.json", "package.json"],
+    candidateType: "dependency-upgrade",
+    confidence: "high",
+    id: "issue:dependency-upgrade:react",
+    labels: ["dependencies", "security", "high"],
+    relatedFindingIds: ["dependency:react:1"],
+    scope: "package",
+    severity: "high",
+    suggestedBody: "Upgrade react to the remediated version.",
+    summary: "react should be upgraded to the remediated version.",
+    title: "Upgrade react",
+    whyItMatters: "The repository directly depends on a vulnerable version of react.",
+    ...overrides
+  };
+}
+
+function dependencyPRCandidate(
+  overrides: Partial<PRCandidate> = {}
+): PRCandidate {
+  return {
+    affectedPackages: ["react"],
+    affectedPaths: ["package-lock.json", "package.json"],
+    candidateType: "dependency-upgrade",
+    confidence: "high",
+    expectedFileChanges: [
+      {
+        changeType: "edit",
+        path: "package-lock.json",
+        reason:
+          "Refresh package-lock.json so react resolves to the remediated version."
+      },
+      {
+        changeType: "edit",
+        path: "package.json",
+        reason: "Update the react dependency declaration in package.json."
+      }
+    ],
+    id: "pr:dependency-upgrade:react",
+    labels: ["candidate-pr", "dependencies", "security", "high"],
+    linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+    rationale: "The change is bounded to one direct dependency and two root files.",
+    readiness: "ready",
+    relatedFindingIds: ["dependency:react:1"],
+    riskLevel: "low",
+    rollbackNote: "Restore the previous react version entries if the upgrade regresses.",
+    severity: "high",
+    summary: "Upgrade react and refresh the root npm dependency files.",
+    testPlan: [
+      "Install dependencies for the root workspace.",
+      "Run the repository validation commands that cover react usage."
+    ],
+    title: "Upgrade react and refresh dependency locks",
+    ...overrides
+  };
+}
+
+function dependencyPatchPlan(
+  overrides: Partial<PRPatchPlan> = {}
+): PRPatchPlan {
+  return {
+    affectedPackages: ["react"],
+    affectedPaths: ["package-lock.json", "package.json"],
+    candidateType: "dependency-upgrade",
+    confidence: "high",
+    linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+    patchPlan: {
+      constraints: [
+        "Keep the change scoped to root package.json and package-lock.json.",
+        "Avoid unrelated dependency churn."
+      ],
+      filesPlanned: [
+        {
+          changeType: "edit",
+          path: "package-lock.json",
+          reason:
+            "Refresh package-lock.json so react resolves to the remediated version."
+        },
+        {
+          changeType: "edit",
+          path: "package.json",
+          reason: "Update the react dependency declaration in package.json."
+        }
+      ],
+      patchStrategy:
+        "Update the direct dependency declaration and replace only the matching root lockfile entries.",
+      requiredHumanReview: [
+        "Confirm the resolved lock metadata matches the intended react release."
+      ],
+      requiredValidationSteps: [
+        "Install dependencies for the root workspace.",
+        "Run the repository validation commands that cover react usage."
+      ]
+    },
+    patchWarnings: [],
+    patchability: "patch_candidate",
+    prCandidateId: "pr:dependency-upgrade:react",
+    readiness: "ready",
+    relatedFindingIds: ["dependency:react:1"],
+    riskLevel: "low",
+    severity: "high",
+    title: "Upgrade react and refresh dependency locks",
+    validationNotes: ["Validation has not been executed in this step."],
+    validationStatus: "ready",
+    ...overrides
+  };
+}
+
 function analysisContext(
   overrides: Partial<ExecutionPlanningContext> = {}
 ): ExecutionPlanningContext {
@@ -165,6 +314,91 @@ function analysisContext(
     repository,
     ...overrides
   };
+}
+
+function dependencyAnalysisContext(
+  overrides: Partial<ExecutionPlanningContext> = {}
+): ExecutionPlanningContext {
+  return {
+    codeReviewFindings: [],
+    dependencyFindings: [dependencyFinding()],
+    issueCandidates: [dependencyIssueCandidate()],
+    prCandidates: [dependencyPRCandidate()],
+    prPatchPlans: [dependencyPatchPlan()],
+    repository,
+    ...overrides
+  };
+}
+
+function createPackageJsonContent(specifier = "^1.0.0"): string {
+  return `${JSON.stringify(
+    {
+      dependencies: {
+        react: specifier
+      }
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function createPackageLockContent(input?: {
+  duplicateTargetEntry?: boolean;
+  includeTopLevelDependency?: boolean;
+  lockfileVersion?: number;
+  rootDependencySpecifier?: string;
+  targetVersion?: string;
+}): string {
+  const targetVersion = input?.targetVersion ?? "2.0.0";
+  const packages: Record<string, unknown> = {
+    "": {
+      dependencies: {
+        react: input?.rootDependencySpecifier ?? "^1.0.0"
+      }
+    },
+    "node_modules/react": {
+      name: "react",
+      version: "1.0.0",
+      resolved: "https://registry.npmjs.org/react/-/react-1.0.0.tgz",
+      integrity: "sha512-old"
+    },
+    "node_modules/other/node_modules/react": {
+      name: "react",
+      version: targetVersion,
+      resolved: `https://registry.npmjs.org/react/-/react-${targetVersion}.tgz`,
+      integrity: "sha512-new",
+      dependencies: {
+        "loose-envify": "^1.4.0"
+      }
+    }
+  };
+
+  if (input?.duplicateTargetEntry) {
+    packages["node_modules/alternate/node_modules/react"] = {
+      name: "react",
+      version: targetVersion,
+      resolved: `https://registry.npmjs.org/react/-/react-${targetVersion}.tgz`,
+      integrity: "sha512-alt"
+    };
+  }
+
+  const document: Record<string, unknown> = {
+    lockfileVersion: input?.lockfileVersion ?? 3,
+    name: "sample",
+    packages
+  };
+
+  if (input?.includeTopLevelDependency !== false) {
+    document.dependencies = {
+      react: {
+        version: "1.0.0",
+        resolved: "https://registry.npmjs.org/react/-/react-1.0.0.tgz",
+        integrity: "sha512-old"
+      }
+    };
+  }
+
+  return `${JSON.stringify(document, null, 2)}\n`;
 }
 
 describe("createExecutionPlanResult", () => {
@@ -326,6 +560,104 @@ describe("createExecutionPlanResult", () => {
     );
   });
 
+  it("creates a branch, commits a deterministic dependency patch, and opens a pull request for an approved npm dependency candidate", async () => {
+    const fetchRepositoryFileText = vi
+      .fn()
+      .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
+      .mockResolvedValueOnce(createPackageLockContent());
+    const createBranchFromDefaultBranch = vi.fn().mockResolvedValue({
+      baseCommitSha: "base-sha",
+      branchName: "repo-guardian/dependency-branch"
+    });
+    const commitFileChanges = vi.fn().mockResolvedValue({
+      branchName: "repo-guardian/dependency-branch",
+      commitSha: "commit-sha"
+    });
+    const openPullRequest = vi.fn().mockResolvedValue({
+      pullRequestNumber: 30,
+      pullRequestUrl: "https://github.com/openai/openai-node/pull/30"
+    });
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch,
+          commitFileChanges,
+          openPullRequest
+        }
+      }
+    );
+
+    expect(result.status).toBe("completed");
+    expect(fetchRepositoryFileText).toHaveBeenCalledTimes(2);
+    expect(createBranchFromDefaultBranch).toHaveBeenCalledTimes(1);
+    expect(commitFileChanges).toHaveBeenCalledTimes(1);
+    expect(openPullRequest).toHaveBeenCalledTimes(1);
+    expect(commitFileChanges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchName: "repo-guardian/dependency-branch",
+        commitMessage: "chore(deps): Upgrade react and refresh dependency locks",
+        fileChanges: [
+          expect.objectContaining({
+            path: "package.json",
+            content: expect.stringContaining('"react": "^2.0.0"')
+          }),
+          expect.objectContaining({
+            path: "package-lock.json",
+            content: expect.stringContaining('"version": "2.0.0"')
+          })
+        ]
+      })
+    );
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          attempted: true,
+          blocked: false,
+          branchName: expect.stringContaining("repo-guardian/"),
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_branch",
+          attempted: true,
+          blocked: false,
+          branchName: "repo-guardian/dependency-branch",
+          commitSha: "base-sha",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "commit_patch",
+          attempted: true,
+          blocked: false,
+          branchName: "repo-guardian/dependency-branch",
+          commitSha: "commit-sha",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: true,
+          blocked: false,
+          branchName: "repo-guardian/dependency-branch",
+          pullRequestNumber: 30,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/30",
+          succeeded: true
+        })
+      ])
+    );
+  });
+
   it("blocks patch_plan_only PR execution", async () => {
     const writeClient = {
       createBranchFromDefaultBranch: vi.fn(),
@@ -351,6 +683,60 @@ describe("createExecutionPlanResult", () => {
         mode: "execute_approved",
         selectedIssueCandidateIds: [],
         selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "create_branch",
+          attempted: false,
+          blocked: true,
+          succeeded: false
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: false,
+          blocked: true,
+          succeeded: false
+        })
+      ])
+    );
+  });
+
+  it("blocks patch_plan_only dependency PR execution", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext({
+          prPatchPlans: [
+            dependencyPatchPlan({
+              patchWarnings: [
+                "Dependency lock refresh still needs human confirmation before write-back."
+              ],
+              patchability: "patch_plan_only",
+              validationStatus: "ready_with_warnings"
+            })
+          ]
+        }),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
       },
       {
         readClient: {
@@ -420,6 +806,359 @@ describe("createExecutionPlanResult", () => {
         succeeded: false
       })
     ]);
+  });
+
+  it("blocks not_patchable dependency PR execution", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext({
+          prPatchPlans: [
+            dependencyPatchPlan({
+              patchPlan: null,
+              patchWarnings: ["The dependency update still needs manual lockfile regeneration."],
+              patchability: "not_patchable",
+              validationStatus: "blocked"
+            })
+          ]
+        }),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.actions).toEqual([
+      expect.objectContaining({
+        actionType: "skip",
+        attempted: false,
+        blocked: true,
+        succeeded: false
+      })
+    ]);
+  });
+
+  it("keeps dependency dry_run side-effect free", async () => {
+    const readClient = {
+      fetchRepositoryFileText: vi.fn()
+    };
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: false,
+        mode: "dry_run",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient,
+        writeClient
+      }
+    );
+
+    expect(result.status).toBe("planned");
+    expect(
+      result.actions.every(
+        (action) => action.attempted === false && action.succeeded === false
+      )
+    ).toBe(true);
+    expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
+    expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
+    expect(writeClient.commitFileChanges).not.toHaveBeenCalled();
+    expect(writeClient.openPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("blocks dependency PR execution when approval is missing", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: false,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.errors).toContain(
+      "Execution is blocked because approvalGranted was not explicitly set to true."
+    );
+    expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
+  });
+
+  it("blocks dependency execution when the candidate does not target exactly the root npm files", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext({
+          prCandidates: [
+            dependencyPRCandidate({
+              affectedPaths: ["apps/web/package-lock.json", "apps/web/package.json"]
+            })
+          ],
+          prPatchPlans: [
+            dependencyPatchPlan({
+              affectedPaths: ["apps/web/package-lock.json", "apps/web/package.json"],
+              patchPlan: {
+                ...dependencyPatchPlan().patchPlan!,
+                filesPlanned: [
+                  {
+                    changeType: "edit",
+                    path: "apps/web/package-lock.json",
+                    reason:
+                      "Refresh the nested package-lock.json so react resolves to the remediated version."
+                  },
+                  {
+                    changeType: "edit",
+                    path: "apps/web/package.json",
+                    reason: "Update the nested react dependency declaration."
+                  }
+                ]
+              }
+            })
+          ]
+        }),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          blocked: true,
+          reason:
+            "Deterministic dependency write-back currently supports only repo-root npm package.json and package-lock.json targets."
+        })
+      ])
+    );
+  });
+
+  it("blocks dependency execution when the linked finding lacks a remediation version", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext({
+          dependencyFindings: [
+            dependencyFinding({
+              remediationVersion: null
+            })
+          ]
+        }),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          blocked: true,
+          reason:
+            "The linked dependency finding does not include a concrete remediation version."
+        })
+      ])
+    );
+  });
+
+  it("blocks dependency execution when the linked finding is not direct", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext({
+          dependencyFindings: [
+            dependencyFinding({
+              isDirect: false
+            })
+          ]
+        }),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi.fn()
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          blocked: true,
+          reason:
+            "Deterministic dependency write-back is limited to direct dependencies."
+        })
+      ])
+    );
+  });
+
+  it("blocks dependency execution when the manifest specifier is not deterministic enough", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi
+            .fn()
+            .mockResolvedValueOnce(
+              `${JSON.stringify(
+                {
+                  dependencies: {
+                    react: "workspace:*"
+                  }
+                },
+                null,
+                2
+              )}\n`
+            )
+            .mockResolvedValueOnce(createPackageLockContent())
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          attempted: true,
+          blocked: false,
+          errorMessage:
+            "Deterministic dependency write-back supports only exact, ^, or ~ version specifiers for 2.0.0."
+        }),
+        expect.objectContaining({
+          actionType: "create_branch",
+          blocked: true,
+          reason:
+            "Patch synthesis failed: Deterministic dependency write-back supports only exact, ^, or ~ version specifiers for 2.0.0."
+        })
+      ])
+    );
+  });
+
+  it("blocks dependency execution when lock metadata cannot be recovered uniquely", async () => {
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText: vi
+            .fn()
+            .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
+            .mockResolvedValueOnce(createPackageLockContent({ duplicateTargetEntry: true }))
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch: vi.fn(),
+          commitFileChanges: vi.fn(),
+          openPullRequest: vi.fn()
+        }
+      }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "prepare_patch",
+          attempted: true,
+          errorMessage:
+            "Repo Guardian could not recover unique lockfile metadata for react@2.0.0."
+        }),
+        expect.objectContaining({
+          actionType: "create_branch",
+          blocked: true,
+          reason:
+            "Patch synthesis failed: Repo Guardian could not recover unique lockfile metadata for react@2.0.0."
+        })
+      ])
+    );
   });
 
   it("keeps dry_run side-effect free", async () => {
