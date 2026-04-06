@@ -581,7 +581,20 @@ describe("POST /api/analyze", () => {
             "Validation has not been executed in this step.",
             "Standard validation steps are identified and the candidate is ready for later patch synthesis."
           ],
-          validationStatus: "ready"
+          validationStatus: "ready",
+          writeBackEligibility: {
+            approvalRequired: true,
+            details: [
+              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3.",
+              "Patchability: patch_candidate.",
+              "Validation status: ready.",
+              "Affected package: react.",
+              "The dependency write-back slice remains limited to a direct npm upgrade for repo-root package.json and package-lock.json."
+            ],
+            status: "blocked",
+            summary:
+              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3."
+          }
         },
         {
           affectedPackages: [],
@@ -633,7 +646,18 @@ describe("POST /api/analyze", () => {
             "Validation has not been executed in this step.",
             "Standard validation steps are identified, but warnings reduce confidence for later patch synthesis."
           ],
-          validationStatus: "ready_with_warnings"
+          validationStatus: "ready_with_warnings",
+          writeBackEligibility: {
+            approvalRequired: true,
+            details: [
+              "Workflow trigger-risk findings remain blocked for real write-back because the trigger change is not deterministic enough yet.",
+              "Patchability: patch_candidate.",
+              "Validation status: ready_with_warnings."
+            ],
+            status: "blocked",
+            summary:
+              "Workflow trigger-risk findings remain blocked for real write-back because the trigger change is not deterministic enough yet."
+          }
         }
       ],
       ecosystems: [
@@ -688,6 +712,168 @@ describe("POST /api/analyze", () => {
     });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(9);
+  });
+
+  it("surfaces executable dependency write-back readiness when lock metadata is deterministic", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          default_branch: "main",
+          description: "SDK repository",
+          forks_count: 12,
+          full_name: "openai/openai-node",
+          html_url: "https://github.com/openai/openai-node",
+          language: "TypeScript",
+          name: "openai-node",
+          owner: {
+            login: "openai"
+          },
+          stargazers_count: 42
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          object: {
+            sha: "commit-sha",
+            type: "commit"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: {
+            sha: "tree-sha"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: [
+            {
+              path: "package-lock.json",
+              type: "blob"
+            },
+            {
+              path: "package.json",
+              type: "blob"
+            }
+          ],
+          truncated: false
+        })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            dependencies: {
+              react: {
+                version: "19.0.0"
+              }
+            },
+            lockfileVersion: 3,
+            packages: {
+              "": {
+                dependencies: {
+                  react: "^19.0.0"
+                }
+              },
+              "node_modules/react": {
+                name: "react",
+                version: "19.0.0"
+              },
+              "node_modules/example/node_modules/react": {
+                integrity: "sha512-example",
+                name: "react",
+                resolved: "https://registry.npmjs.org/react/-/react-19.0.1.tgz",
+                version: "19.0.1"
+              }
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            dependencies: {
+              react: "^19.0.0"
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          results: [
+            {
+              vulns: [
+                {
+                  id: "GHSA-test-1234",
+                  modified: "2026-04-06T11:30:00.000Z"
+                }
+              ]
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          affected: [
+            {
+              ecosystem_specific: {
+                severity: "HIGH"
+              },
+              package: {
+                ecosystem: "npm",
+                name: "react"
+              },
+              ranges: [
+                {
+                  events: [
+                    {
+                      introduced: "0"
+                    },
+                    {
+                      fixed: "19.0.1"
+                    }
+                  ],
+                  type: "ECOSYSTEM"
+                }
+              ]
+            }
+          ],
+          id: "GHSA-test-1234",
+          references: [
+            {
+              type: "ADVISORY",
+              url: "https://osv.dev/vulnerability/GHSA-test-1234"
+            }
+          ],
+          summary: "React test advisory"
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post("/api/analyze")
+      .send({ repoInput: "github.com/openai/openai-node" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.prPatchPlans).toHaveLength(1);
+    expect(response.body.prPatchPlans[0]).toMatchObject({
+      prCandidateId: "pr:dependency-upgrade:react",
+      writeBackEligibility: {
+        approvalRequired: true,
+        status: "executable",
+        summary: "Eligible for approved deterministic npm dependency write-back."
+      }
+    });
+    expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
+      "The change scope is limited to repo-root package.json and package-lock.json."
+    );
+    expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
+      "Existing lockfile metadata for react@19.0.1 was found uniquely and can be copied deterministically."
+    );
+    expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
   });
 
   it("returns 400 for invalid repo input", async () => {

@@ -3,7 +3,9 @@ import type {
   AnalyzeRepoResponse,
   DetectedEcosystem,
   DetectedFileGroup,
-  DetectedSignal
+  DetectedSignal,
+  PRPatchPlan,
+  PRWriteBackEligibility
 } from "@repo-guardian/shared-types";
 import { PageShell } from "./components/PageShell";
 import { Panel } from "./components/Panel";
@@ -43,11 +45,70 @@ const signalLabels: Record<DetectedSignal["kind"], string> = {
   "github-workflow": "GitHub workflow"
 };
 
+const prCandidateTypeLabels: Record<PRPatchPlan["candidateType"], string> = {
+  "dangerous-execution": "Dangerous execution",
+  "dependency-review": "Dependency review",
+  "dependency-upgrade": "Dependency upgrade",
+  "general-hardening": "General hardening",
+  "secret-remediation": "Secret remediation",
+  "shell-execution": "Shell execution",
+  "workflow-hardening": "Workflow hardening"
+};
+
 function formatTimestamp(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatPatchability(value: PRPatchPlan["patchability"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function formatValidationStatus(value: PRPatchPlan["validationStatus"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function getPatchabilityTone(
+  patchability: PRPatchPlan["patchability"]
+): "active" | "muted" | "warning" {
+  if (patchability === "patch_candidate") {
+    return "active";
+  }
+
+  return patchability === "patch_plan_only" ? "warning" : "muted";
+}
+
+function getValidationTone(
+  validationStatus: PRPatchPlan["validationStatus"]
+): "active" | "warning" | "muted" {
+  if (validationStatus === "ready") {
+    return "active";
+  }
+
+  return validationStatus === "ready_with_warnings" ? "warning" : "muted";
+}
+
+function getEligibilityTone(
+  status: PRWriteBackEligibility["status"]
+): "active" | "warning" {
+  return status === "executable" ? "active" : "warning";
+}
+
+function getWriteBackEligibility(
+  plan: PRPatchPlan
+): PRWriteBackEligibility {
+  return (
+    plan.writeBackEligibility ?? {
+      approvalRequired: true,
+      details: [
+        "This analysis payload did not include write-back eligibility details."
+      ],
+      status: "blocked",
+      summary: "Write-back eligibility details were not included in this analysis payload."
+    }
+  );
 }
 
 function renderFileList(items: DetectedFileGroup[], emptyLabel: string) {
@@ -122,6 +183,26 @@ function App() {
       ? `Snapshot fetched ${formatTimestamp(analysis.fetchedAt)}.`
       : "Paste a public GitHub repository and Repo Guardian will inspect the current default-branch snapshot.";
 
+  const writeBackReadinessSummary = analysis
+    ? analysis.prPatchPlans.reduce(
+        (summary, plan) => {
+          const eligibility = getWriteBackEligibility(plan);
+
+          if (eligibility.status === "executable") {
+            summary.executable += 1;
+          } else {
+            summary.blocked += 1;
+          }
+
+          return summary;
+        },
+        {
+          blocked: 0,
+          executable: 0
+        }
+      )
+    : null;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setHasSubmitted(true);
@@ -145,15 +226,16 @@ function App() {
 
   return (
     <PageShell
-      eyebrow="Milestone 1"
+      eyebrow="Approval-Gated Analysis"
       heading="Repo Guardian"
-      summary="A supervised GitHub repository triage assistant. Start with a public repository URL or owner/repo slug to inspect metadata, recursive tree coverage, manifests, lockfiles, and ecosystem signals."
+      summary="A supervised GitHub repository triage assistant that inspects public repositories, drafts findings and remediation candidates, and surfaces approval-gated GitHub write-back readiness before any execution step."
       aside={
         <div className="hero-stack">
           <StatusBadge label={statusLabel} tone={statusTone} />
           <p className="aside-copy">
-            Milestone 1 stays read-only: metadata intake, recursive tree coverage,
-            deterministic file detection, and ecosystem inference.
+            Analysis stays supervised. Repo Guardian can surface issue and PR
+            write-back readiness, but it will not write to GitHub without explicit
+            approval in a later execution request.
           </p>
           {analysis ? (
             <p className="aside-copy aside-copy-muted">
@@ -187,15 +269,16 @@ function App() {
         >
           <div className="empty-state">
             <p className="empty-copy">
-              Repo Guardian will fetch the default branch, inspect the recursive
-              tree, and return a compact Milestone 1 snapshot without making any
-              GitHub write actions.
+              Repo Guardian fetches the default branch, analyzes dependency and
+              workflow risk signals, drafts issue and PR candidates, and shows
+              approval-gated write-back readiness without performing any GitHub
+              write actions.
             </p>
             <ul className="tag-list">
-              <li>Repository summary and default branch</li>
-              <li>Tree coverage, truncation status, and notable paths</li>
-              <li>Detected manifests, lockfiles, and workflow or infra signals</li>
-              <li>Machine-readable ecosystem and package-manager summary</li>
+              <li>Repository summary, tree coverage, and notable paths</li>
+              <li>Detected manifests, lockfiles, workflow files, and ecosystems</li>
+              <li>Structured dependency and workflow findings with candidate remediation paths</li>
+              <li>Pre-approval PR write-back readiness for supported issue and PR slices</li>
             </ul>
           </div>
         </Panel>
@@ -299,6 +382,74 @@ function App() {
 
           <Panel
             className="panel-wide"
+            eyebrow="PR Readiness"
+            title="PR write-back readiness"
+            footer={
+              writeBackReadinessSummary ? (
+                <div className="badge-row">
+                  <StatusBadge
+                    label={`${writeBackReadinessSummary.executable} executable`}
+                    tone="active"
+                  />
+                  <StatusBadge
+                    label={`${writeBackReadinessSummary.blocked} blocked`}
+                    tone="warning"
+                  />
+                </div>
+              ) : null
+            }
+          >
+            {analysis.prPatchPlans.length > 0 ? (
+              <div className="readiness-list">
+                {analysis.prPatchPlans.map((plan) => {
+                  const eligibility = getWriteBackEligibility(plan);
+
+                  return (
+                    <article className="readiness-card" key={plan.prCandidateId}>
+                      <div className="readiness-card-header">
+                        <div>
+                          <p className="subsection-label">
+                            {prCandidateTypeLabels[plan.candidateType]}
+                          </p>
+                          <h3>{plan.title}</h3>
+                        </div>
+                        <StatusBadge
+                          label={eligibility.status}
+                          tone={getEligibilityTone(eligibility.status)}
+                        />
+                      </div>
+                      <div className="badge-row">
+                        <StatusBadge
+                          label={formatPatchability(plan.patchability)}
+                          tone={getPatchabilityTone(plan.patchability)}
+                        />
+                        <StatusBadge
+                          label={formatValidationStatus(plan.validationStatus)}
+                          tone={getValidationTone(plan.validationStatus)}
+                        />
+                        {eligibility.approvalRequired ? (
+                          <StatusBadge label="Approval required" tone="up-next" />
+                        ) : null}
+                      </div>
+                      <p className="readiness-summary">{eligibility.summary}</p>
+                      <ul className="detail-list readiness-details">
+                        {eligibility.details.map((detail) => (
+                          <li key={`${plan.prCandidateId}:${detail}`}>{detail}</li>
+                        ))}
+                      </ul>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="empty-copy">
+                No PR patch plans were generated for this repository snapshot.
+              </p>
+            )}
+          </Panel>
+
+          <Panel
+            className="panel-wide"
             eyebrow="Ecosystems"
             title="Ecosystem summary"
           >
@@ -365,7 +516,7 @@ function App() {
               </ul>
             ) : (
               <p className="empty-copy">
-                No warnings surfaced for this Milestone 1 repository snapshot.
+                No warnings surfaced for this repository snapshot.
               </p>
             )}
           </Panel>

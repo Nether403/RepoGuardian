@@ -301,6 +301,12 @@ code {
   gap: 1rem;
 }
 
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
 .description-copy {
   margin-top: 1rem;
 }
@@ -432,6 +438,53 @@ code {
   max-width: 40rem;
 }
 
+.readiness-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.readiness-card {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.readiness-card-header {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.readiness-card h3 {
+  margin: 0.45rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.readiness-summary {
+  margin: 0;
+  color: #eff7ff;
+}
+
+.readiness-details li {
+  padding: 0.75rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.readiness-details li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.readiness-details li:last-child {
+  padding-bottom: 0;
+}
+
 @media (max-width: 1080px) {
   .panel {
     grid-column: span 6;
@@ -488,5 +541,9 @@ code {
   .hero-stack,
   .panel {
     padding: 1.15rem;
+  }
+
+  .readiness-card-header {
+    flex-direction: column;
   }
 }

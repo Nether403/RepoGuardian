@@ -517,6 +517,18 @@ export const PatchPlanSchema = z.object({
   requiredValidationSteps: z.array(z.string().min(1))
 });
 
+export const PRWriteBackEligibilityStatusSchema = z.enum([
+  "executable",
+  "blocked"
+]);
+
+export const PRWriteBackEligibilitySchema = z.object({
+  status: PRWriteBackEligibilityStatusSchema,
+  summary: z.string().min(1),
+  details: z.array(z.string().min(1)),
+  approvalRequired: z.boolean()
+});
+
 export const PRPatchPlanSchema = z.object({
   prCandidateId: z.string().min(1),
   title: z.string().min(1),
@@ -533,7 +545,8 @@ export const PRPatchPlanSchema = z.object({
   affectedPaths: z.array(z.string().min(1)),
   affectedPackages: z.array(z.string().min(1)),
   confidence: FindingConfidenceSchema,
-  severity: FindingSeveritySchema
+  severity: FindingSeveritySchema,
+  writeBackEligibility: PRWriteBackEligibilitySchema.optional()
 });
 
 export const PRPatchPlanCountByPatchabilitySchema = z.object({
@@ -871,6 +884,10 @@ export type PRPatchability = z.infer<typeof PRPatchabilitySchema>;
 export type ValidationStatus = z.infer<typeof ValidationStatusSchema>;
 export type PRPatchPlanFile = z.infer<typeof PRPatchPlanFileSchema>;
 export type PatchPlan = z.infer<typeof PatchPlanSchema>;
+export type PRWriteBackEligibilityStatus = z.infer<
+  typeof PRWriteBackEligibilityStatusSchema
+>;
+export type PRWriteBackEligibility = z.infer<typeof PRWriteBackEligibilitySchema>;
 export type PRPatchPlan = z.infer<typeof PRPatchPlanSchema>;
 export type PRPatchPlanCountByPatchability = z.infer<
   typeof PRPatchPlanCountByPatchabilitySchema

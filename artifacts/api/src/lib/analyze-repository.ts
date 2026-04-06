@@ -5,13 +5,17 @@ import {
 } from "@repo-guardian/advisory";
 import { createDependencySnapshot, listDependencyFilesToFetch } from "@repo-guardian/dependencies";
 import { detectRepositoryStructure } from "@repo-guardian/ecosystems";
+import { explainPRWriteBackEligibility } from "@repo-guardian/execution";
 import {
   GitHubReadClient,
   isGitHubReadError,
   normalizeRepoInput
 } from "@repo-guardian/github";
 import { createIssueCandidateResult } from "@repo-guardian/issues";
-import { createPRPatchPlanResult } from "@repo-guardian/patches";
+import {
+  buildPRPatchPlanSummary,
+  createPRPatchPlanResult
+} from "@repo-guardian/patches";
 import { createPRCandidateResult } from "@repo-guardian/prs";
 import {
   createCodeReviewResult,
@@ -30,6 +34,7 @@ import {
   type AnalyzeRepoResponse,
   type DependencySnapshot,
   type EcosystemDetection,
+  type PRPatchPlan,
   type RepositoryMetadata,
   type RepositoryIntakeSnapshot,
   type RepositoryTreeEntry
@@ -94,6 +99,31 @@ function mergeWarnings(
     ...dependencyFindings.warnings,
     ...codeReview.warnings
   ]);
+}
+
+function upgradeDependencyPatchPlanForExecution(plan: PRPatchPlan): PRPatchPlan {
+  const patchWarnings = plan.patchWarnings.filter(
+    (warning) =>
+      warning !==
+      "Dependency remediation is bounded, but the final patch should be reviewed before file edits are synthesized."
+  );
+  const validationStatus =
+    plan.readiness === "ready" && patchWarnings.length === 0
+      ? "ready"
+      : "ready_with_warnings";
+
+  return {
+    ...plan,
+    patchWarnings,
+    patchability: "patch_candidate",
+    validationNotes: [
+      "Validation has not been executed in this step.",
+      validationStatus === "ready"
+        ? "Standard validation steps are identified and the candidate is ready for later patch synthesis."
+        : "Standard validation steps are identified, but warnings reduce confidence for later patch synthesis."
+    ],
+    validationStatus
+  };
 }
 
 function isBinaryContent(content: string): boolean {
@@ -308,6 +338,59 @@ export async function analyzeRepository(
     prCandidates: prCandidates.candidates,
     warningDetails
   });
+  const analysisContext = {
+    codeReviewFindings: codeReview.findings,
+    dependencyFindings: dependencyFindings.findings,
+    issueCandidates: issueCandidates.candidates,
+    prCandidates: prCandidates.candidates,
+    prPatchPlans: prPatchPlans.plans,
+    repository: intake.repository
+  };
+  const fileContentsByPath = Object.fromEntries(
+    [
+      ...dependencyFiles.fetchedFiles.map((file) => [file.path, file.content] as const),
+      ...reviewFiles.reviewedFiles.map((file) => [file.path, file.content] as const)
+    ].sort(([left], [right]) => left.localeCompare(right))
+  );
+  const prPatchPlansWithEligibility = prPatchPlans.plans.map((plan) => {
+    const candidate = prCandidates.candidates.find(
+      (prCandidate) => prCandidate.id === plan.prCandidateId
+    );
+
+    if (!candidate) {
+      return {
+        ...plan,
+        writeBackEligibility: {
+          approvalRequired: true,
+          details: [
+            "Repo Guardian could not find the linked PR candidate for this patch plan.",
+            `Patchability: ${plan.patchability}.`,
+            `Validation status: ${plan.validationStatus}.`
+          ],
+          status: "blocked" as const,
+          summary: "Repo Guardian could not find the linked PR candidate for this patch plan."
+        }
+      };
+    }
+
+    const writeBackEligibility = explainPRWriteBackEligibility({
+      analysis: analysisContext,
+      candidate,
+      fileContentsByPath,
+      patchPlan: plan
+    });
+    const nextPlan =
+      candidate.candidateType === "dependency-upgrade" &&
+      writeBackEligibility.status === "executable" &&
+      plan.patchability !== "patch_candidate"
+        ? upgradeDependencyPatchPlanForExecution(plan)
+        : plan;
+
+    return {
+      ...nextPlan,
+      writeBackEligibility
+    };
+  });
   const isPartial =
     intake.isPartial ||
     dependencySnapshot.isPartial ||
@@ -338,8 +421,8 @@ export async function analyzeRepository(
     issueCandidates: issueCandidates.candidates,
     prCandidateSummary: prCandidates.summary,
     prCandidates: prCandidates.candidates,
-    prPatchPlanSummary: prPatchPlans.summary,
-    prPatchPlans: prPatchPlans.plans,
+    prPatchPlanSummary: buildPRPatchPlanSummary(prPatchPlansWithEligibility),
+    prPatchPlans: prPatchPlansWithEligibility,
     repository: intake.repository,
     treeSummary: {
       samplePaths: buildSamplePaths(intake, detection),

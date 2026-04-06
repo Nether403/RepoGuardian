@@ -3,7 +3,8 @@ import type {
   DependencyFinding,
   ExecutionPlanningContext,
   PRCandidate,
-  PRPatchPlan
+  PRPatchPlan,
+  PRWriteBackEligibility
 } from "@repo-guardian/shared-types";
 
 type ExecutionReadClient = {
@@ -57,6 +58,19 @@ const supportedManifestSections = [
 
 type JsonObject = Record<string, unknown>;
 type ManifestSection = (typeof supportedManifestSections)[number];
+type FileContentsByPath = Readonly<Record<string, string>>;
+
+type PreparedDeterministicDependencyUpdate = {
+  currentManifestSpecifier: string;
+  newline: string;
+  nextManifestSpecifier: string;
+  packageJson: JsonObject;
+  packageJsonIndentation: string;
+  packageJsonSection: ManifestSection;
+  packageLock: JsonObject;
+  packageLockIndentation: string;
+  sourcePackageEntry: JsonObject;
+};
 
 function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -260,6 +274,39 @@ function evaluateWorkflowExecutionSupport(input: {
   };
 }
 
+function createBlockedWriteBackEligibility(input: {
+  patchPlan: PRPatchPlan;
+  reason: string;
+  extraDetails?: string[];
+}): PRWriteBackEligibility {
+  return {
+    approvalRequired: true,
+    details: [
+      input.reason,
+      `Patchability: ${input.patchPlan.patchability}.`,
+      `Validation status: ${input.patchPlan.validationStatus}.`,
+      ...(input.extraDetails ?? [])
+    ],
+    status: "blocked",
+    summary: input.reason
+  };
+}
+
+function createExecutableWriteBackEligibility(input: {
+  details: string[];
+  summary: string;
+}): PRWriteBackEligibility {
+  return {
+    approvalRequired: true,
+    details: [
+      "Approval is still required before Repo Guardian performs any GitHub write-back.",
+      ...input.details
+    ],
+    status: "executable",
+    summary: input.summary
+  };
+}
+
 export function evaluatePRExecutionSupport(input: {
   analysis: ExecutionPlanningContext;
   candidate: PRCandidate;
@@ -431,6 +478,18 @@ function getDependencySectionRecord(
   return sectionValue;
 }
 
+function describeSpecifierStyle(specifier: string): string {
+  if (specifier.startsWith("^")) {
+    return `caret range (${specifier})`;
+  }
+
+  if (specifier.startsWith("~")) {
+    return `tilde range (${specifier})`;
+  }
+
+  return `exact version (${specifier})`;
+}
+
 function findDeterministicLockPackageEntry(input: {
   packageLock: JsonObject;
   packageName: string;
@@ -485,6 +544,205 @@ function findDeterministicLockPackageEntry(input: {
   return cloneJsonObject(entry);
 }
 
+function prepareDeterministicDependencyUpdate(input: {
+  packageJsonContent: string;
+  packageLockContent: string;
+  packageName: string;
+  remediationVersion: string;
+}): PreparedDeterministicDependencyUpdate {
+  const packageJsonPath = "package.json";
+  const packageLockPath = "package-lock.json";
+  const packageJson = parseJsonDocument(input.packageJsonContent, packageJsonPath);
+  const packageLock = parseJsonDocument(input.packageLockContent, packageLockPath);
+  const packageJsonSection = findManifestSectionForPackage(
+    packageJson,
+    input.packageName
+  );
+  const packageJsonDependencies = getDependencySectionRecord(
+    packageJson,
+    packageJsonSection,
+    packageJsonPath
+  );
+  const currentManifestSpecifier = packageJsonDependencies[input.packageName];
+
+  if (typeof currentManifestSpecifier !== "string") {
+    throw new Error(
+      `Repo Guardian expected ${packageJsonPath} to declare ${input.packageName} as a string dependency specifier.`
+    );
+  }
+
+  const nextManifestSpecifier = updateDependencySpec(
+    currentManifestSpecifier,
+    input.remediationVersion
+  );
+
+  if (packageLock.lockfileVersion !== 3) {
+    throw new Error(
+      "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3."
+    );
+  }
+
+  const packagesValue = packageLock.packages;
+
+  if (!isRecord(packagesValue)) {
+    throw new Error(
+      "Deterministic dependency write-back requires a package-lock.json packages object."
+    );
+  }
+
+  const rootPackageEntry = packagesValue[""];
+
+  if (!isRecord(rootPackageEntry)) {
+    throw new Error(
+      "Deterministic dependency write-back requires package-lock.json packages[\"\"] metadata."
+    );
+  }
+
+  const rootDependencies = getDependencySectionRecord(
+    rootPackageEntry,
+    packageJsonSection,
+    `${packageLockPath} packages[""]`
+  );
+
+  if (typeof rootDependencies[input.packageName] !== "string") {
+    throw new Error(
+      `Repo Guardian expected ${packageLockPath} packages[""] to declare ${input.packageName} in ${packageJsonSection}.`
+    );
+  }
+
+  const topLevelDependencies = packageLock.dependencies;
+
+  if (
+    !isRecord(topLevelDependencies) ||
+    !isRecord(topLevelDependencies[input.packageName])
+  ) {
+    throw new Error(
+      `Deterministic dependency write-back requires package-lock.json dependencies.${input.packageName} metadata.`
+    );
+  }
+
+  const sourcePackageEntry = findDeterministicLockPackageEntry({
+    packageLock,
+    packageName: input.packageName,
+    remediationVersion: input.remediationVersion
+  });
+
+  return {
+    currentManifestSpecifier,
+    newline: detectNewline(input.packageJsonContent),
+    nextManifestSpecifier,
+    packageJson,
+    packageJsonIndentation: detectJsonIndentation(input.packageJsonContent),
+    packageJsonSection,
+    packageLock,
+    packageLockIndentation: detectJsonIndentation(input.packageLockContent),
+    sourcePackageEntry
+  };
+}
+
+export function explainPRWriteBackEligibility(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  fileContentsByPath?: FileContentsByPath;
+}): PRWriteBackEligibility {
+  if (input.candidate.candidateType === "dependency-upgrade") {
+    if (input.patchPlan.patchability === "not_patchable") {
+      return createBlockedWriteBackEligibility({
+        patchPlan: input.patchPlan,
+        reason:
+          input.patchPlan.patchWarnings[0] ??
+          "The linked patch plan is not patch-capable for real PR execution."
+      });
+    }
+
+    const support = evaluateDependencyExecutionSupport(input);
+
+    if (!support.supported) {
+      return createBlockedWriteBackEligibility({
+        patchPlan: input.patchPlan,
+        reason: support.reason
+      });
+    }
+
+    if (support.executionKind !== "dependency") {
+      return createBlockedWriteBackEligibility({
+        patchPlan: input.patchPlan,
+        reason:
+          "Repo Guardian could not classify the selected dependency candidate for deterministic write-back."
+      });
+    }
+
+    const packageJsonContent = input.fileContentsByPath?.["package.json"];
+    const packageLockContent = input.fileContentsByPath?.["package-lock.json"];
+
+    if (!packageJsonContent || !packageLockContent) {
+      return createBlockedWriteBackEligibility({
+        patchPlan: input.patchPlan,
+        reason:
+          "Analysis did not fetch the package.json and package-lock.json content needed to verify deterministic dependency write-back."
+      });
+    }
+
+    try {
+      const prepared = prepareDeterministicDependencyUpdate({
+        packageJsonContent,
+        packageLockContent,
+        packageName: support.packageName,
+        remediationVersion: support.remediationVersion
+      });
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct npm dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to repo-root package.json and package-lock.json.",
+          `package.json uses a supported ${describeSpecifierStyle(prepared.currentManifestSpecifier)} specifier.`,
+          "package-lock.json uses lockfileVersion 3 and includes packages[\"\"].",
+          `Existing lockfile metadata for ${support.packageName}@${support.remediationVersion} was found uniquely and can be copied deterministically.`
+        ],
+        summary: "Eligible for approved deterministic npm dependency write-back."
+      });
+    } catch (error) {
+      return createBlockedWriteBackEligibility({
+        patchPlan: input.patchPlan,
+        reason:
+          error instanceof Error
+            ? error.message
+            : "Repo Guardian could not verify deterministic dependency write-back eligibility.",
+        extraDetails: [
+          `Affected package: ${support.packageName}.`,
+          "The dependency write-back slice remains limited to a direct npm upgrade for repo-root package.json and package-lock.json."
+        ]
+      });
+    }
+  }
+
+  const support = evaluatePRExecutionSupport(input);
+
+  if (!support.supported) {
+    return createBlockedWriteBackEligibility({
+      patchPlan: input.patchPlan,
+      reason: support.reason
+    });
+  }
+
+  if (support.executionKind !== "workflow") {
+    return createBlockedWriteBackEligibility({
+      patchPlan: input.patchPlan,
+      reason: "Repo Guardian could not classify the selected workflow candidate for write-back."
+    });
+  }
+
+  return createExecutableWriteBackEligibility({
+    details: [
+      "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
+      `Supported workflow finding categories: ${support.findingCategories.join(", ")}.`,
+      `Affected file scope: ${input.candidate.affectedPaths.join(", ")}.`
+    ],
+    summary: "Eligible for approved workflow write-back."
+  });
+}
+
 function synthesizeDependencyPatch(input: {
   analysis: ExecutionPlanningContext;
   candidate: PRCandidate;
@@ -510,39 +768,21 @@ function synthesizeDependencyPatch(input: {
       repo: repository.repo
     })
   ]).then(([packageJsonContent, packageLockContent]) => {
-    const packageJson = parseJsonDocument(packageJsonContent, packageJsonPath);
-    const packageLock = parseJsonDocument(packageLockContent, packageLockPath);
-    const packageJsonSection = findManifestSectionForPackage(
-      packageJson,
-      input.support.packageName
-    );
+    const prepared = prepareDeterministicDependencyUpdate({
+      packageJsonContent,
+      packageLockContent,
+      packageName: input.support.packageName,
+      remediationVersion: input.support.remediationVersion
+    });
     const packageJsonDependencies = getDependencySectionRecord(
-      packageJson,
-      packageJsonSection,
+      prepared.packageJson,
+      prepared.packageJsonSection,
       packageJsonPath
     );
-    const currentManifestSpecifier = packageJsonDependencies[input.support.packageName];
 
-    if (typeof currentManifestSpecifier !== "string") {
-      throw new Error(
-        `Repo Guardian expected ${packageJsonPath} to declare ${input.support.packageName} as a string dependency specifier.`
-      );
-    }
+    packageJsonDependencies[input.support.packageName] = prepared.nextManifestSpecifier;
 
-    const nextManifestSpecifier = updateDependencySpec(
-      currentManifestSpecifier,
-      input.support.remediationVersion
-    );
-
-    packageJsonDependencies[input.support.packageName] = nextManifestSpecifier;
-
-    if (packageLock.lockfileVersion !== 3) {
-      throw new Error(
-        "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3."
-      );
-    }
-
-    const packagesValue = packageLock.packages;
+    const packagesValue = prepared.packageLock.packages;
 
     if (!isRecord(packagesValue)) {
       throw new Error(
@@ -560,28 +800,17 @@ function synthesizeDependencyPatch(input: {
 
     const rootDependencies = getDependencySectionRecord(
       rootPackageEntry,
-      packageJsonSection,
+      prepared.packageJsonSection,
       `${packageLockPath} packages[""]`
     );
 
-    if (typeof rootDependencies[input.support.packageName] !== "string") {
-      throw new Error(
-        `Repo Guardian expected ${packageLockPath} packages[""] to declare ${input.support.packageName} in ${packageJsonSection}.`
-      );
-    }
+    rootDependencies[input.support.packageName] = prepared.nextManifestSpecifier;
 
-    rootDependencies[input.support.packageName] = nextManifestSpecifier;
-
-    const sourcePackageEntry = findDeterministicLockPackageEntry({
-      packageLock,
-      packageName: input.support.packageName,
-      remediationVersion: input.support.remediationVersion
-    });
     const rootLockPath = `node_modules/${input.support.packageName}`;
 
-    packagesValue[rootLockPath] = cloneJsonObject(sourcePackageEntry);
+    packagesValue[rootLockPath] = cloneJsonObject(prepared.sourcePackageEntry);
 
-    const topLevelDependencies = packageLock.dependencies;
+    const topLevelDependencies = prepared.packageLock.dependencies;
 
     if (!isRecord(topLevelDependencies) || !isRecord(topLevelDependencies[input.support.packageName])) {
       throw new Error(
@@ -589,23 +818,20 @@ function synthesizeDependencyPatch(input: {
       );
     }
 
-    const nextTopLevelDependencyEntry = cloneJsonObject(sourcePackageEntry);
+    const nextTopLevelDependencyEntry = cloneJsonObject(prepared.sourcePackageEntry);
 
     delete nextTopLevelDependencyEntry.name;
     topLevelDependencies[input.support.packageName] = nextTopLevelDependencyEntry;
 
-    const newline = detectNewline(packageJsonContent);
-    const packageJsonIndentation = detectJsonIndentation(packageJsonContent);
-    const packageLockIndentation = detectJsonIndentation(packageLockContent);
     const updatedPackageJsonContent = stringifyJsonDocument(
-      packageJson,
-      packageJsonIndentation,
-      newline
+      prepared.packageJson,
+      prepared.packageJsonIndentation,
+      prepared.newline
     );
     const updatedPackageLockContent = stringifyJsonDocument(
-      packageLock,
-      packageLockIndentation,
-      newline
+      prepared.packageLock,
+      prepared.packageLockIndentation,
+      prepared.newline
     );
 
     if (

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AnalyzeRepoResponseSchema } from "@repo-guardian/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +23,20 @@ function createDeferredResponse() {
     promise,
     resolve
   };
+}
+
+async function submitRepository(
+  user: ReturnType<typeof userEvent.setup>,
+  value = "openai/openai-node"
+) {
+  const input = screen.getByLabelText(/Repository input/i);
+
+  fireEvent.change(input, {
+    target: {
+      value
+    }
+  });
+  await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
 }
 
 const successPayload = AnalyzeRepoResponseSchema.parse({
@@ -355,7 +369,20 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
         "Validation has not been executed in this step.",
         "Standard validation steps are identified and the candidate is ready for later patch synthesis."
       ],
-      validationStatus: "ready"
+      validationStatus: "ready",
+      writeBackEligibility: {
+        approvalRequired: true,
+        details: [
+          "Approval is still required before Repo Guardian performs any GitHub write-back.",
+          "The PR candidate is a direct npm dependency upgrade for react.",
+          "The change scope is limited to repo-root package.json and package-lock.json.",
+          "package.json uses a supported caret range (^19.0.0) specifier.",
+          "package-lock.json uses lockfileVersion 3 and includes packages[\"\"].",
+          "Existing lockfile metadata for react@19.0.1 was found uniquely and can be copied deterministically."
+        ],
+        status: "executable",
+        summary: "Eligible for approved deterministic npm dependency write-back."
+      }
     }
   ],
   repository: {
@@ -425,11 +452,13 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.type(screen.getByLabelText(/Repository input/i), "openai/openai-node");
-    await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+    await submitRepository(user);
 
     expect(
       await screen.findByRole("heading", { name: /Repository summary/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /PR write-back readiness/i })
     ).toBeInTheDocument();
     expect(screen.getByText("openai/openai-node")).toBeInTheDocument();
     expect(screen.getByDisplayValue("openai/openai-node")).toBeInTheDocument();
@@ -443,8 +472,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.type(screen.getByLabelText(/Repository input/i), "openai/openai-node");
-    await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+    await submitRepository(user);
 
     expect(screen.getByRole("button", { name: /Analyzing/i })).toBeDisabled();
     expect(
@@ -474,8 +502,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.type(screen.getByLabelText(/Repository input/i), "openai/missing-repo");
-    await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+    await submitRepository(user, "openai/missing-repo");
 
     expect(
       await screen.findByRole("alert")
@@ -503,8 +530,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.type(screen.getByLabelText(/Repository input/i), "openai/openai-node");
-    await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+    await submitRepository(user);
 
     expect(
       await screen.findByRole("heading", { name: /Partial analysis/i })
@@ -521,8 +547,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.type(screen.getByLabelText(/Repository input/i), "openai/openai-node");
-    await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+    await submitRepository(user);
 
     await waitFor(() => {
       expect(screen.getByText("Node.js")).toBeInTheDocument();
@@ -533,5 +558,62 @@ describe("App", () => {
     expect(screen.getAllByText("package-lock.json").length).toBeGreaterThan(0);
     expect(screen.queryByText("Dockerfile")).not.toBeInTheDocument();
     expect(screen.getAllByText(".github/workflows/ci.yml").length).toBeGreaterThan(0);
+  });
+
+  it("renders executable dependency write-back readiness details", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findByText(/Eligible for approved deterministic npm dependency write-back/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Approval required/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Existing lockfile metadata for react@19.0.1 was found uniquely/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 executable/i)).toBeInTheDocument();
+  });
+
+  it("renders blocked dependency write-back reasons when eligibility is blocked", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse({
+          ...successPayload,
+          prPatchPlans: successPayload.prPatchPlans.map((plan) => ({
+            ...plan,
+            writeBackEligibility: {
+              approvalRequired: true,
+              details: [
+                "Repo Guardian could not recover unique lockfile metadata for react@19.0.1.",
+                "Patchability: patch_candidate.",
+                "Validation status: ready."
+              ],
+              status: "blocked",
+              summary:
+                "Repo Guardian could not recover unique lockfile metadata for react@19.0.1."
+            }
+          }))
+        })
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findAllByText(/Repo Guardian could not recover unique lockfile metadata for react@19.0.1./i)
+    ).toHaveLength(2);
+    expect(screen.getByText(/1 blocked/i)).toBeInTheDocument();
+    expect(screen.getByText(/Patchability: patch_candidate./i)).toBeInTheDocument();
   });
 });

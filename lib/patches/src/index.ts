@@ -5,3 +5,4 @@ export {
   type PRPatchPlanResult
 } from "./service.js";
 export { buildValidationResult } from "./validation.js";
+export { buildPRPatchPlanSummary } from "./utils.js";
