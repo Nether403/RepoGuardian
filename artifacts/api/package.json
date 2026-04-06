@@ -1,0 +1,22 @@
+{
+  "name": "@repo-guardian/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "node ./build.mjs"
+  },
+  "dependencies": {
+    "@repo-guardian/ecosystems": "workspace:*",
+    "@repo-guardian/github": "workspace:*",
+    "@repo-guardian/shared-types": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "zod": "^3.25.76"
+  }
+}

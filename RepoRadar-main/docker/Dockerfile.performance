@@ -1,0 +1,128 @@
+# Multi-stage Dockerfile with performance optimizations for RepoRadar
+
+# Build stage
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY vite.config.ts ./
+COPY tailwind.config.ts ./
+COPY postcss.config.js ./
+
+# Install dependencies with performance optimizations
+RUN npm ci --only=production --silent && \
+    npm cache clean --force
+
+# Copy source code
+COPY client/ ./client/
+COPY server/ ./server/
+COPY shared/ ./shared/
+COPY config/ ./config/
+
+# Set build environment variables for performance
+ENV NODE_ENV=production
+ENV VITE_BUILD_ANALYZE=false
+ENV VITE_MINIFY=true
+ENV VITE_SOURCEMAP=false
+ENV FRONTEND_TREE_SHAKING_ENABLED=true
+ENV COMPRESSION_ENABLED=true
+ENV CACHE_ENABLED=true
+
+# Build application with optimizations
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S reporadar -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production --silent && \
+    npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder --chown=reporadar:nodejs /app/dist ./dist
+COPY --from=builder --chown=reporadar:nodejs /app/config ./config
+
+# Copy database migration files
+COPY --chown=reporadar:nodejs shared/ ./shared/
+COPY --chown=reporadar:nodejs drizzle.config.ts ./
+
+# Create directories for performance monitoring
+RUN mkdir -p logs/performance data/metrics && \
+    chown -R reporadar:nodejs logs data
+
+# Set performance environment variables
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
+# Database performance settings
+ENV DB_POOL_MIN=2
+ENV DB_POOL_MAX=20
+ENV DB_QUERY_MONITORING_ENABLED=true
+ENV DB_AUTO_CREATE_INDEXES=true
+
+# Cache settings
+ENV CACHE_ENABLED=true
+ENV CACHE_TYPE=memory
+ENV CACHE_MEMORY_MAX_SIZE=256
+ENV CACHE_COMPRESSION_ENABLED=true
+
+# Compression settings
+ENV COMPRESSION_ENABLED=true
+ENV COMPRESSION_LEVEL=6
+ENV COMPRESSION_ALGORITHMS=gzip,brotli
+
+# GitHub API optimization
+ENV GITHUB_OPTIMIZATION_ENABLED=true
+ENV GITHUB_CACHING_ENABLED=true
+ENV GITHUB_BATCH_SIZE=10
+
+# Frontend optimizations
+ENV FRONTEND_CODE_SPLITTING_ENABLED=true
+ENV FRONTEND_LAZY_LOADING_ENABLED=true
+ENV FRONTEND_SERVICE_WORKER_ENABLED=true
+
+# Monitoring settings
+ENV PERFORMANCE_MONITORING_ENABLED=true
+ENV PERFORMANCE_ALERTING_ENABLED=true
+ENV METRICS_RETENTION_DAYS=30
+
+# Fallback settings
+ENV DB_CONNECTION_POOL_FALLBACK_ENABLED=true
+ENV CACHE_FALLBACK_TO_DIRECT_RETRIEVAL=true
+ENV FRONTEND_SYNCHRONOUS_FALLBACK_ENABLED=true
+
+# Switch to non-root user
+USER reporadar
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/index.js"]

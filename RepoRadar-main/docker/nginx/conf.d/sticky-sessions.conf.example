@@ -1,0 +1,32 @@
+# Alternative upstream configuration with sticky sessions
+# To use this configuration:
+# 1. Rename this file to sticky-sessions.conf
+# 2. Comment out the upstream block in nginx.conf
+# 3. Reload nginx configuration
+
+upstream reporadar_backend_sticky {
+    # IP hash for sticky sessions
+    # This ensures requests from the same client IP go to the same backend
+    ip_hash;
+
+    # RepoRadar instances
+    server reporadar-1:3000 max_fails=3 fail_timeout=30s;
+    server reporadar-2:3000 max_fails=3 fail_timeout=30s;
+    server reporadar-3:3000 max_fails=3 fail_timeout=30s;
+
+    # Keepalive connections
+    keepalive 32;
+}
+
+# Note: With Redis-based sessions, sticky sessions are NOT required
+# The ip_hash method is provided as an option for specific use cases
+# where you want to minimize session data transfers between instances
+
+# Alternative: Cookie-based sticky sessions (requires nginx-plus or third-party module)
+# upstream reporadar_backend_cookie {
+#     server reporadar-1:3000;
+#     server reporadar-2:3000;
+#     server reporadar-3:3000;
+#     
+#     sticky cookie srv_id expires=1h domain=.example.com path=/;
+# }

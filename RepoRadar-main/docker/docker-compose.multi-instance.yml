@@ -1,0 +1,326 @@
+version: '3.8'
+
+services:
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${LB_PORT:-80}:80"
+      - "${LB_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - reporadar-1
+      - reporadar-2
+      - reporadar-3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - reporadar-network
+
+  # RepoRadar Instance 1
+  reporadar-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.performance
+    environment:
+      # Instance identification
+      - INSTANCE_ID=reporadar-1
+      - INSTANCE_NAME=RepoRadar Instance 1
+      
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_POOL_MIN=${DB_POOL_MIN:-2}
+      - DB_POOL_MAX=${DB_POOL_MAX:-10}
+      
+      # Redis configuration (shared state)
+      - REDIS_URL=redis://redis-master:6379
+      - REDIS_HOST=redis-master
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - USE_REDIS_SESSIONS=true
+      
+      # Session configuration
+      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY}
+      
+      # Application settings
+      - NODE_ENV=production
+      - PORT=3000
+      - NODE_OPTIONS=--max-old-space-size=2048
+      
+      # Performance settings
+      - CACHE_ENABLED=true
+      - CACHE_TYPE=redis
+      - COMPRESSION_ENABLED=true
+      - PERFORMANCE_MONITORING_ENABLED=true
+      
+      # GitHub API
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OPTIMIZATION_ENABLED=true
+      - GITHUB_CACHING_ENABLED=true
+    
+    volumes:
+      - instance1_logs:/app/logs
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/ready', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    
+    networks:
+      - reporadar-network
+
+  # RepoRadar Instance 2
+  reporadar-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.performance
+    environment:
+      # Instance identification
+      - INSTANCE_ID=reporadar-2
+      - INSTANCE_NAME=RepoRadar Instance 2
+      
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_POOL_MIN=${DB_POOL_MIN:-2}
+      - DB_POOL_MAX=${DB_POOL_MAX:-10}
+      
+      # Redis configuration (shared state)
+      - REDIS_URL=redis://redis-master:6379
+      - REDIS_HOST=redis-master
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - USE_REDIS_SESSIONS=true
+      
+      # Session configuration
+      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY}
+      
+      # Application settings
+      - NODE_ENV=production
+      - PORT=3000
+      - NODE_OPTIONS=--max-old-space-size=2048
+      
+      # Performance settings
+      - CACHE_ENABLED=true
+      - CACHE_TYPE=redis
+      - COMPRESSION_ENABLED=true
+      - PERFORMANCE_MONITORING_ENABLED=true
+      
+      # GitHub API
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OPTIMIZATION_ENABLED=true
+      - GITHUB_CACHING_ENABLED=true
+    
+    volumes:
+      - instance2_logs:/app/logs
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/ready', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    
+    networks:
+      - reporadar-network
+
+  # RepoRadar Instance 3
+  reporadar-3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.performance
+    environment:
+      # Instance identification
+      - INSTANCE_ID=reporadar-3
+      - INSTANCE_NAME=RepoRadar Instance 3
+      
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_POOL_MIN=${DB_POOL_MIN:-2}
+      - DB_POOL_MAX=${DB_POOL_MAX:-10}
+      
+      # Redis configuration (shared state)
+      - REDIS_URL=redis://redis-master:6379
+      - REDIS_HOST=redis-master
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - USE_REDIS_SESSIONS=true
+      
+      # Session configuration
+      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY}
+      
+      # Application settings
+      - NODE_ENV=production
+      - PORT=3000
+      - NODE_OPTIONS=--max-old-space-size=2048
+      
+      # Performance settings
+      - CACHE_ENABLED=true
+      - CACHE_TYPE=redis
+      - COMPRESSION_ENABLED=true
+      - PERFORMANCE_MONITORING_ENABLED=true
+      
+      # GitHub API
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OPTIMIZATION_ENABLED=true
+      - GITHUB_CACHING_ENABLED=true
+    
+    volumes:
+      - instance3_logs:/app/logs
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/ready', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    
+    networks:
+      - reporadar-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-reporadar}
+      - POSTGRES_USER=${POSTGRES_USER:-reporadar}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reporadar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - reporadar-network
+
+  # Redis Master (for sessions and cache)
+  redis-master:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --save 300 100
+      --save 900 10
+    volumes:
+      - redis_master_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - reporadar-network
+
+  # Redis Replica 1 (optional for high availability)
+  redis-replica-1:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_replica1_data:/data
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    
+    profiles:
+      - ha
+    
+    networks:
+      - reporadar-network
+
+  # Redis Sentinel (optional for automatic failover)
+  redis-sentinel:
+    image: redis:7-alpine
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf
+      - redis_sentinel_data:/data
+    restart: unless-stopped
+    
+    depends_on:
+      - redis-master
+      - redis-replica-1
+    
+    profiles:
+      - ha
+    
+    networks:
+      - reporadar-network
+
+volumes:
+  postgres_data:
+  redis_master_data:
+  redis_replica1_data:
+  redis_sentinel_data:
+  instance1_logs:
+  instance2_logs:
+  instance3_logs:
+  nginx_logs:
+
+networks:
+  reporadar-network:
+    driver: bridge

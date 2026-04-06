@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  reporadar:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.performance
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # Performance optimizations
+      - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=2048
+      
+      # Database performance
+      - DB_POOL_MIN=${DB_POOL_MIN:-2}
+      - DB_POOL_MAX=${DB_POOL_MAX:-20}
+      - DB_QUERY_MONITORING_ENABLED=${DB_QUERY_MONITORING_ENABLED:-true}
+      - DB_AUTO_CREATE_INDEXES=${DB_AUTO_CREATE_INDEXES:-true}
+      - DB_SLOW_QUERY_THRESHOLD=${DB_SLOW_QUERY_THRESHOLD:-1000}
+      
+      # Cache configuration
+      - CACHE_ENABLED=${CACHE_ENABLED:-true}
+      - CACHE_TYPE=${CACHE_TYPE:-memory}
+      - CACHE_MEMORY_MAX_SIZE=${CACHE_MEMORY_MAX_SIZE:-256}
+      - CACHE_COMPRESSION_ENABLED=${CACHE_COMPRESSION_ENABLED:-true}
+      
+      # Compression settings
+      - COMPRESSION_ENABLED=${COMPRESSION_ENABLED:-true}
+      - COMPRESSION_LEVEL=${COMPRESSION_LEVEL:-6}
+      - COMPRESSION_ALGORITHMS=${COMPRESSION_ALGORITHMS:-gzip,brotli}
+      
+      # GitHub API optimization
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OPTIMIZATION_ENABLED=${GITHUB_OPTIMIZATION_ENABLED:-true}
+      - GITHUB_CACHING_ENABLED=${GITHUB_CACHING_ENABLED:-true}
+      - GITHUB_BATCH_SIZE=${GITHUB_BATCH_SIZE:-10}
+      
+      # Frontend optimizations
+      - FRONTEND_CODE_SPLITTING_ENABLED=${FRONTEND_CODE_SPLITTING_ENABLED:-true}
+      - FRONTEND_LAZY_LOADING_ENABLED=${FRONTEND_LAZY_LOADING_ENABLED:-true}
+      - FRONTEND_SERVICE_WORKER_ENABLED=${FRONTEND_SERVICE_WORKER_ENABLED:-true}
+      
+      # Monitoring
+      - PERFORMANCE_MONITORING_ENABLED=${PERFORMANCE_MONITORING_ENABLED:-true}
+      - PERFORMANCE_ALERTING_ENABLED=${PERFORMANCE_ALERTING_ENABLED:-true}
+      - METRICS_RETENTION_DAYS=${METRICS_RETENTION_DAYS:-30}
+      
+      # Fallback configuration
+      - DB_CONNECTION_POOL_FALLBACK_ENABLED=${DB_CONNECTION_POOL_FALLBACK_ENABLED:-true}
+      - CACHE_FALLBACK_TO_DIRECT_RETRIEVAL=${CACHE_FALLBACK_TO_DIRECT_RETRIEVAL:-true}
+      - FRONTEND_SYNCHRONOUS_FALLBACK_ENABLED=${FRONTEND_SYNCHRONOUS_FALLBACK_ENABLED:-true}
+    
+    volumes:
+      - performance_logs:/app/logs/performance
+      - metrics_data:/app/data/metrics
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-reporadar}
+      - POSTGRES_USER=${POSTGRES_USER:-reporadar}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reporadar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Performance monitoring dashboard (optional)
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+  performance_logs:
+  metrics_data:
+
+networks:
+  default:
+    driver: bridge

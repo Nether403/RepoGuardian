@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisualGit Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=Orbitron:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.552.0",
+    "d3": "https://aistudiocdn.com/d3@^7.9.0"
+  }
+}
+</script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          orbitron: ['Orbitron', 'sans-serif'],
+        },
+        colors: {
+          brand: {
+            orange: '#f97316',
+            red: '#dc2626',
+            void: '#020617',
+          }
+        },
+        backgroundImage: {
+          'void-gradient': 'radial-gradient(circle at 50% 0%, #1e1b4b 0%, #020617 60%)',
+          'brand-gradient': 'linear-gradient(to right, #ea580c, #dc2626)',
+          'glass-panel': 'linear-gradient(rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.4))',
+        },
+        boxShadow: {
+          'glass-inset': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+          'glow-orange': '0 0 30px rgba(249, 115, 22, 0.4)',
+          'glow-text': '0 0 10px rgba(249, 115, 22, 0.5)',
+        },
+        animation: {
+          'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          'scan': 'scan 4s linear infinite',
+        },
+        keyframes: {
+          scan: {
+            '0%': { transform: 'translateY(-100%)' },
+            '100%': { transform: 'translateY(100%)' },
+          }
+        }
+      }
+    }
+  }
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="text-slate-300 antialiased selection:bg-orange-500/30 selection:text-white min-h-screen overflow-x-hidden">
+  <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
