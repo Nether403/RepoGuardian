@@ -11,6 +11,7 @@ import {
   normalizeRepoInput
 } from "@repo-guardian/github";
 import { createIssueCandidateResult } from "@repo-guardian/issues";
+import { createPRCandidateResult } from "@repo-guardian/prs";
 import {
   createCodeReviewResult,
   selectReviewTargets,
@@ -291,6 +292,14 @@ export async function analyzeRepository(
     dependencyFindings,
     codeReview
   );
+  const prCandidates = createPRCandidateResult({
+    codeReviewFindings: codeReview.findings,
+    dependencyFindings: dependencyFindings.findings,
+    dependencySnapshot,
+    issueCandidates: issueCandidates.candidates,
+    reviewCoverage: codeReview.coverage,
+    warningDetails
+  });
   const isPartial =
     intake.isPartial ||
     dependencySnapshot.isPartial ||
@@ -319,6 +328,8 @@ export async function analyzeRepository(
     isPartial,
     issueCandidateSummary: issueCandidates.summary,
     issueCandidates: issueCandidates.candidates,
+    prCandidateSummary: prCandidates.summary,
+    prCandidates: prCandidates.candidates,
     repository: intake.repository,
     treeSummary: {
       samplePaths: buildSamplePaths(intake, detection),

@@ -17,6 +17,7 @@
     "@repo-guardian/ecosystems": "workspace:*",
     "@repo-guardian/github": "workspace:*",
     "@repo-guardian/issues": "workspace:*",
+    "@repo-guardian/prs": "workspace:*",
     "@repo-guardian/review": "workspace:*",
     "@repo-guardian/shared-types": "workspace:*",
     "cors": "^2.8.5",

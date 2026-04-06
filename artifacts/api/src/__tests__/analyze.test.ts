@@ -28,7 +28,7 @@ describe("POST /api/analyze", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns the Milestone 1 analysis payload", async () => {
+  it("returns the current analysis payload", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -405,6 +405,111 @@ describe("POST /api/analyze", () => {
             "Workflow misconfiguration can expand token privileges or expose privileged automation to untrusted pull request content."
         }
       ],
+      prCandidateSummary: {
+        byReadiness: [
+          {
+            count: 2,
+            readiness: "ready"
+          }
+        ],
+        byRiskLevel: [
+          {
+            count: 2,
+            riskLevel: "low"
+          }
+        ],
+        byType: [
+          {
+            candidateType: "dependency-upgrade",
+            count: 1
+          },
+          {
+            candidateType: "workflow-hardening",
+            count: 1
+          }
+        ],
+        totalCandidates: 2
+      },
+      prCandidates: [
+        {
+          affectedPackages: ["react"],
+          affectedPaths: ["package-lock.json", "package.json"],
+          candidateType: "dependency-upgrade",
+          confidence: "high",
+          expectedFileChanges: [
+            {
+              changeType: "edit",
+              path: "package-lock.json",
+              reason:
+                "Refresh package-lock.json so react resolves to the remediated version."
+            },
+            {
+              changeType: "edit",
+              path: "package.json",
+              reason: "Update the react dependency declaration in package.json."
+            }
+          ],
+          id: "pr:dependency-upgrade:react",
+          labels: ["candidate-pr", "dependencies", "high", "security"],
+          linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+          rationale:
+            "The remediation path is bounded to react version updates and the matching manifest or lockfile entries already identified in the repository snapshot.",
+          readiness: "ready",
+          relatedFindingIds: [
+            "dependency:GHSA-test-1234:react:19.0.0:.:direct"
+          ],
+          riskLevel: "low",
+          rollbackNote:
+            "Revert the react version change and restore the previous lockfile entries if the upgrade causes regressions.",
+          severity: "high",
+          summary:
+            "Update react and refresh the tracked dependency files so the current advisory match no longer applies.",
+          testPlan: [
+            "Install dependencies and refresh the affected lockfile entries.",
+            "Run the repository validation commands that cover the affected workspace.",
+            "Re-analyze the repository to confirm the advisory no longer matches the resolved version."
+          ],
+          title: "Upgrade react and refresh dependency locks"
+        },
+        {
+          affectedPackages: [],
+          affectedPaths: [".github/workflows/ci.yml"],
+          candidateType: "workflow-hardening",
+          confidence: "high",
+          expectedFileChanges: [
+            {
+              changeType: "edit",
+              path: ".github/workflows/ci.yml",
+              reason:
+                "Tighten workflow permissions and adjust high-risk trigger behavior in the workflow definition."
+            }
+          ],
+          id: "pr:workflow-hardening:.github/workflows/ci.yml",
+          labels: ["candidate-pr", "high", "security", "workflow"],
+          linkedIssueCandidateIds: [
+            "issue:workflow-hardening:.github/workflows/ci.yml"
+          ],
+          rationale:
+            "The findings are localized to .github/workflows/ci.yml, so the remediation can stay inside one workflow file and one review concern.",
+          readiness: "ready",
+          relatedFindingIds: [
+            "review:workflow-permissions:.github/workflows/ci.yml:3-3",
+            "review:workflow-trigger-risk:.github/workflows/ci.yml:2-2"
+          ],
+          riskLevel: "low",
+          rollbackNote:
+            "Revert the workflow file change if the hardened permissions or trigger rules block expected automation.",
+          severity: "high",
+          summary:
+            "Harden .github/workflows/ci.yml by tightening permissions and revisiting the risky trigger behavior already flagged in analysis.",
+          testPlan: [
+            "Run the workflow or its equivalent validation after the permission change.",
+            "Confirm privileged steps still have the minimum access they need.",
+            "Verify untrusted pull request paths no longer reach the risky trigger pattern."
+          ],
+          title: "Harden .github/workflows/ci.yml"
+        }
+      ],
       ecosystems: [
         {
           ecosystem: "node",
@@ -659,6 +764,13 @@ describe("POST /api/analyze", () => {
         low: 0,
         medium: 0
       },
+      byType: [],
+      totalCandidates: 0
+    });
+    expect(response.body.prCandidates).toEqual([]);
+    expect(response.body.prCandidateSummary).toEqual({
+      byReadiness: [],
+      byRiskLevel: [],
       byType: [],
       totalCandidates: 0
     });

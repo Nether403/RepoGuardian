@@ -80,6 +80,13 @@ describe("AnalyzeRepoResponseSchema", () => {
         totalCandidates: 0
       },
       issueCandidates: [],
+      prCandidateSummary: {
+        byReadiness: [],
+        byRiskLevel: [],
+        byType: [],
+        totalCandidates: 0
+      },
+      prCandidates: [],
       codeReviewFindingSummary: {
         findingsBySeverity: {
           critical: 0,
@@ -170,6 +177,8 @@ describe("AnalyzeRepoResponseSchema", () => {
     ]);
     expect(response.issueCandidates).toEqual([]);
     expect(response.issueCandidateSummary.totalCandidates).toBe(0);
+    expect(response.prCandidates).toEqual([]);
+    expect(response.prCandidateSummary.totalCandidates).toBe(0);
     expect(response.dependencySnapshot.parseWarningDetails[0]?.code).toBe("FILE_FETCH_SKIPPED");
     expect(response.dependencySnapshot.parseWarnings).toEqual([
       "Skipped package-lock.json: GitHub returned invalid file content"

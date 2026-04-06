@@ -231,6 +231,66 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
         "The repository directly depends on react, so the advisory exposure is more likely to affect production behavior or build outputs."
     }
   ],
+  prCandidateSummary: {
+    byReadiness: [
+      {
+        count: 1,
+        readiness: "ready"
+      }
+    ],
+    byRiskLevel: [
+      {
+        count: 1,
+        riskLevel: "low"
+      }
+    ],
+    byType: [
+      {
+        candidateType: "dependency-upgrade",
+        count: 1
+      }
+    ],
+    totalCandidates: 1
+  },
+  prCandidates: [
+    {
+      affectedPackages: ["react"],
+      affectedPaths: ["package-lock.json", "package.json"],
+      candidateType: "dependency-upgrade",
+      confidence: "high",
+      expectedFileChanges: [
+        {
+          changeType: "edit",
+          path: "package-lock.json",
+          reason: "Refresh package-lock.json so react resolves to the remediated version."
+        },
+        {
+          changeType: "edit",
+          path: "package.json",
+          reason: "Update the react dependency declaration in package.json."
+        }
+      ],
+      id: "pr:dependency-upgrade:react",
+      labels: ["candidate-pr", "dependencies", "high", "security"],
+      linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+      rationale:
+        "The remediation path is bounded to react version updates and the matching manifest or lockfile entries already identified in the repository snapshot.",
+      readiness: "ready",
+      relatedFindingIds: ["dependency:GHSA-test-1234:react:19.0.0:.:direct"],
+      riskLevel: "low",
+      rollbackNote:
+        "Revert the react version change and restore the previous lockfile entries if the upgrade causes regressions.",
+      severity: "high",
+      summary:
+        "Update react and refresh the tracked dependency files so the current advisory match no longer applies.",
+      testPlan: [
+        "Install dependencies and refresh the affected lockfile entries.",
+        "Run the repository validation commands that cover the affected workspace.",
+        "Re-analyze the repository to confirm the advisory no longer matches the resolved version."
+      ],
+      title: "Upgrade react and refresh dependency locks"
+    }
+  ],
   repository: {
     canonicalUrl: "https://github.com/openai/openai-node",
     defaultBranch: "main",

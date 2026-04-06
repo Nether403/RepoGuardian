@@ -429,6 +429,66 @@ export const IssueCandidateSummarySchema = z.object({
   bySeverity: FindingsBySeveritySchema
 });
 
+export const PRCandidateTypeSchema = IssueCandidateTypeSchema;
+
+export const PRCandidateRiskLevelSchema = z.enum(["low", "medium", "high"]);
+
+export const PRCandidateReadinessSchema = z.enum([
+  "draft_only",
+  "ready_with_warnings",
+  "ready"
+]);
+
+export const PRCandidateChangeTypeSchema = z.enum(["edit", "add", "remove"]);
+
+export const PRCandidateExpectedFileChangeSchema = z.object({
+  path: z.string().min(1),
+  changeType: PRCandidateChangeTypeSchema,
+  reason: z.string().min(1)
+});
+
+export const PRCandidateSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  linkedIssueCandidateIds: z.array(z.string().min(1)),
+  relatedFindingIds: z.array(z.string().min(1)),
+  candidateType: PRCandidateTypeSchema,
+  riskLevel: PRCandidateRiskLevelSchema,
+  readiness: PRCandidateReadinessSchema,
+  expectedFileChanges: z.array(PRCandidateExpectedFileChangeSchema),
+  rationale: z.string().min(1),
+  testPlan: z.array(z.string().min(1)),
+  rollbackNote: z.string().min(1),
+  affectedPaths: z.array(z.string().min(1)),
+  affectedPackages: z.array(z.string().min(1)),
+  confidence: FindingConfidenceSchema,
+  severity: FindingSeveritySchema,
+  labels: z.array(z.string().min(1))
+});
+
+export const PRCandidateCountByTypeSchema = z.object({
+  candidateType: PRCandidateTypeSchema,
+  count: z.number().int().nonnegative()
+});
+
+export const PRCandidateCountByReadinessSchema = z.object({
+  readiness: PRCandidateReadinessSchema,
+  count: z.number().int().nonnegative()
+});
+
+export const PRCandidateCountByRiskLevelSchema = z.object({
+  riskLevel: PRCandidateRiskLevelSchema,
+  count: z.number().int().nonnegative()
+});
+
+export const PRCandidateSummarySchema = z.object({
+  totalCandidates: z.number().int().nonnegative(),
+  byType: z.array(PRCandidateCountByTypeSchema),
+  byReadiness: z.array(PRCandidateCountByReadinessSchema),
+  byRiskLevel: z.array(PRCandidateCountByRiskLevelSchema)
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
@@ -442,6 +502,8 @@ export const AnalyzeRepoResponseSchema = z.object({
   reviewCoverage: ReviewCoverageSchema,
   issueCandidates: z.array(IssueCandidateSchema),
   issueCandidateSummary: IssueCandidateSummarySchema,
+  prCandidates: z.array(PRCandidateSchema),
+  prCandidateSummary: PRCandidateSummarySchema,
   warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
@@ -613,4 +675,20 @@ export type IssueCandidateCountByType = z.infer<
   typeof IssueCandidateCountByTypeSchema
 >;
 export type IssueCandidateSummary = z.infer<typeof IssueCandidateSummarySchema>;
+export type PRCandidateType = z.infer<typeof PRCandidateTypeSchema>;
+export type PRCandidateRiskLevel = z.infer<typeof PRCandidateRiskLevelSchema>;
+export type PRCandidateReadiness = z.infer<typeof PRCandidateReadinessSchema>;
+export type PRCandidateChangeType = z.infer<typeof PRCandidateChangeTypeSchema>;
+export type PRCandidateExpectedFileChange = z.infer<
+  typeof PRCandidateExpectedFileChangeSchema
+>;
+export type PRCandidate = z.infer<typeof PRCandidateSchema>;
+export type PRCandidateCountByType = z.infer<typeof PRCandidateCountByTypeSchema>;
+export type PRCandidateCountByReadiness = z.infer<
+  typeof PRCandidateCountByReadinessSchema
+>;
+export type PRCandidateCountByRiskLevel = z.infer<
+  typeof PRCandidateCountByRiskLevelSchema
+>;
+export type PRCandidateSummary = z.infer<typeof PRCandidateSummarySchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;
