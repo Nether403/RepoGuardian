@@ -109,6 +109,56 @@ describe("POST /api/analyze", () => {
             }
           })
         )
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          results: [
+            {
+              vulns: [
+                {
+                  id: "GHSA-test-1234",
+                  modified: "2026-04-06T11:30:00.000Z"
+                }
+              ]
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          affected: [
+            {
+              ecosystem_specific: {
+                severity: "HIGH"
+              },
+              package: {
+                ecosystem: "npm",
+                name: "react"
+              },
+              ranges: [
+                {
+                  events: [
+                    {
+                      introduced: "0"
+                    },
+                    {
+                      fixed: "19.0.1"
+                    }
+                  ],
+                  type: "ECOSYSTEM"
+                }
+              ]
+            }
+          ],
+          id: "GHSA-test-1234",
+          references: [
+            {
+              type: "ADVISORY",
+              url: "https://osv.dev/vulnerability/GHSA-test-1234"
+            }
+          ],
+          summary: "React test advisory"
+        })
       );
 
     vi.stubGlobal("fetch", fetchMock);
@@ -199,6 +249,44 @@ describe("POST /api/analyze", () => {
           transitiveDependencies: 0
         }
       },
+      dependencyFindingSummary: {
+        findingsBySeverity: {
+          critical: 0,
+          high: 1,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        isPartial: false,
+        totalFindings: 1,
+        vulnerableDirectCount: 1,
+        vulnerableTransitiveCount: 0
+      },
+      dependencyFindings: [
+        {
+          advisoryId: "GHSA-test-1234",
+          advisorySource: "OSV",
+          affectedRange: "introduced 0, fixed 19.0.1",
+          candidateIssue: false,
+          candidatePr: false,
+          category: "dependency-vulnerability",
+          confidence: "high",
+          dependencyType: "production",
+          id: "dependency:GHSA-test-1234:react:19.0.0:.:direct",
+          installedVersion: "19.0.0",
+          isDirect: true,
+          packageName: "react",
+          paths: ["package-lock.json", "package.json"],
+          recommendedAction:
+            "Upgrade react to 19.0.1 or later and refresh the lockfile.",
+          referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
+          remediationType: "upgrade",
+          remediationVersion: "19.0.1",
+          severity: "high",
+          sourceType: "dependency",
+          title: "react is affected by GHSA-test-1234"
+        }
+      ],
       ecosystems: [
         {
           ecosystem: "node",
@@ -233,7 +321,7 @@ describe("POST /api/analyze", () => {
       warnings: []
     });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
   });
 
   it("returns 400 for invalid repo input", async () => {
@@ -396,6 +484,7 @@ describe("POST /api/analyze", () => {
       truncated: true
     });
     expect(response.body.warnings).toEqual([
+      "Declaration-only advisory coverage for react in package.json; no exact resolved version was available.",
       "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
       "Manifest without lockfile: package.json"
     ]);
@@ -403,6 +492,20 @@ describe("POST /api/analyze", () => {
     expect(response.body.dependencySnapshot.parseWarnings).toEqual([
       "Manifest without lockfile: package.json"
     ]);
+    expect(response.body.dependencyFindings).toEqual([]);
+    expect(response.body.dependencyFindingSummary).toEqual({
+      findingsBySeverity: {
+        critical: 0,
+        high: 0,
+        info: 0,
+        low: 0,
+        medium: 0
+      },
+      isPartial: true,
+      totalFindings: 0,
+      vulnerableDirectCount: 0,
+      vulnerableTransitiveCount: 0
+    });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
   });
 });

@@ -26,6 +26,52 @@ function createDeferredResponse() {
 }
 
 const successPayload = AnalyzeRepoResponseSchema.parse({
+  dependencyFindingSummary: {
+    findingsBySeverity: {
+      critical: 0,
+      high: 1,
+      info: 0,
+      low: 0,
+      medium: 0
+    },
+    isPartial: false,
+    totalFindings: 1,
+    vulnerableDirectCount: 1,
+    vulnerableTransitiveCount: 0
+  },
+  dependencyFindings: [
+    {
+      advisoryId: "GHSA-test-1234",
+      advisorySource: "OSV",
+      affectedRange: "introduced 0, fixed 19.0.1",
+      candidateIssue: false,
+      candidatePr: false,
+      category: "dependency-vulnerability",
+      confidence: "high",
+      dependencyType: "production",
+      evidence: [
+        {
+          label: "Dependency",
+          value: "react"
+        }
+      ],
+      id: "dependency:GHSA-test-1234:react:19.0.0:.:direct",
+      installedVersion: "19.0.0",
+      isDirect: true,
+      lineSpans: [],
+      packageName: "react",
+      paths: ["package-lock.json", "package.json"],
+      recommendedAction:
+        "Upgrade react to 19.0.1 or later and refresh the lockfile.",
+      referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
+      remediationType: "upgrade",
+      remediationVersion: "19.0.1",
+      severity: "high",
+      sourceType: "dependency",
+      summary: "react 19.0.0 matches GHSA-test-1234: React test advisory",
+      title: "react is affected by GHSA-test-1234"
+    }
+  ],
   dependencySnapshot: {
     dependencies: [
       {

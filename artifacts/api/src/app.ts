@@ -21,7 +21,7 @@ app.use("/api", apiRouter);
 app.get("/", (_request: Request, response: Response) => {
   response.json({
     name: "Repo Guardian API",
-    stage: "milestone-2a-dependency-parsing",
+    stage: "milestone-2b-dependency-findings",
     status: "ready"
   });
 });

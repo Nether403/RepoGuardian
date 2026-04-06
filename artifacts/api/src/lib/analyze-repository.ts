@@ -1,3 +1,8 @@
+import {
+  createDependencyFindingResult,
+  OsvAdvisoryProvider,
+  type DependencyFindingResult
+} from "@repo-guardian/advisory";
 import { createDependencySnapshot, listDependencyFilesToFetch } from "@repo-guardian/dependencies";
 import { detectRepositoryStructure } from "@repo-guardian/ecosystems";
 import {
@@ -14,6 +19,8 @@ import {
   type RepositoryIntakeSnapshot,
   type RepositoryTreeEntry
 } from "@repo-guardian/shared-types";
+
+const advisoryProvider = new OsvAdvisoryProvider();
 
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -43,12 +50,14 @@ function buildSamplePaths(
 function mergeWarnings(
   intake: RepositoryIntakeSnapshot,
   detection: EcosystemDetection,
-  dependencySnapshot: DependencySnapshot
+  dependencySnapshot: DependencySnapshot,
+  dependencyFindings: DependencyFindingResult
 ): string[] {
   return uniqueSorted([
     ...intake.warnings,
     ...detection.warnings,
-    ...dependencySnapshot.parseWarnings
+    ...dependencySnapshot.parseWarnings,
+    ...dependencyFindings.warnings
   ]);
 }
 
@@ -138,9 +147,17 @@ export async function analyzeRepository(
     prefetchWarnings: dependencyFiles.prefetchWarnings,
     skippedFiles: dependencyFiles.skippedFiles
   });
+  const dependencyFindings = await createDependencyFindingResult(
+    dependencySnapshot,
+    advisoryProvider
+  );
+  const isPartial =
+    intake.isPartial || dependencySnapshot.isPartial || dependencyFindings.isPartial;
 
   return AnalyzeRepoResponseSchema.parse({
-      detectedFiles: {
+    dependencyFindingSummary: dependencyFindings.summary,
+    dependencyFindings: dependencyFindings.findings,
+    detectedFiles: {
       lockfiles: detection.lockfiles.map((lockfile) => ({
         kind: lockfile.kind,
         path: lockfile.path
@@ -150,11 +167,11 @@ export async function analyzeRepository(
         path: manifest.path
       })),
       signals: detection.signals
-      },
+    },
     dependencySnapshot,
     ecosystems: detection.ecosystems,
     fetchedAt: intake.fetchedAt,
-    isPartial: intake.isPartial,
+    isPartial,
     repository: intake.repository,
     treeSummary: {
       samplePaths: buildSamplePaths(intake, detection),
@@ -162,6 +179,11 @@ export async function analyzeRepository(
       totalFiles: intake.treeSummary.fileCount,
       truncated: intake.treeSummary.truncated
     },
-    warnings: mergeWarnings(intake, detection, dependencySnapshot)
+    warnings: mergeWarnings(
+      intake,
+      detection,
+      dependencySnapshot,
+      dependencyFindings
+    )
   });
 }

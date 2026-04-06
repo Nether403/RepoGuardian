@@ -12,6 +12,7 @@
     "build": "node ./build.mjs"
   },
   "dependencies": {
+    "@repo-guardian/advisory": "workspace:*",
     "@repo-guardian/dependencies": "workspace:*",
     "@repo-guardian/ecosystems": "workspace:*",
     "@repo-guardian/github": "workspace:*",

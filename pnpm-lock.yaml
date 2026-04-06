@@ -80,6 +80,9 @@ importers:
 
   artifacts/api:
     dependencies:
+      '@repo-guardian/advisory':
+        specifier: workspace:*
+        version: link:../../lib/advisory
       '@repo-guardian/dependencies':
         specifier: workspace:*
         version: link:../../lib/dependencies
@@ -113,6 +116,12 @@ importers:
       react-dom:
         specifier: ^19.1.0
         version: 19.2.4(react@19.2.4)
+
+  lib/advisory:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
 
   lib/dependencies:
     dependencies:

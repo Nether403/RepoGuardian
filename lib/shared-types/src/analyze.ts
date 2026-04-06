@@ -236,12 +236,89 @@ export const DependencySnapshotSchema = z.object({
   isPartial: z.boolean()
 });
 
+export const FindingSeveritySchema = z.enum([
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info"
+]);
+
+export const FindingConfidenceSchema = z.enum(["high", "medium", "low"]);
+
+export const FindingSourceTypeSchema = z.enum([
+  "dependency",
+  "code",
+  "config",
+  "workflow"
+]);
+
+export const FindingEvidenceSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1)
+});
+
+export const FindingLineSpanSchema = z.object({
+  path: z.string().min(1),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive()
+});
+
+export const AdvisoryReferenceSchema = z.object({
+  type: z.string().min(1).nullable(),
+  url: z.string().url()
+});
+
+export const DependencyFindingSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  category: z.string().min(1),
+  severity: FindingSeveritySchema,
+  confidence: FindingConfidenceSchema,
+  sourceType: z.literal("dependency"),
+  paths: z.array(z.string().min(1)),
+  lineSpans: z.array(FindingLineSpanSchema),
+  summary: z.string().min(1),
+  evidence: z.array(FindingEvidenceSchema),
+  recommendedAction: z.string().min(1),
+  candidateIssue: z.boolean(),
+  candidatePr: z.boolean(),
+  packageName: z.string().min(1),
+  installedVersion: z.string().min(1).nullable(),
+  affectedRange: z.string().min(1).nullable(),
+  dependencyType: DependencyTypeSchema,
+  isDirect: z.boolean(),
+  advisorySource: z.string().min(1),
+  advisoryId: z.string().min(1),
+  referenceUrls: z.array(z.string().url()),
+  remediationVersion: z.string().min(1).nullable(),
+  remediationType: z.enum(["upgrade", "review", "none"])
+});
+
+export const FindingsBySeveritySchema = z.object({
+  critical: z.number().int().nonnegative(),
+  high: z.number().int().nonnegative(),
+  medium: z.number().int().nonnegative(),
+  low: z.number().int().nonnegative(),
+  info: z.number().int().nonnegative()
+});
+
+export const DependencyFindingSummarySchema = z.object({
+  totalFindings: z.number().int().nonnegative(),
+  vulnerableDirectCount: z.number().int().nonnegative(),
+  vulnerableTransitiveCount: z.number().int().nonnegative(),
+  findingsBySeverity: FindingsBySeveritySchema,
+  isPartial: z.boolean()
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
   detectedFiles: DetectedFilesSchema,
   ecosystems: z.array(DetectedEcosystemSchema),
   dependencySnapshot: DependencySnapshotSchema,
+  dependencyFindings: z.array(DependencyFindingSchema),
+  dependencyFindingSummary: DependencyFindingSummarySchema,
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
   fetchedAt: z.string().datetime()
@@ -284,4 +361,15 @@ export type DependencySnapshotSummary = z.infer<
   typeof DependencySnapshotSummarySchema
 >;
 export type DependencySnapshot = z.infer<typeof DependencySnapshotSchema>;
+export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
+export type FindingConfidence = z.infer<typeof FindingConfidenceSchema>;
+export type FindingSourceType = z.infer<typeof FindingSourceTypeSchema>;
+export type FindingEvidence = z.infer<typeof FindingEvidenceSchema>;
+export type FindingLineSpan = z.infer<typeof FindingLineSpanSchema>;
+export type AdvisoryReference = z.infer<typeof AdvisoryReferenceSchema>;
+export type DependencyFinding = z.infer<typeof DependencyFindingSchema>;
+export type FindingsBySeverity = z.infer<typeof FindingsBySeveritySchema>;
+export type DependencyFindingSummary = z.infer<
+  typeof DependencyFindingSummarySchema
+>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;
