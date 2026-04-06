@@ -101,6 +101,9 @@ importers:
 
   artifacts/web:
     dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../../lib/shared-types
       react:
         specifier: ^19.1.0
         version: 19.2.4

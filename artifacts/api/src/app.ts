@@ -21,7 +21,7 @@ app.use("/api", apiRouter);
 app.get("/", (_request: Request, response: Response) => {
   response.json({
     name: "Repo Guardian API",
-    stage: "prompt-1-foundation",
+    stage: "milestone-1-analysis",
     status: "ready"
   });
 });

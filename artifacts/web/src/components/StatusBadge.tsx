@@ -1,12 +1,13 @@
 type StatusBadgeProps = {
   label: string;
-  tone?: "active" | "muted" | "up-next";
+  tone?: "active" | "muted" | "up-next" | "warning";
 };
 
 const toneClassNames: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
   active: "badge-active",
   muted: "badge-muted",
-  "up-next": "badge-up-next"
+  "up-next": "badge-up-next",
+  warning: "badge-warning"
 };
 
 export function StatusBadge({

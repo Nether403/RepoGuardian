@@ -4,11 +4,18 @@ type PanelProps = PropsWithChildren<{
   title: string;
   eyebrow?: string;
   footer?: ReactNode;
+  className?: string;
 }>;
 
-export function Panel({ children, eyebrow, footer, title }: PanelProps) {
+export function Panel({
+  children,
+  className,
+  eyebrow,
+  footer,
+  title
+}: PanelProps) {
   return (
-    <section className="panel">
+    <section className={className ? `panel ${className}` : "panel"}>
       <div className="panel-header">
         {eyebrow ? <p className="panel-eyebrow">{eyebrow}</p> : null}
         <h2>{title}</h2>
