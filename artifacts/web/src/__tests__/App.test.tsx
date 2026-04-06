@@ -39,6 +39,15 @@ async function submitRepository(
   await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
 }
 
+function buildAnchorId(prefix: string, rawId: string): string {
+  const normalized = rawId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+
+  return `${prefix}-${normalized || "item"}`;
+}
+
 const successPayload = AnalyzeRepoResponseSchema.parse({
   dependencyFindingSummary: {
     findingsBySeverity: {
@@ -327,6 +336,7 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
       affectedPaths: ["package-lock.json", "package.json"],
       candidateType: "dependency-upgrade",
       confidence: "high",
+      id: "patch-plan:pr:dependency-upgrade:react",
       linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
       patchPlan: {
         constraints: [
@@ -581,6 +591,84 @@ describe("App", () => {
     expect(screen.getByText(/1 executable/i)).toBeInTheDocument();
   });
 
+  it("renders same-page traceability anchors for patch plans, candidates, and findings", async () => {
+    const user = userEvent.setup();
+    const patchPlanId = successPayload.prPatchPlans[0]!.id;
+    const prCandidateId = successPayload.prCandidates[0]!.id;
+    const findingId = successPayload.dependencyFindings[0]!.id;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findByRole("heading", { name: /PR candidate traceability/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /Linked findings/i })
+    ).toBeInTheDocument();
+
+    expect(document.getElementById(buildAnchorId("patch-plan", patchPlanId))).not.toBeNull();
+    expect(document.getElementById(buildAnchorId("pr-candidate", prCandidateId))).not.toBeNull();
+    expect(document.getElementById(buildAnchorId("finding", findingId))).not.toBeNull();
+
+    expect(
+      screen
+        .getAllByRole("link", { name: patchPlanId })
+        .some((link) => link.getAttribute("href") === `#${buildAnchorId("patch-plan", patchPlanId)}`)
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("link", { name: prCandidateId })
+        .some(
+          (link) => link.getAttribute("href") === `#${buildAnchorId("pr-candidate", prCandidateId)}`
+        )
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("link", { name: findingId })
+        .some((link) => link.getAttribute("href") === `#${buildAnchorId("finding", findingId)}`)
+    ).toBe(true);
+    expect(
+      screen.queryByText("Workflow does not declare explicit permissions")
+    ).not.toBeInTheDocument();
+  });
+
+  it("supports inline expansion for patch-plan, candidate, and finding detail cards", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByText(/Eligible for approved deterministic npm dependency write-back/i);
+
+    const patchPlanDetails = screen.getByText("Patch-plan detail").closest("details");
+    const candidateDetails = screen.getByText("Candidate detail").closest("details");
+    const findingDetails = screen.getByText("Finding detail").closest("details");
+
+    expect(patchPlanDetails).not.toHaveAttribute("open");
+    expect(candidateDetails).not.toHaveAttribute("open");
+    expect(findingDetails).not.toHaveAttribute("open");
+
+    await user.click(screen.getByText("Patch-plan detail"));
+    await user.click(screen.getByText("Candidate detail"));
+    await user.click(screen.getByText("Finding detail"));
+
+    expect(patchPlanDetails).toHaveAttribute("open");
+    expect(candidateDetails).toHaveAttribute("open");
+    expect(findingDetails).toHaveAttribute("open");
+  });
+
   it("renders blocked dependency write-back reasons when eligibility is blocked", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
@@ -615,5 +703,11 @@ describe("App", () => {
     ).toHaveLength(2);
     expect(screen.getByText(/1 blocked/i)).toBeInTheDocument();
     expect(screen.getByText(/Patchability: patch_candidate./i)).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: successPayload.prPatchPlans[0]!.id }).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("link", { name: successPayload.prCandidates[0]!.id }).length
+    ).toBeGreaterThan(0);
   });
 });

@@ -17,6 +17,10 @@ export type PRPatchPlanResult = {
   summary: PRPatchPlanSummary;
 };
 
+function createPRPatchPlanId(prCandidateId: string): string {
+  return `patch-plan:${prCandidateId}`;
+}
+
 function buildIssueCandidateIndex(issueCandidates: IssueCandidate[]): Set<string> {
   return new Set(issueCandidates.map((candidate) => candidate.id));
 }
@@ -67,6 +71,7 @@ function createPatchPlanRecord(input: {
     affectedPaths: input.candidate.affectedPaths,
     candidateType: input.candidate.candidateType,
     confidence: input.candidate.confidence,
+    id: createPRPatchPlanId(input.candidate.id),
     linkedIssueCandidateIds,
     patchability: assessment.patchability,
     patchPlan,

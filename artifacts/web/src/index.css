@@ -443,22 +443,33 @@ code {
   gap: 1rem;
 }
 
-.readiness-card {
+.readiness-card,
+.trace-card {
   display: grid;
   gap: 0.95rem;
   padding: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
+  scroll-margin-top: 1.5rem;
 }
 
-.readiness-card-header {
+.readiness-card:target,
+.trace-card:target {
+  border-color: rgba(140, 201, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(140, 201, 255, 0.16);
+  background: rgba(140, 201, 255, 0.07);
+}
+
+.readiness-card-header,
+.trace-card-header {
   display: flex;
   gap: 1rem;
   justify-content: space-between;
   align-items: flex-start;
 }
 
-.readiness-card h3 {
+.readiness-card h3,
+.trace-card h3 {
   margin: 0.45rem 0 0;
   font-size: 1.15rem;
   font-weight: 600;
@@ -483,6 +494,83 @@ code {
 
 .readiness-details li:last-child {
   padding-bottom: 0;
+}
+
+.traceability-list,
+.trace-expander-content,
+.trace-meta-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.traceability-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.trace-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.trace-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #eff7ff;
+  text-decoration: none;
+}
+
+.trace-chip-link:hover,
+.trace-chip-link:focus-visible,
+.trace-link:hover,
+.trace-link:focus-visible {
+  color: var(--accent);
+}
+
+.trace-chip-muted {
+  color: var(--text-muted);
+}
+
+.trace-copy {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.trace-meta-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.trace-expander {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.85rem;
+}
+
+.trace-expander summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.trace-expander summary::-webkit-details-marker {
+  display: none;
+}
+
+.trace-expander[open] summary {
+  margin-bottom: 0.95rem;
+}
+
+.trace-link {
+  color: inherit;
+  text-decoration: none;
 }
 
 @media (max-width: 1080px) {
@@ -543,7 +631,8 @@ code {
     padding: 1.15rem;
   }
 
-  .readiness-card-header {
+  .readiness-card-header,
+  .trace-card-header {
     flex-direction: column;
   }
 }

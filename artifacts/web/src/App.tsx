@@ -1,9 +1,12 @@
 import { useState, type FormEvent } from "react";
 import type {
   AnalyzeRepoResponse,
+  CodeReviewFinding,
+  DependencyFinding,
   DetectedEcosystem,
   DetectedFileGroup,
   DetectedSignal,
+  PRCandidate,
   PRPatchPlan,
   PRWriteBackEligibility
 } from "@repo-guardian/shared-types";
@@ -55,6 +58,18 @@ const prCandidateTypeLabels: Record<PRPatchPlan["candidateType"], string> = {
   "workflow-hardening": "Workflow hardening"
 };
 
+type TraceableFinding = DependencyFinding | CodeReviewFinding;
+
+type TraceabilityViewModel = {
+  findingById: Map<string, TraceableFinding>;
+  patchPlanById: Map<string, PRPatchPlan>;
+  patchPlansByCandidateId: Map<string, PRPatchPlan[]>;
+  patchPlansByFindingId: Map<string, PRPatchPlan[]>;
+  prCandidateById: Map<string, PRCandidate>;
+  referencedCandidates: PRCandidate[];
+  referencedFindings: TraceableFinding[];
+};
+
 function formatTimestamp(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -68,6 +83,43 @@ function formatPatchability(value: PRPatchPlan["patchability"]): string {
 
 function formatValidationStatus(value: PRPatchPlan["validationStatus"]): string {
   return value.replace(/_/gu, " ");
+}
+
+function formatReadiness(value: PRCandidate["readiness"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function formatSourceType(value: TraceableFinding["sourceType"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function formatSeverity(value: TraceableFinding["severity"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function formatConfidence(value: TraceableFinding["confidence"]): string {
+  return value.replace(/_/gu, " ");
+}
+
+function buildAnchorId(prefix: string, rawId: string): string {
+  const normalized = rawId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+
+  return `${prefix}-${normalized || "item"}`;
+}
+
+function getPatchPlanAnchorId(patchPlanId: string): string {
+  return buildAnchorId("patch-plan", patchPlanId);
+}
+
+function getPRCandidateAnchorId(candidateId: string): string {
+  return buildAnchorId("pr-candidate", candidateId);
+}
+
+function getFindingAnchorId(findingId: string): string {
+  return buildAnchorId("finding", findingId);
 }
 
 function getPatchabilityTone(
@@ -96,6 +148,38 @@ function getEligibilityTone(
   return status === "executable" ? "active" : "warning";
 }
 
+function getCandidateReadinessTone(
+  readiness: PRCandidate["readiness"]
+): "active" | "warning" | "muted" {
+  if (readiness === "ready") {
+    return "active";
+  }
+
+  return readiness === "ready_with_warnings" ? "warning" : "muted";
+}
+
+function getRiskTone(
+  riskLevel: PRCandidate["riskLevel"]
+): "warning" | "muted" {
+  return riskLevel === "low" ? "muted" : "warning";
+}
+
+function getSeverityTone(
+  severity: TraceableFinding["severity"]
+): "warning" | "muted" {
+  return severity === "high" || severity === "critical" ? "warning" : "muted";
+}
+
+function getConfidenceTone(
+  confidence: TraceableFinding["confidence"]
+): "active" | "warning" | "muted" {
+  if (confidence === "high") {
+    return "active";
+  }
+
+  return confidence === "medium" ? "warning" : "muted";
+}
+
 function getWriteBackEligibility(
   plan: PRPatchPlan
 ): PRWriteBackEligibility {
@@ -109,6 +193,62 @@ function getWriteBackEligibility(
       summary: "Write-back eligibility details were not included in this analysis payload."
     }
   );
+}
+
+function isDependencyFinding(
+  finding: TraceableFinding
+): finding is DependencyFinding {
+  return finding.sourceType === "dependency";
+}
+
+function buildTraceabilityViewModel(
+  analysis: AnalyzeRepoResponse
+): TraceabilityViewModel {
+  const patchPlanById = new Map<string, PRPatchPlan>();
+  const prCandidateById = new Map<string, PRCandidate>();
+  const patchPlansByCandidateId = new Map<string, PRPatchPlan[]>();
+  const patchPlansByFindingId = new Map<string, PRPatchPlan[]>();
+  const mergedFindings: TraceableFinding[] = [
+    ...analysis.dependencyFindings,
+    ...analysis.codeReviewFindings
+  ];
+  const findingById = new Map<string, TraceableFinding>();
+
+  for (const candidate of analysis.prCandidates) {
+    prCandidateById.set(candidate.id, candidate);
+  }
+
+  for (const finding of mergedFindings) {
+    findingById.set(finding.id, finding);
+  }
+
+  for (const plan of analysis.prPatchPlans) {
+    patchPlanById.set(plan.id, plan);
+
+    const candidatePlans = patchPlansByCandidateId.get(plan.prCandidateId) ?? [];
+    candidatePlans.push(plan);
+    patchPlansByCandidateId.set(plan.prCandidateId, candidatePlans);
+
+    for (const findingId of plan.relatedFindingIds) {
+      const findingPlans = patchPlansByFindingId.get(findingId) ?? [];
+      findingPlans.push(plan);
+      patchPlansByFindingId.set(findingId, findingPlans);
+    }
+  }
+
+  return {
+    findingById,
+    patchPlanById,
+    patchPlansByCandidateId,
+    patchPlansByFindingId,
+    prCandidateById,
+    referencedCandidates: analysis.prCandidates.filter((candidate) =>
+      patchPlansByCandidateId.has(candidate.id)
+    ),
+    referencedFindings: mergedFindings.filter((finding) =>
+      patchPlansByFindingId.has(finding.id)
+    )
+  };
 }
 
 function renderFileList(items: DetectedFileGroup[], emptyLabel: string) {
@@ -202,6 +342,17 @@ function App() {
         }
       )
     : null;
+  const traceability = analysis
+    ? buildTraceabilityViewModel(analysis)
+    : {
+        findingById: new Map<string, TraceableFinding>(),
+        patchPlanById: new Map<string, PRPatchPlan>(),
+        patchPlansByCandidateId: new Map<string, PRPatchPlan[]>(),
+        patchPlansByFindingId: new Map<string, PRPatchPlan[]>(),
+        prCandidateById: new Map<string, PRCandidate>(),
+        referencedCandidates: [],
+        referencedFindings: []
+      };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -403,15 +554,27 @@ function App() {
               <div className="readiness-list">
                 {analysis.prPatchPlans.map((plan) => {
                   const eligibility = getWriteBackEligibility(plan);
+                  const traceabilityPlan = traceability.patchPlanById.get(plan.id) ?? plan;
+                  const patchPlanAnchorId = getPatchPlanAnchorId(traceabilityPlan.id);
+                  const candidateAnchorId = getPRCandidateAnchorId(
+                    traceabilityPlan.prCandidateId
+                  );
+                  const linkedFindings = traceabilityPlan.relatedFindingIds
+                    .map((findingId) => traceability.findingById.get(findingId))
+                    .filter((finding): finding is TraceableFinding => Boolean(finding));
 
                   return (
-                    <article className="readiness-card" key={plan.prCandidateId}>
+                    <article
+                      className="readiness-card"
+                      id={patchPlanAnchorId}
+                      key={traceabilityPlan.id}
+                    >
                       <div className="readiness-card-header">
                         <div>
                           <p className="subsection-label">
-                            {prCandidateTypeLabels[plan.candidateType]}
+                            {prCandidateTypeLabels[traceabilityPlan.candidateType]}
                           </p>
-                          <h3>{plan.title}</h3>
+                          <h3>{traceabilityPlan.title}</h3>
                         </div>
                         <StatusBadge
                           label={eligibility.status}
@@ -420,12 +583,12 @@ function App() {
                       </div>
                       <div className="badge-row">
                         <StatusBadge
-                          label={formatPatchability(plan.patchability)}
-                          tone={getPatchabilityTone(plan.patchability)}
+                          label={formatPatchability(traceabilityPlan.patchability)}
+                          tone={getPatchabilityTone(traceabilityPlan.patchability)}
                         />
                         <StatusBadge
-                          label={formatValidationStatus(plan.validationStatus)}
-                          tone={getValidationTone(plan.validationStatus)}
+                          label={formatValidationStatus(traceabilityPlan.validationStatus)}
+                          tone={getValidationTone(traceabilityPlan.validationStatus)}
                         />
                         {eligibility.approvalRequired ? (
                           <StatusBadge label="Approval required" tone="up-next" />
@@ -434,9 +597,123 @@ function App() {
                       <p className="readiness-summary">{eligibility.summary}</p>
                       <ul className="detail-list readiness-details">
                         {eligibility.details.map((detail) => (
-                          <li key={`${plan.prCandidateId}:${detail}`}>{detail}</li>
+                          <li key={`${traceabilityPlan.id}:${detail}`}>{detail}</li>
                         ))}
                       </ul>
+                      <div className="traceability-section">
+                        <p className="subsection-label">Traceability</p>
+                        <div className="trace-chip-row">
+                          <a
+                            className="trace-chip trace-chip-link"
+                            href={`#${patchPlanAnchorId}`}
+                          >
+                            <code>{traceabilityPlan.id}</code>
+                          </a>
+                          <a
+                            className="trace-chip trace-chip-link"
+                            href={`#${candidateAnchorId}`}
+                          >
+                            <code>{traceabilityPlan.prCandidateId}</code>
+                          </a>
+                          {traceabilityPlan.relatedFindingIds.map((findingId) => (
+                            <a
+                              className="trace-chip trace-chip-link"
+                              href={`#${getFindingAnchorId(findingId)}`}
+                              key={`${traceabilityPlan.id}:${findingId}`}
+                            >
+                              <code>{findingId}</code>
+                            </a>
+                          ))}
+                          {traceabilityPlan.linkedIssueCandidateIds.map((issueCandidateId) => (
+                            <span
+                              className="trace-chip trace-chip-muted"
+                              key={`${traceabilityPlan.id}:${issueCandidateId}`}
+                            >
+                              <code>{issueCandidateId}</code>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <details className="trace-expander">
+                        <summary>Patch-plan detail</summary>
+                        <div className="trace-expander-content">
+                          {traceabilityPlan.patchPlan ? (
+                            <>
+                              <div>
+                                <p className="subsection-label">Patch strategy</p>
+                                <p className="trace-copy">
+                                  {traceabilityPlan.patchPlan.patchStrategy}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="subsection-label">Planned files</p>
+                                <ul className="file-list">
+                                  {traceabilityPlan.patchPlan.filesPlanned.map((filePlan) => (
+                                    <li
+                                      className="file-row"
+                                      key={`${traceabilityPlan.id}:${filePlan.path}`}
+                                    >
+                                      <span className="file-kind">{filePlan.changeType}</span>
+                                      <code>{filePlan.path}</code>
+                                      <span className="trace-copy">{filePlan.reason}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div>
+                                <p className="subsection-label">Constraints</p>
+                                <ul className="simple-list">
+                                  {traceabilityPlan.patchPlan.constraints.map((constraint) => (
+                                    <li key={`${traceabilityPlan.id}:${constraint}`}>
+                                      {constraint}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div>
+                                <p className="subsection-label">Validation steps</p>
+                                <ul className="simple-list">
+                                  {traceabilityPlan.patchPlan.requiredValidationSteps.map(
+                                    (step) => (
+                                      <li key={`${traceabilityPlan.id}:${step}`}>{step}</li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="trace-copy">
+                              No concrete file patch plan is attached to this PR candidate.
+                            </p>
+                          )}
+                          <div>
+                            <p className="subsection-label">Validation notes</p>
+                            <ul className="simple-list">
+                              {traceabilityPlan.validationNotes.map((note) => (
+                                <li key={`${traceabilityPlan.id}:${note}`}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          {linkedFindings.length > 0 ? (
+                            <div>
+                              <p className="subsection-label">Linked findings</p>
+                              <ul className="simple-list">
+                                {linkedFindings.map((finding) => (
+                                  <li key={`${traceabilityPlan.id}:${finding.id}`}>
+                                    <a
+                                      className="trace-link"
+                                      href={`#${getFindingAnchorId(finding.id)}`}
+                                    >
+                                      <code>{finding.id}</code>
+                                    </a>{" "}
+                                    {finding.title}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      </details>
                     </article>
                   );
                 })}
@@ -444,6 +721,299 @@ function App() {
             ) : (
               <p className="empty-copy">
                 No PR patch plans were generated for this repository snapshot.
+              </p>
+            )}
+          </Panel>
+
+          <Panel
+            className="panel-wide"
+            eyebrow="PR Candidates"
+            title="PR candidate traceability"
+          >
+            {traceability.referencedCandidates.length > 0 ? (
+              <div className="traceability-list">
+                {traceability.referencedCandidates.map((candidate) => {
+                  const candidateAnchorId = getPRCandidateAnchorId(candidate.id);
+                  const relatedPatchPlans =
+                    traceability.patchPlansByCandidateId.get(candidate.id) ?? [];
+
+                  return (
+                    <article
+                      className="trace-card"
+                      id={candidateAnchorId}
+                      key={candidate.id}
+                    >
+                      <div className="trace-card-header">
+                        <div>
+                          <p className="subsection-label">
+                            {prCandidateTypeLabels[candidate.candidateType]}
+                          </p>
+                          <h3>{candidate.title}</h3>
+                        </div>
+                        <div className="badge-row">
+                          <StatusBadge
+                            label={formatReadiness(candidate.readiness)}
+                            tone={getCandidateReadinessTone(candidate.readiness)}
+                          />
+                          <StatusBadge
+                            label={`${candidate.riskLevel} risk`}
+                            tone={getRiskTone(candidate.riskLevel)}
+                          />
+                        </div>
+                      </div>
+                      <p className="trace-copy">{candidate.summary}</p>
+                      <div className="traceability-section">
+                        <p className="subsection-label">Traceability</p>
+                        <div className="trace-chip-row">
+                          <a
+                            className="trace-chip trace-chip-link"
+                            href={`#${candidateAnchorId}`}
+                          >
+                            <code>{candidate.id}</code>
+                          </a>
+                          {relatedPatchPlans.map((patchPlan) => (
+                            <a
+                              className="trace-chip trace-chip-link"
+                              href={`#${getPatchPlanAnchorId(patchPlan.id)}`}
+                              key={`${candidate.id}:${patchPlan.id}`}
+                            >
+                              <code>{patchPlan.id}</code>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="trace-meta-grid">
+                        <div>
+                          <p className="subsection-label">Affected paths</p>
+                          <ul className="simple-list">
+                            {candidate.affectedPaths.map((path) => (
+                              <li key={`${candidate.id}:${path}`}>
+                                <code>{path}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="subsection-label">Affected packages</p>
+                          {candidate.affectedPackages.length > 0 ? (
+                            <ul className="simple-list">
+                              {candidate.affectedPackages.map((pkg) => (
+                                <li key={`${candidate.id}:${pkg}`}>
+                                  <code>{pkg}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="trace-copy">No package-level scope.</p>
+                          )}
+                        </div>
+                      </div>
+                      <details className="trace-expander">
+                        <summary>Candidate detail</summary>
+                        <div className="trace-expander-content">
+                          <div>
+                            <p className="subsection-label">Rationale</p>
+                            <p className="trace-copy">{candidate.rationale}</p>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Rollback note</p>
+                            <p className="trace-copy">{candidate.rollbackNote}</p>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Test plan</p>
+                            <ul className="simple-list">
+                              {candidate.testPlan.map((step) => (
+                                <li key={`${candidate.id}:${step}`}>{step}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Expected file changes</p>
+                            <ul className="file-list">
+                              {candidate.expectedFileChanges.map((change) => (
+                                <li
+                                  className="file-row"
+                                  key={`${candidate.id}:${change.path}`}
+                                >
+                                  <span className="file-kind">{change.changeType}</span>
+                                  <code>{change.path}</code>
+                                  <span className="trace-copy">{change.reason}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="empty-copy">
+                No PR candidates are referenced by the current readiness cards.
+              </p>
+            )}
+          </Panel>
+
+          <Panel
+            className="panel-wide"
+            eyebrow="Findings"
+            title="Linked findings"
+          >
+            {traceability.referencedFindings.length > 0 ? (
+              <div className="traceability-list">
+                {traceability.referencedFindings.map((finding) => {
+                  const findingAnchorId = getFindingAnchorId(finding.id);
+                  const relatedPatchPlans =
+                    traceability.patchPlansByFindingId.get(finding.id) ?? [];
+
+                  return (
+                    <article
+                      className="trace-card"
+                      id={findingAnchorId}
+                      key={finding.id}
+                    >
+                      <div className="trace-card-header">
+                        <div>
+                          <p className="subsection-label">{formatSourceType(finding.sourceType)}</p>
+                          <h3>{finding.title}</h3>
+                        </div>
+                        <div className="badge-row">
+                          <StatusBadge
+                            label={formatSeverity(finding.severity)}
+                            tone={getSeverityTone(finding.severity)}
+                          />
+                          <StatusBadge
+                            label={formatConfidence(finding.confidence)}
+                            tone={getConfidenceTone(finding.confidence)}
+                          />
+                        </div>
+                      </div>
+                      <p className="trace-copy">{finding.summary}</p>
+                      <div className="traceability-section">
+                        <p className="subsection-label">Traceability</p>
+                        <div className="trace-chip-row">
+                          <a
+                            className="trace-chip trace-chip-link"
+                            href={`#${findingAnchorId}`}
+                          >
+                            <code>{finding.id}</code>
+                          </a>
+                          {relatedPatchPlans.map((patchPlan) => (
+                            <a
+                              className="trace-chip trace-chip-link"
+                              href={`#${getPatchPlanAnchorId(patchPlan.id)}`}
+                              key={`${finding.id}:${patchPlan.id}`}
+                            >
+                              <code>{patchPlan.id}</code>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="subsection-label">Paths</p>
+                        <ul className="simple-list">
+                          {finding.paths.map((path) => (
+                            <li key={`${finding.id}:${path}`}>
+                              <code>{path}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <details className="trace-expander">
+                        <summary>Finding detail</summary>
+                        <div className="trace-expander-content">
+                          <div>
+                            <p className="subsection-label">Recommended action</p>
+                            <p className="trace-copy">{finding.recommendedAction}</p>
+                          </div>
+                          {finding.evidence.length > 0 ? (
+                            <div>
+                              <p className="subsection-label">Evidence</p>
+                              <ul className="simple-list">
+                                {finding.evidence.map((entry) => (
+                                  <li key={`${finding.id}:${entry.label}:${entry.value}`}>
+                                    <strong>{entry.label}:</strong> {entry.value}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {finding.lineSpans.length > 0 ? (
+                            <div>
+                              <p className="subsection-label">Line spans</p>
+                              <ul className="simple-list">
+                                {finding.lineSpans.map((lineSpan) => (
+                                  <li
+                                    key={`${finding.id}:${lineSpan.path}:${lineSpan.startLine}:${lineSpan.endLine}`}
+                                  >
+                                    <code>
+                                      {lineSpan.path}:{lineSpan.startLine}-{lineSpan.endLine}
+                                    </code>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {isDependencyFinding(finding) ? (
+                            <>
+                              <div className="trace-meta-grid">
+                                <div>
+                                  <p className="subsection-label">Package</p>
+                                  <p className="trace-copy">
+                                    <code>{finding.packageName}</code>
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="subsection-label">Installed version</p>
+                                  <p className="trace-copy">
+                                    {finding.installedVersion ? (
+                                      <code>{finding.installedVersion}</code>
+                                    ) : (
+                                      "Unknown"
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="subsection-label">Remediation version</p>
+                                  <p className="trace-copy">
+                                    {finding.remediationVersion ? (
+                                      <code>{finding.remediationVersion}</code>
+                                    ) : (
+                                      "None"
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="subsection-label">Remediation type</p>
+                                  <p className="trace-copy">{finding.remediationType}</p>
+                                </div>
+                              </div>
+                              {finding.referenceUrls.length > 0 ? (
+                                <div>
+                                  <p className="subsection-label">References</p>
+                                  <ul className="simple-list">
+                                    {finding.referenceUrls.map((url) => (
+                                      <li key={`${finding.id}:${url}`}>
+                                        <a className="trace-link" href={url}>
+                                          {url}
+                                        </a>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="empty-copy">
+                No findings are referenced by the current readiness cards.
               </p>
             )}
           </Panel>

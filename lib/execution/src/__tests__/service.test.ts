@@ -90,6 +90,7 @@ function workflowPatchPlan(
     affectedPaths: [".github/workflows/ci.yml"],
     candidateType: "workflow-hardening",
     confidence: "high",
+    id: "patch-plan:pr:workflow-hardening:.github/workflows/ci.yml",
     linkedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
     patchPlan: {
       constraints: ["Keep the change inside one workflow file."],
@@ -259,6 +260,7 @@ function dependencyPatchPlan(
     affectedPaths: ["package-lock.json", "package.json"],
     candidateType: "dependency-upgrade",
     confidence: "high",
+    id: "patch-plan:pr:dependency-upgrade:react",
     linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
     patchPlan: {
       constraints: [

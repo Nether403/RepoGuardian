@@ -536,6 +536,7 @@ describe("POST /api/analyze", () => {
           affectedPaths: ["package-lock.json", "package.json"],
           candidateType: "dependency-upgrade",
           confidence: "high",
+          id: "patch-plan:pr:dependency-upgrade:react",
           linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
           patchPlan: {
             constraints: [
@@ -601,6 +602,7 @@ describe("POST /api/analyze", () => {
           affectedPaths: [".github/workflows/ci.yml"],
           candidateType: "workflow-hardening",
           confidence: "high",
+          id: "patch-plan:pr:workflow-hardening:.github/workflows/ci.yml",
           linkedIssueCandidateIds: [
             "issue:workflow-hardening:.github/workflows/ci.yml"
           ],
@@ -860,6 +862,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(200);
     expect(response.body.prPatchPlans).toHaveLength(1);
     expect(response.body.prPatchPlans[0]).toMatchObject({
+      id: "patch-plan:pr:dependency-upgrade:react",
       prCandidateId: "pr:dependency-upgrade:react",
       writeBackEligibility: {
         approvalRequired: true,

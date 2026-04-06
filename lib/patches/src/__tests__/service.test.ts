@@ -145,6 +145,7 @@ describe("createPRPatchPlanResult", () => {
 
     expect(result.plans).toEqual([
       expect.objectContaining({
+        id: "patch-plan:pr:dependency-upgrade:react",
         patchability: "patch_candidate",
         prCandidateId: "pr:dependency-upgrade:react",
         validationStatus: "ready"
@@ -355,10 +356,31 @@ describe("createPRPatchPlanResult", () => {
     });
 
     expect(result.plans[0]).toMatchObject({
+      id: "patch-plan:pr:dependency-upgrade:react",
       linkedIssueCandidateIds: ["issue:dependency-upgrade:react"],
       prCandidateId: "pr:dependency-upgrade:react",
       relatedFindingIds: ["dependency:react:1"]
     });
+  });
+
+  it("creates a deterministic patch-plan id from the PR candidate id", () => {
+    const firstResult = createPRPatchPlanResult({
+      codeReviewFindings: [],
+      dependencyFindings: [dependencyFinding()],
+      issueCandidates: [issueCandidate()],
+      prCandidates: [prCandidate()],
+      warningDetails: []
+    });
+    const secondResult = createPRPatchPlanResult({
+      codeReviewFindings: [],
+      dependencyFindings: [dependencyFinding()],
+      issueCandidates: [issueCandidate()],
+      prCandidates: [prCandidate()],
+      warningDetails: []
+    });
+
+    expect(firstResult.plans[0]?.id).toBe("patch-plan:pr:dependency-upgrade:react");
+    expect(secondResult.plans[0]?.id).toBe(firstResult.plans[0]?.id);
   });
 
   it("summarizes patch plans by patchability and validation status", () => {

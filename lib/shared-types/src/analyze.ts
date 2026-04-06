@@ -530,6 +530,7 @@ export const PRWriteBackEligibilitySchema = z.object({
 });
 
 export const PRPatchPlanSchema = z.object({
+  id: z.string().min(1),
   prCandidateId: z.string().min(1),
   title: z.string().min(1),
   candidateType: PRCandidateTypeSchema,

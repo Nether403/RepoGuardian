@@ -86,6 +86,7 @@ describe("analyze schemas", () => {
           affectedPaths: ["package-lock.json", "package.json"],
           candidateType: "dependency-upgrade",
           confidence: "high",
+          id: "patch-plan:pr:dependency-upgrade:react",
           linkedIssueCandidateIds: [],
           patchPlan: null,
           patchWarnings: [],
