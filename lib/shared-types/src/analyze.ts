@@ -170,11 +170,78 @@ export const DetectedFilesSchema = z.object({
   )
 });
 
+export const DependencyTypeSchema = z.enum([
+  "production",
+  "development",
+  "peer",
+  "optional",
+  "transitive"
+]);
+
+export const ParseConfidenceSchema = z.enum(["high", "medium", "low"]);
+
+export const DependencyFileKindSchema = z.union([
+  ManifestKindSchema,
+  LockfileKindSchema
+]);
+
+export const NormalizedDependencySchema = z.object({
+  ecosystem: EcosystemIdSchema,
+  packageManager: PackageManagerIdSchema.nullable(),
+  name: z.string().min(1),
+  version: z.string().min(1).nullable(),
+  dependencyType: DependencyTypeSchema,
+  isDirect: z.boolean(),
+  sourceFile: z.string().min(1),
+  workspacePath: z.string().min(1).nullable(),
+  parseConfidence: ParseConfidenceSchema
+});
+
+export const ParsedDependencyFileSchema = z.object({
+  ecosystem: EcosystemIdSchema,
+  kind: DependencyFileKindSchema,
+  path: z.string().min(1),
+  packageManager: PackageManagerIdSchema.nullable(),
+  dependencyCount: z.number().int().nonnegative()
+});
+
+export const SkippedDependencyFileSchema = z.object({
+  ecosystem: EcosystemIdSchema,
+  kind: DependencyFileKindSchema,
+  path: z.string().min(1),
+  reason: z.string().min(1)
+});
+
+export const DependencySummaryByEcosystemSchema = z.object({
+  ecosystem: EcosystemIdSchema,
+  totalDependencies: z.number().int().nonnegative(),
+  directDependencies: z.number().int().nonnegative()
+});
+
+export const DependencySnapshotSummarySchema = z.object({
+  totalDependencies: z.number().int().nonnegative(),
+  directDependencies: z.number().int().nonnegative(),
+  transitiveDependencies: z.number().int().nonnegative(),
+  parsedFileCount: z.number().int().nonnegative(),
+  skippedFileCount: z.number().int().nonnegative(),
+  byEcosystem: z.array(DependencySummaryByEcosystemSchema)
+});
+
+export const DependencySnapshotSchema = z.object({
+  summary: DependencySnapshotSummarySchema,
+  dependencies: z.array(NormalizedDependencySchema),
+  filesParsed: z.array(ParsedDependencyFileSchema),
+  filesSkipped: z.array(SkippedDependencyFileSchema),
+  parseWarnings: z.array(z.string()),
+  isPartial: z.boolean()
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
   detectedFiles: DetectedFilesSchema,
   ecosystems: z.array(DetectedEcosystemSchema),
+  dependencySnapshot: DependencySnapshotSchema,
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
   fetchedAt: z.string().datetime()
@@ -204,4 +271,17 @@ export type RepositoryIntakeSnapshot = z.infer<
 export type PublicTreeSummary = z.infer<typeof PublicTreeSummarySchema>;
 export type DetectedFileGroup = z.infer<typeof DetectedFileGroupSchema>;
 export type DetectedFiles = z.infer<typeof DetectedFilesSchema>;
+export type DependencyType = z.infer<typeof DependencyTypeSchema>;
+export type ParseConfidence = z.infer<typeof ParseConfidenceSchema>;
+export type DependencyFileKind = z.infer<typeof DependencyFileKindSchema>;
+export type NormalizedDependency = z.infer<typeof NormalizedDependencySchema>;
+export type ParsedDependencyFile = z.infer<typeof ParsedDependencyFileSchema>;
+export type SkippedDependencyFile = z.infer<typeof SkippedDependencyFileSchema>;
+export type DependencySummaryByEcosystem = z.infer<
+  typeof DependencySummaryByEcosystemSchema
+>;
+export type DependencySnapshotSummary = z.infer<
+  typeof DependencySnapshotSummarySchema
+>;
+export type DependencySnapshot = z.infer<typeof DependencySnapshotSchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;

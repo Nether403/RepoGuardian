@@ -24,6 +24,24 @@ type FetchJsonOptions = {
   accept?: string;
 };
 
+type FetchTextOptions = {
+  accept?: string;
+};
+
+type RepositoryFileRequest = {
+  owner: string;
+  path: string;
+  ref: string;
+  repo: string;
+};
+
+function encodeRepositoryPath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 export class GitHubReadClient {
   private readonly apiBaseUrl: string;
   private readonly fetchImpl?: typeof fetch;
@@ -98,6 +116,31 @@ export class GitHubReadClient {
     }
   }
 
+  async fetchRepositoryFileText(request: RepositoryFileRequest): Promise<string> {
+    try {
+      return await this.fetchText(
+        `/repos/${request.owner}/${request.repo}/contents/${encodeRepositoryPath(
+          request.path
+        )}?ref=${encodeURIComponent(request.ref)}`,
+        {
+          accept: "application/vnd.github.raw"
+        }
+      );
+    } catch (error) {
+      if (error instanceof GitHubReadError) {
+        throw error;
+      }
+
+      throw new GitHubReadError(
+        "network_error",
+        "Failed to reach the GitHub API",
+        {
+          cause: error
+        }
+      );
+    }
+  }
+
   private async fetchJson(path: string, options: FetchJsonOptions = {}): Promise<unknown> {
     const fetchImpl = this.fetchImpl ?? fetch;
 
@@ -123,6 +166,38 @@ export class GitHubReadClient {
       throw new GitHubReadError(
         "upstream_invalid_response",
         "GitHub returned invalid JSON",
+        {
+          cause: error
+        }
+      );
+    }
+  }
+
+  private async fetchText(path: string, options: FetchTextOptions = {}): Promise<string> {
+    const fetchImpl = this.fetchImpl ?? fetch;
+
+    let response: Response;
+
+    try {
+      response = await fetchImpl(`${this.apiBaseUrl}${path}`, {
+        headers: this.buildHeaders(options.accept)
+      });
+    } catch (error) {
+      throw new GitHubReadError("network_error", "Failed to reach the GitHub API", {
+        cause: error
+      });
+    }
+
+    if (!response.ok) {
+      await this.throwForResponse(response);
+    }
+
+    try {
+      return await response.text();
+    } catch (error) {
+      throw new GitHubReadError(
+        "upstream_invalid_response",
+        "GitHub returned invalid file content",
         {
           cause: error
         }

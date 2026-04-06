@@ -26,6 +26,47 @@ function createDeferredResponse() {
 }
 
 const successPayload = AnalyzeRepoResponseSchema.parse({
+  dependencySnapshot: {
+    dependencies: [
+      {
+        dependencyType: "production",
+        ecosystem: "node",
+        isDirect: true,
+        name: "react",
+        packageManager: "npm",
+        parseConfidence: "high",
+        sourceFile: "package.json",
+        version: "^19.0.0",
+        workspacePath: "."
+      }
+    ],
+    filesParsed: [
+      {
+        dependencyCount: 1,
+        ecosystem: "node",
+        kind: "package.json",
+        packageManager: "npm",
+        path: "package.json"
+      }
+    ],
+    filesSkipped: [],
+    isPartial: false,
+    parseWarnings: [],
+    summary: {
+      byEcosystem: [
+        {
+          directDependencies: 1,
+          ecosystem: "node",
+          totalDependencies: 1
+        }
+      ],
+      directDependencies: 1,
+      parsedFileCount: 1,
+      skippedFileCount: 0,
+      totalDependencies: 1,
+      transitiveDependencies: 0
+    }
+  },
   detectedFiles: {
     lockfiles: [
       {
@@ -161,6 +202,7 @@ describe("App", () => {
       vi.fn<typeof fetch>().mockResolvedValue(
         createJsonResponse(
           {
+            dependencySnapshot: successPayload.dependencySnapshot,
             error: "Repository not found or not publicly accessible"
           },
           false,

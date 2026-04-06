@@ -14,6 +14,14 @@ function createJsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
+function createTextResponse(body: string, init?: ResponseInit): Response {
+  return new Response(body, {
+    status: init?.status ?? 200,
+    statusText: init?.statusText,
+    ...(init ?? {})
+  });
+}
+
 describe("POST /api/analyze", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -75,6 +83,32 @@ describe("POST /api/analyze", () => {
           ],
           truncated: false
         })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            dependencies: {
+              react: "^19.0.0"
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            packages: {
+              "": {
+                dependencies: {
+                  react: "^19.0.0"
+                }
+              },
+              "node_modules/react": {
+                name: "react",
+                version: "19.0.0"
+              }
+            }
+          })
+        )
       );
 
     vi.stubGlobal("fetch", fetchMock);
@@ -105,6 +139,65 @@ describe("POST /api/analyze", () => {
             path: ".github/workflows/ci.yml"
           }
         ]
+      },
+      dependencySnapshot: {
+        dependencies: [
+          {
+            dependencyType: "production",
+            ecosystem: "node",
+            isDirect: true,
+            name: "react",
+            packageManager: "npm",
+            parseConfidence: "high",
+            sourceFile: "package-lock.json",
+            version: "19.0.0",
+            workspacePath: "."
+          },
+          {
+            dependencyType: "production",
+            ecosystem: "node",
+            isDirect: true,
+            name: "react",
+            packageManager: "npm",
+            parseConfidence: "high",
+            sourceFile: "package.json",
+            version: "^19.0.0",
+            workspacePath: "."
+          }
+        ],
+        filesParsed: [
+          {
+            dependencyCount: 1,
+            ecosystem: "node",
+            kind: "package-lock.json",
+            packageManager: "npm",
+            path: "package-lock.json"
+          },
+          {
+            dependencyCount: 1,
+            ecosystem: "node",
+            kind: "package.json",
+            packageManager: "npm",
+            path: "package.json"
+          }
+        ],
+        filesSkipped: [],
+        isPartial: false,
+        parseWarnings: [],
+        summary: {
+          byEcosystem: [
+            {
+              directDependencies: 2,
+              ecosystem: "node",
+              totalDependencies: 2
+            }
+          ],
+          directDependencies: 2,
+          parsedFileCount: 2,
+          skippedFileCount: 0,
+          totalDependencies: 2,
+          transitiveDependencies: 0
+        }
       },
       ecosystems: [
         {
@@ -140,7 +233,7 @@ describe("POST /api/analyze", () => {
       warnings: []
     });
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it("returns 400 for invalid repo input", async () => {
@@ -279,6 +372,15 @@ describe("POST /api/analyze", () => {
             truncated: true
           })
         )
+        .mockResolvedValueOnce(
+          createTextResponse(
+            JSON.stringify({
+              dependencies: {
+                react: "^19.0.0"
+              }
+            })
+          )
+        )
     );
 
     const response = await request(app)
@@ -295,6 +397,10 @@ describe("POST /api/analyze", () => {
     });
     expect(response.body.warnings).toEqual([
       "GitHub returned a truncated recursive tree; the repository snapshot is partial.",
+      "Manifest without lockfile: package.json"
+    ]);
+    expect(response.body.dependencySnapshot.isPartial).toBe(true);
+    expect(response.body.dependencySnapshot.parseWarnings).toEqual([
       "Manifest without lockfile: package.json"
     ]);
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);

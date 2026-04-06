@@ -155,4 +155,23 @@ describe("GitHubReadClient", () => {
       code: "network_error"
     });
   });
+
+  it("fetches raw repository file content", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response('{"dependencies":{"react":"^19.0.0"}}', {
+        status: 200
+      })
+    );
+    const client = new GitHubReadClient({ fetchImpl: fetchMock });
+
+    const content = await client.fetchRepositoryFileText({
+      owner: "openai",
+      path: "package.json",
+      ref: "main",
+      repo: "openai-node"
+    });
+
+    expect(content).toContain('"react"');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
