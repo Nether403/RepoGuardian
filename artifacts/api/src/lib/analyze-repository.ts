@@ -10,6 +10,7 @@ import {
   isGitHubReadError,
   normalizeRepoInput
 } from "@repo-guardian/github";
+import { createIssueCandidateResult } from "@repo-guardian/issues";
 import {
   createCodeReviewResult,
   selectReviewTargets,
@@ -279,6 +280,10 @@ export async function analyzeRepository(
     selection: reviewSelection,
     skippedFiles: reviewFiles.skippedFiles
   });
+  const issueCandidates = createIssueCandidateResult({
+    codeReviewFindings: codeReview.findings,
+    dependencyFindings: dependencyFindings.findings
+  });
   const warningDetails = mergeWarningDetails(
     intake,
     detection,
@@ -312,6 +317,8 @@ export async function analyzeRepository(
     ecosystems: detection.ecosystems,
     fetchedAt: intake.fetchedAt,
     isPartial,
+    issueCandidateSummary: issueCandidates.summary,
+    issueCandidates: issueCandidates.candidates,
     repository: intake.repository,
     treeSummary: {
       samplePaths: buildSamplePaths(intake, detection),

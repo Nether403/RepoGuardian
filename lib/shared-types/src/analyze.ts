@@ -384,6 +384,51 @@ export const ReviewCoverageSchema = z.object({
   isPartial: z.boolean()
 });
 
+export const IssueCandidateTypeSchema = z.enum([
+  "dependency-upgrade",
+  "dependency-review",
+  "workflow-hardening",
+  "secret-remediation",
+  "dangerous-execution",
+  "shell-execution",
+  "general-hardening"
+]);
+
+export const IssueCandidateScopeSchema = z.enum([
+  "package",
+  "workflow-file",
+  "file",
+  "subsystem"
+]);
+
+export const IssueCandidateSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  whyItMatters: z.string().min(1),
+  affectedPaths: z.array(z.string().min(1)),
+  affectedPackages: z.array(z.string().min(1)),
+  relatedFindingIds: z.array(z.string().min(1)),
+  severity: FindingSeveritySchema,
+  confidence: FindingConfidenceSchema,
+  labels: z.array(z.string().min(1)),
+  acceptanceCriteria: z.array(z.string().min(1)),
+  candidateType: IssueCandidateTypeSchema,
+  scope: IssueCandidateScopeSchema,
+  suggestedBody: z.string().min(1)
+});
+
+export const IssueCandidateCountByTypeSchema = z.object({
+  candidateType: IssueCandidateTypeSchema,
+  count: z.number().int().nonnegative()
+});
+
+export const IssueCandidateSummarySchema = z.object({
+  totalCandidates: z.number().int().nonnegative(),
+  byType: z.array(IssueCandidateCountByTypeSchema),
+  bySeverity: FindingsBySeveritySchema
+});
+
 export const AnalyzeRepoResponseSchema = z.object({
   repository: RepositoryMetadataSchema,
   treeSummary: PublicTreeSummarySchema,
@@ -395,6 +440,8 @@ export const AnalyzeRepoResponseSchema = z.object({
   codeReviewFindings: z.array(CodeReviewFindingSchema),
   codeReviewFindingSummary: CodeReviewFindingSummarySchema,
   reviewCoverage: ReviewCoverageSchema,
+  issueCandidates: z.array(IssueCandidateSchema),
+  issueCandidateSummary: IssueCandidateSummarySchema,
   warningDetails: z.array(AnalysisWarningSchema).default([]),
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
@@ -559,4 +606,11 @@ export type CodeReviewFindingSummary = z.infer<
   typeof CodeReviewFindingSummarySchema
 >;
 export type ReviewCoverage = z.infer<typeof ReviewCoverageSchema>;
+export type IssueCandidateType = z.infer<typeof IssueCandidateTypeSchema>;
+export type IssueCandidateScope = z.infer<typeof IssueCandidateScopeSchema>;
+export type IssueCandidate = z.infer<typeof IssueCandidateSchema>;
+export type IssueCandidateCountByType = z.infer<
+  typeof IssueCandidateCountByTypeSchema
+>;
+export type IssueCandidateSummary = z.infer<typeof IssueCandidateSummarySchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;

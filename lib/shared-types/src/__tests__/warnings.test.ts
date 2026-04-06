@@ -68,6 +68,18 @@ describe("AnalyzeRepoResponseSchema", () => {
         vulnerableTransitiveCount: 0
       },
       dependencyFindings: [],
+      issueCandidateSummary: {
+        bySeverity: {
+          critical: 0,
+          high: 0,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        byType: [],
+        totalCandidates: 0
+      },
+      issueCandidates: [],
       codeReviewFindingSummary: {
         findingsBySeverity: {
           critical: 0,
@@ -156,6 +168,8 @@ describe("AnalyzeRepoResponseSchema", () => {
     expect(response.warnings).toEqual([
       "GitHub returned a truncated recursive tree; the repository snapshot is partial."
     ]);
+    expect(response.issueCandidates).toEqual([]);
+    expect(response.issueCandidateSummary.totalCandidates).toBe(0);
     expect(response.dependencySnapshot.parseWarningDetails[0]?.code).toBe("FILE_FETCH_SKIPPED");
     expect(response.dependencySnapshot.parseWarnings).toEqual([
       "Skipped package-lock.json: GitHub returned invalid file content"

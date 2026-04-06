@@ -336,6 +336,75 @@ describe("POST /api/analyze", () => {
           title: "Risky workflow trigger detected"
         }
       ],
+      issueCandidateSummary: {
+        bySeverity: {
+          critical: 0,
+          high: 2,
+          info: 0,
+          low: 0,
+          medium: 0
+        },
+        byType: [
+          {
+            candidateType: "dependency-upgrade",
+            count: 1
+          },
+          {
+            candidateType: "workflow-hardening",
+            count: 1
+          }
+        ],
+        totalCandidates: 2
+      },
+      issueCandidates: [
+        {
+          acceptanceCriteria: [
+            "Upgrade react to a non-affected version and refresh the relevant lockfile entries.",
+            "Run the relevant dependency installation and validation commands for the affected workspace.",
+            "Confirm the related advisories no longer match the resolved dependency version."
+          ],
+          affectedPackages: ["react"],
+          affectedPaths: ["package-lock.json", "package.json"],
+          candidateType: "dependency-upgrade",
+          confidence: "high",
+          id: "issue:dependency-upgrade:react",
+          labels: ["dependencies", "high", "security"],
+          relatedFindingIds: [
+            "dependency:GHSA-test-1234:react:19.0.0:.:direct"
+          ],
+          scope: "package",
+          severity: "high",
+          summary:
+            "react is affected by a dependency advisory in the current repository snapshot.",
+          title: "Upgrade react to address dependency advisories",
+          whyItMatters:
+            "The repository directly depends on react, so the advisory exposure is more likely to affect production behavior or build outputs."
+        },
+        {
+          acceptanceCriteria: [
+            "Reduce the workflow token permissions to the minimum set required for its jobs.",
+            "Review high-risk workflow triggers and gate privileged steps for untrusted pull requests.",
+            "Re-run the affected workflow after hardening changes to confirm behavior still matches expectations."
+          ],
+          affectedPackages: [],
+          affectedPaths: [".github/workflows/ci.yml"],
+          candidateType: "workflow-hardening",
+          confidence: "high",
+          id: "issue:workflow-hardening:.github/workflows/ci.yml",
+          labels: ["high", "security", "workflow"],
+          relatedFindingIds: [
+            "review:workflow-permissions:.github/workflows/ci.yml:3-3",
+            "review:workflow-trigger-risk:.github/workflows/ci.yml:2-2"
+          ],
+          scope: "workflow-file",
+          severity: "high",
+          summary:
+            "The workflow file .github/workflows/ci.yml has multiple hardening findings that likely share one remediation pass.",
+          title: "Harden workflow .github/workflows/ci.yml",
+          whyItMatters:
+            "Workflow misconfiguration can expand token privileges or expose privileged automation to untrusted pull request content."
+        }
+      ],
       ecosystems: [
         {
           ecosystem: "node",
@@ -581,6 +650,18 @@ describe("POST /api/analyze", () => {
     ]);
     expect(response.body.dependencyFindings).toEqual([]);
     expect(response.body.codeReviewFindings).toEqual([]);
+    expect(response.body.issueCandidates).toEqual([]);
+    expect(response.body.issueCandidateSummary).toEqual({
+      bySeverity: {
+        critical: 0,
+        high: 0,
+        info: 0,
+        low: 0,
+        medium: 0
+      },
+      byType: [],
+      totalCandidates: 0
+    });
     expect(response.body.reviewCoverage).toEqual({
       candidateFileCount: 0,
       isPartial: true,

@@ -191,6 +191,46 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
   ],
   fetchedAt: "2026-04-06T11:30:00.000Z",
   isPartial: false,
+  issueCandidateSummary: {
+    bySeverity: {
+      critical: 0,
+      high: 1,
+      info: 0,
+      low: 0,
+      medium: 0
+    },
+    byType: [
+      {
+        candidateType: "dependency-upgrade",
+        count: 1
+      }
+    ],
+    totalCandidates: 1
+  },
+  issueCandidates: [
+    {
+      acceptanceCriteria: [
+        "Upgrade react to a non-affected version and refresh the relevant lockfile entries.",
+        "Run the relevant dependency installation and validation commands for the affected workspace.",
+        "Confirm the related advisories no longer match the resolved dependency version."
+      ],
+      affectedPackages: ["react"],
+      affectedPaths: ["package-lock.json", "package.json"],
+      candidateType: "dependency-upgrade",
+      confidence: "high",
+      id: "issue:dependency-upgrade:react",
+      labels: ["dependencies", "high", "security"],
+      relatedFindingIds: ["dependency:GHSA-test-1234:react:19.0.0:.:direct"],
+      scope: "package",
+      severity: "high",
+      suggestedBody: "## Summary\nUpgrade react to address dependency advisories",
+      summary:
+        "react is affected by a dependency advisory in the current repository snapshot.",
+      title: "Upgrade react to address dependency advisories",
+      whyItMatters:
+        "The repository directly depends on react, so the advisory exposure is more likely to affect production behavior or build outputs."
+    }
+  ],
   repository: {
     canonicalUrl: "https://github.com/openai/openai-node",
     defaultBranch: "main",

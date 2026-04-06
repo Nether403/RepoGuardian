@@ -92,6 +92,9 @@ importers:
       '@repo-guardian/github':
         specifier: workspace:*
         version: link:../../lib/github
+      '@repo-guardian/issues':
+        specifier: workspace:*
+        version: link:../../lib/issues
       '@repo-guardian/review':
         specifier: workspace:*
         version: link:../../lib/review
@@ -152,6 +155,12 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+
+  lib/issues:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
 
   lib/review:
     dependencies:
