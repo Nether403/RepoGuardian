@@ -41,11 +41,4 @@ pnpm run build
 
 Milestone 5B can build real GitHub write-back on top of the existing approval-gated execution planning and dry-run execution results.
 
-## Current limitations
 
-Review is still intentionally targeted, not repository-wide.
-The deterministic rule set is narrow by design and favors low-noise findings over broad coverage.
-Workflow checks are regex/text-based in this step, not full YAML semantic analysis.
-Review selection is heuristic and workspace-near-risk prioritization is shallow.
-No GitHub issue creation, remote patch application, or GitHub write-back behavior was added. 
-Execution planning is dry-run only in Milestone 5A; `execute_approved` returns a structured blocked result.
