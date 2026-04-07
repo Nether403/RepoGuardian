@@ -520,6 +520,113 @@ code {
   scroll-margin-top: 1.5rem;
 }
 
+.candidate-selection-list,
+.execution-results,
+.execution-action-list,
+.execution-planner {
+  display: grid;
+  gap: 1rem;
+}
+
+.candidate-selection-card,
+.execution-action-card {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.candidate-selection-card {
+  grid-template-columns: minmax(11rem, 0.24fr) minmax(0, 1fr);
+}
+
+.candidate-selection-control,
+.approval-control {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  color: #eff7ff;
+}
+
+.candidate-selection-control {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.candidate-selection-control input,
+.approval-control input {
+  margin-top: 0.25rem;
+  accent-color: var(--accent);
+}
+
+.candidate-selection-content {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.candidate-selection-header {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.candidate-selection-header h3,
+.execution-action-card h3 {
+  margin: 0.45rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.approval-control {
+  max-width: 56rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(241, 197, 108, 0.24);
+  background: var(--amber-soft);
+  color: #ffe5a9;
+}
+
+.execution-note {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.execution-submit-button {
+  justify-self: start;
+}
+
+.execution-metadata {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0;
+}
+
+.execution-metadata div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.execution-metadata dt {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.execution-metadata dd {
+  margin: 0;
+  color: #eff7ff;
+}
+
 .panel:target,
 .readiness-card-section:target {
   border-color: rgba(140, 201, 255, 0.42);

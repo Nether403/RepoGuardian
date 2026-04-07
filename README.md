@@ -24,7 +24,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - real GitHub Issue creation for selected issue candidates when `approvalGranted` is explicitly true
 - real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true
 - real branch creation, bounded root `package.json` plus `package-lock.json` patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
-- Vite + React Milestone 1 UI for repository analysis
+- Vite + React UI for repository analysis, candidate selection, dry-run execution previews, approved execution submission, and structured action results
 - shared typed schemas across API and web
 
 ## Commands
@@ -42,6 +42,6 @@ pnpm run build
 
 ## Next step
 
-The next step after this Milestone 5B follow-up is to broaden safe PR write-back beyond the current workflow-hardening and root npm dependency-update slices, while still blocking any path that would require lockfile regeneration, registry lookups, workspace inference, or broader unattended execution.
+The next step after the analyze-to-action UI loop is to split the web app into a real presentation layer and move traceability formatting, anchors, and selectors into reusable view-model helpers before adding Guardian Graph or broader write-back slices.
 
 

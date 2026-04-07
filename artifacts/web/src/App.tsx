@@ -6,19 +6,29 @@ import type {
   DetectedEcosystem,
   DetectedFileGroup,
   DetectedSignal,
+  ExecutionMode,
+  ExecutionResult,
   IssueCandidate,
   PRCandidate,
   PRPatchPlan,
   PRWriteBackEligibility
 } from "@repo-guardian/shared-types";
+import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
+import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
+import { IssueCandidatesPanel } from "./components/IssueCandidatesPanel";
 import { PageShell } from "./components/PageShell";
 import { Panel } from "./components/Panel";
+import { PRCandidatesPanel } from "./components/PRCandidatesPanel";
 import { RepoInputForm } from "./components/RepoInputForm";
 import { StatusBadge } from "./components/StatusBadge";
 import {
   AnalyzeRepoClientError,
   analyzeRepository
 } from "./lib/api-client";
+import {
+  ExecutionPlanClientError,
+  requestExecutionPlan
+} from "./lib/execution-client";
 
 const ecosystemLabels: Record<DetectedEcosystem["ecosystem"], string> = {
   go: "Go",
@@ -347,6 +357,20 @@ function renderSignalList(items: DetectedSignal[], notablePaths: string[]) {
   );
 }
 
+function updateSelectedIds(
+  selectedIds: string[],
+  candidateId: string,
+  selected: boolean
+): string[] {
+  if (selected) {
+    return selectedIds.includes(candidateId)
+      ? selectedIds
+      : [...selectedIds, candidateId];
+  }
+
+  return selectedIds.filter((selectedId) => selectedId !== candidateId);
+}
+
 function App() {
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -354,6 +378,13 @@ function App() {
     useState<EligibilityFilter>("all");
   const [candidateTypeFilter, setCandidateTypeFilter] =
     useState<CandidateTypeFilter>("all");
+  const [approvalGranted, setApprovalGranted] = useState(false);
+  const [executionErrorMessage, setExecutionErrorMessage] = useState<string | null>(null);
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("dry_run");
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+  const [isExecutionLoading, setIsExecutionLoading] = useState(false);
+  const [selectedIssueCandidateIds, setSelectedIssueCandidateIds] = useState<string[]>([]);
+  const [selectedPRCandidateIds, setSelectedPRCandidateIds] = useState<string[]>([]);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [repoInput, setRepoInput] = useState("");
@@ -444,6 +475,84 @@ function App() {
       ]
     : [];
 
+  function resetExecutionState() {
+    setApprovalGranted(false);
+    setExecutionErrorMessage(null);
+    setExecutionMode("dry_run");
+    setExecutionResult(null);
+    setIsExecutionLoading(false);
+    setSelectedIssueCandidateIds([]);
+    setSelectedPRCandidateIds([]);
+  }
+
+  function handleIssueCandidateSelection(candidateId: string, selected: boolean) {
+    setSelectedIssueCandidateIds((currentIds) =>
+      updateSelectedIds(currentIds, candidateId, selected)
+    );
+    setExecutionErrorMessage(null);
+  }
+
+  function handlePRCandidateSelection(candidateId: string, selected: boolean) {
+    setSelectedPRCandidateIds((currentIds) =>
+      updateSelectedIds(currentIds, candidateId, selected)
+    );
+    setExecutionErrorMessage(null);
+  }
+
+  function handleExecutionModeChange(nextMode: ExecutionMode) {
+    setExecutionMode(nextMode);
+    setExecutionErrorMessage(null);
+
+    if (nextMode === "dry_run") {
+      setApprovalGranted(false);
+    }
+  }
+
+  async function handleExecutionSubmit() {
+    if (!analysis) {
+      return;
+    }
+
+    if (
+      selectedIssueCandidateIds.length === 0 &&
+      selectedPRCandidateIds.length === 0
+    ) {
+      setExecutionErrorMessage("Select at least one issue or PR candidate first.");
+      return;
+    }
+
+    if (executionMode === "execute_approved" && !approvalGranted) {
+      setExecutionErrorMessage(
+        "Approved execution requires the explicit GitHub write-back approval checkbox."
+      );
+      return;
+    }
+
+    setExecutionErrorMessage(null);
+    setExecutionResult(null);
+    setIsExecutionLoading(true);
+
+    try {
+      const result = await requestExecutionPlan({
+        analysis,
+        approvalGranted: executionMode === "execute_approved" && approvalGranted,
+        mode: executionMode,
+        selectedIssueCandidateIds,
+        selectedPRCandidateIds
+      });
+
+      setExecutionResult(result);
+    } catch (error) {
+      setExecutionErrorMessage(
+        error instanceof ExecutionPlanClientError
+          ? error.message
+          : "Repo Guardian could not complete the execution request."
+      );
+    } finally {
+      setIsExecutionLoading(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setHasSubmitted(true);
@@ -455,10 +564,12 @@ function App() {
       setAnalysis(nextAnalysis);
       setEligibilityFilter("all");
       setCandidateTypeFilter("all");
+      resetExecutionState();
     } catch (error) {
       setAnalysis(null);
       setEligibilityFilter("all");
       setCandidateTypeFilter("all");
+      resetExecutionState();
       setErrorMessage(
         error instanceof AnalyzeRepoClientError
           ? error.message
@@ -479,8 +590,8 @@ function App() {
           <StatusBadge label={statusLabel} tone={statusTone} />
           <p className="aside-copy">
             Analysis stays supervised. Repo Guardian can surface issue and PR
-            write-back readiness, but it will not write to GitHub without explicit
-            approval in a later execution request.
+            write-back readiness, preview dry-run execution plans, and only write to
+            GitHub after explicit approval for selected actions.
           </p>
           {analysis ? (
             <p className="aside-copy aside-copy-muted">
@@ -882,6 +993,33 @@ function App() {
               </p>
             )}
           </Panel>
+
+          <IssueCandidatesPanel
+            candidates={analysis.issueCandidates}
+            onToggleCandidate={handleIssueCandidateSelection}
+            selectedCandidateIds={selectedIssueCandidateIds}
+          />
+
+          <PRCandidatesPanel
+            candidates={analysis.prCandidates}
+            onToggleCandidate={handlePRCandidateSelection}
+            patchPlans={analysis.prPatchPlans}
+            selectedCandidateIds={selectedPRCandidateIds}
+          />
+
+          <ExecutionPlannerPanel
+            approvalGranted={approvalGranted}
+            executionErrorMessage={executionErrorMessage}
+            isSubmitting={isExecutionLoading}
+            mode={executionMode}
+            onApprovalChange={setApprovalGranted}
+            onModeChange={handleExecutionModeChange}
+            onSubmit={handleExecutionSubmit}
+            selectedIssueCount={selectedIssueCandidateIds.length}
+            selectedPRCount={selectedPRCandidateIds.length}
+          />
+
+          <ExecutionResultsPanel result={executionResult} />
 
           <Panel
             className="panel-wide"
