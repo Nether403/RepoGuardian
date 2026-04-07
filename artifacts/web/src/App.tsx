@@ -6,6 +6,7 @@ import type {
   DetectedEcosystem,
   DetectedFileGroup,
   DetectedSignal,
+  IssueCandidate,
   PRCandidate,
   PRPatchPlan,
   PRWriteBackEligibility
@@ -58,16 +59,26 @@ const prCandidateTypeLabels: Record<PRPatchPlan["candidateType"], string> = {
   "workflow-hardening": "Workflow hardening"
 };
 
+const TRACEABILITY_PATCH_PLANS_SECTION_ID = "traceability-patch-plans";
+const TRACEABILITY_PR_CANDIDATES_SECTION_ID = "traceability-pr-candidates";
+const TRACEABILITY_ISSUE_CANDIDATES_SECTION_ID = "traceability-issue-candidates";
+const TRACEABILITY_FINDINGS_SECTION_ID = "traceability-findings";
+
 type TraceableFinding = DependencyFinding | CodeReviewFinding;
+type EligibilityFilter = "all" | PRWriteBackEligibility["status"];
+type CandidateTypeFilter = "all" | PRPatchPlan["candidateType"];
 
 type TraceabilityViewModel = {
   findingById: Map<string, TraceableFinding>;
+  issueCandidateById: Map<string, IssueCandidate>;
   patchPlanById: Map<string, PRPatchPlan>;
   patchPlansByCandidateId: Map<string, PRPatchPlan[]>;
   patchPlansByFindingId: Map<string, PRPatchPlan[]>;
+  patchPlansByIssueCandidateId: Map<string, PRPatchPlan[]>;
   prCandidateById: Map<string, PRCandidate>;
   referencedCandidates: PRCandidate[];
   referencedFindings: TraceableFinding[];
+  referencedIssueCandidates: IssueCandidate[];
 };
 
 function formatTimestamp(value: string): string {
@@ -87,6 +98,10 @@ function formatValidationStatus(value: PRPatchPlan["validationStatus"]): string 
 
 function formatReadiness(value: PRCandidate["readiness"]): string {
   return value.replace(/_/gu, " ");
+}
+
+function formatIssueScope(value: IssueCandidate["scope"]): string {
+  return value.replace(/-/gu, " ");
 }
 
 function formatSourceType(value: TraceableFinding["sourceType"]): string {
@@ -116,6 +131,10 @@ function getPatchPlanAnchorId(patchPlanId: string): string {
 
 function getPRCandidateAnchorId(candidateId: string): string {
   return buildAnchorId("pr-candidate", candidateId);
+}
+
+function getIssueCandidateAnchorId(issueCandidateId: string): string {
+  return buildAnchorId("issue-candidate", issueCandidateId);
 }
 
 function getFindingAnchorId(findingId: string): string {
@@ -195,6 +214,12 @@ function getWriteBackEligibility(
   );
 }
 
+function getCandidateTypeFilterOptions(
+  patchPlans: PRPatchPlan[]
+): PRPatchPlan["candidateType"][] {
+  return Array.from(new Set(patchPlans.map((plan) => plan.candidateType)));
+}
+
 function isDependencyFinding(
   finding: TraceableFinding
 ): finding is DependencyFinding {
@@ -202,12 +227,15 @@ function isDependencyFinding(
 }
 
 function buildTraceabilityViewModel(
-  analysis: AnalyzeRepoResponse
+  analysis: AnalyzeRepoResponse,
+  patchPlans: PRPatchPlan[] = analysis.prPatchPlans
 ): TraceabilityViewModel {
   const patchPlanById = new Map<string, PRPatchPlan>();
   const prCandidateById = new Map<string, PRCandidate>();
+  const issueCandidateById = new Map<string, IssueCandidate>();
   const patchPlansByCandidateId = new Map<string, PRPatchPlan[]>();
   const patchPlansByFindingId = new Map<string, PRPatchPlan[]>();
+  const patchPlansByIssueCandidateId = new Map<string, PRPatchPlan[]>();
   const mergedFindings: TraceableFinding[] = [
     ...analysis.dependencyFindings,
     ...analysis.codeReviewFindings
@@ -218,11 +246,15 @@ function buildTraceabilityViewModel(
     prCandidateById.set(candidate.id, candidate);
   }
 
+  for (const candidate of analysis.issueCandidates) {
+    issueCandidateById.set(candidate.id, candidate);
+  }
+
   for (const finding of mergedFindings) {
     findingById.set(finding.id, finding);
   }
 
-  for (const plan of analysis.prPatchPlans) {
+  for (const plan of patchPlans) {
     patchPlanById.set(plan.id, plan);
 
     const candidatePlans = patchPlansByCandidateId.get(plan.prCandidateId) ?? [];
@@ -234,19 +266,30 @@ function buildTraceabilityViewModel(
       findingPlans.push(plan);
       patchPlansByFindingId.set(findingId, findingPlans);
     }
+
+    for (const issueCandidateId of plan.linkedIssueCandidateIds) {
+      const issuePlans = patchPlansByIssueCandidateId.get(issueCandidateId) ?? [];
+      issuePlans.push(plan);
+      patchPlansByIssueCandidateId.set(issueCandidateId, issuePlans);
+    }
   }
 
   return {
     findingById,
+    issueCandidateById,
     patchPlanById,
     patchPlansByCandidateId,
     patchPlansByFindingId,
+    patchPlansByIssueCandidateId,
     prCandidateById,
     referencedCandidates: analysis.prCandidates.filter((candidate) =>
       patchPlansByCandidateId.has(candidate.id)
     ),
     referencedFindings: mergedFindings.filter((finding) =>
       patchPlansByFindingId.has(finding.id)
+    ),
+    referencedIssueCandidates: analysis.issueCandidates.filter((candidate) =>
+      patchPlansByIssueCandidateId.has(candidate.id)
     )
   };
 }
@@ -307,6 +350,10 @@ function renderSignalList(items: DetectedSignal[], notablePaths: string[]) {
 function App() {
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [eligibilityFilter, setEligibilityFilter] =
+    useState<EligibilityFilter>("all");
+  const [candidateTypeFilter, setCandidateTypeFilter] =
+    useState<CandidateTypeFilter>("all");
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [repoInput, setRepoInput] = useState("");
@@ -323,8 +370,24 @@ function App() {
       ? `Snapshot fetched ${formatTimestamp(analysis.fetchedAt)}.`
       : "Paste a public GitHub repository and Repo Guardian will inspect the current default-branch snapshot.";
 
+  const visiblePatchPlans = analysis
+    ? analysis.prPatchPlans.filter((plan) => {
+        const eligibilityMatches =
+          eligibilityFilter === "all" ||
+          getWriteBackEligibility(plan).status === eligibilityFilter;
+        const candidateTypeMatches =
+          candidateTypeFilter === "all" ||
+          plan.candidateType === candidateTypeFilter;
+
+        return eligibilityMatches && candidateTypeMatches;
+      })
+    : [];
+  const candidateTypeFilterOptions = analysis
+    ? getCandidateTypeFilterOptions(analysis.prPatchPlans)
+    : [];
+
   const writeBackReadinessSummary = analysis
-    ? analysis.prPatchPlans.reduce(
+    ? visiblePatchPlans.reduce(
         (summary, plan) => {
           const eligibility = getWriteBackEligibility(plan);
 
@@ -343,16 +406,43 @@ function App() {
       )
     : null;
   const traceability = analysis
-    ? buildTraceabilityViewModel(analysis)
+    ? buildTraceabilityViewModel(analysis, visiblePatchPlans)
     : {
         findingById: new Map<string, TraceableFinding>(),
+        issueCandidateById: new Map<string, IssueCandidate>(),
         patchPlanById: new Map<string, PRPatchPlan>(),
         patchPlansByCandidateId: new Map<string, PRPatchPlan[]>(),
         patchPlansByFindingId: new Map<string, PRPatchPlan[]>(),
+        patchPlansByIssueCandidateId: new Map<string, PRPatchPlan[]>(),
         prCandidateById: new Map<string, PRCandidate>(),
         referencedCandidates: [],
-        referencedFindings: []
+        referencedFindings: [],
+        referencedIssueCandidates: []
       };
+  const traceabilityMapSummary = analysis
+    ? [
+        {
+          count: traceability.patchPlanById.size,
+          href: `#${TRACEABILITY_PATCH_PLANS_SECTION_ID}`,
+          label: "Patch plans"
+        },
+        {
+          count: traceability.referencedCandidates.length,
+          href: `#${TRACEABILITY_PR_CANDIDATES_SECTION_ID}`,
+          label: "PR candidates"
+        },
+        {
+          count: traceability.referencedIssueCandidates.length,
+          href: `#${TRACEABILITY_ISSUE_CANDIDATES_SECTION_ID}`,
+          label: "Issue candidates"
+        },
+        {
+          count: traceability.referencedFindings.length,
+          href: `#${TRACEABILITY_FINDINGS_SECTION_ID}`,
+          label: "Findings"
+        }
+      ]
+    : [];
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -363,8 +453,12 @@ function App() {
     try {
       const nextAnalysis = await analyzeRepository(repoInput);
       setAnalysis(nextAnalysis);
+      setEligibilityFilter("all");
+      setCandidateTypeFilter("all");
     } catch (error) {
       setAnalysis(null);
+      setEligibilityFilter("all");
+      setCandidateTypeFilter("all");
       setErrorMessage(
         error instanceof AnalyzeRepoClientError
           ? error.message
@@ -552,7 +646,55 @@ function App() {
           >
             {analysis.prPatchPlans.length > 0 ? (
               <div className="readiness-list">
-                {analysis.prPatchPlans.map((plan) => {
+                <div className="traceability-map" aria-label="Traceability map summary">
+                  {traceabilityMapSummary.map((item) => (
+                    <a
+                      className="traceability-map-item"
+                      href={item.href}
+                      key={item.label}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count.toLocaleString()}</strong>
+                    </a>
+                  ))}
+                </div>
+                <div className="readiness-filter-row" aria-label="Readiness filters">
+                  <label>
+                    <span>Eligibility</span>
+                    <select
+                      onChange={(event) =>
+                        setEligibilityFilter(event.target.value as EligibilityFilter)
+                      }
+                      value={eligibilityFilter}
+                    >
+                      <option value="all">All</option>
+                      <option value="executable">Executable</option>
+                      <option value="blocked">Blocked</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Candidate type</span>
+                    <select
+                      onChange={(event) =>
+                        setCandidateTypeFilter(event.target.value as CandidateTypeFilter)
+                      }
+                      value={candidateTypeFilter}
+                    >
+                      <option value="all">All types</option>
+                      {candidateTypeFilterOptions.map((candidateType) => (
+                        <option key={candidateType} value={candidateType}>
+                          {prCandidateTypeLabels[candidateType]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div
+                  className="readiness-card-section"
+                  id={TRACEABILITY_PATCH_PLANS_SECTION_ID}
+                >
+                  {visiblePatchPlans.length > 0 ? (
+                    visiblePatchPlans.map((plan) => {
                   const eligibility = getWriteBackEligibility(plan);
                   const traceabilityPlan = traceability.patchPlanById.get(plan.id) ?? plan;
                   const patchPlanAnchorId = getPatchPlanAnchorId(traceabilityPlan.id);
@@ -563,12 +705,12 @@ function App() {
                     .map((findingId) => traceability.findingById.get(findingId))
                     .filter((finding): finding is TraceableFinding => Boolean(finding));
 
-                  return (
-                    <article
-                      className="readiness-card"
-                      id={patchPlanAnchorId}
-                      key={traceabilityPlan.id}
-                    >
+                      return (
+                        <article
+                          className="readiness-card"
+                          id={patchPlanAnchorId}
+                          key={traceabilityPlan.id}
+                        >
                       <div className="readiness-card-header">
                         <div>
                           <p className="subsection-label">
@@ -624,14 +766,24 @@ function App() {
                               <code>{findingId}</code>
                             </a>
                           ))}
-                          {traceabilityPlan.linkedIssueCandidateIds.map((issueCandidateId) => (
-                            <span
-                              className="trace-chip trace-chip-muted"
-                              key={`${traceabilityPlan.id}:${issueCandidateId}`}
-                            >
-                              <code>{issueCandidateId}</code>
-                            </span>
-                          ))}
+                          {traceabilityPlan.linkedIssueCandidateIds.map((issueCandidateId) =>
+                            traceability.issueCandidateById.has(issueCandidateId) ? (
+                              <a
+                                className="trace-chip trace-chip-link"
+                                href={`#${getIssueCandidateAnchorId(issueCandidateId)}`}
+                                key={`${traceabilityPlan.id}:${issueCandidateId}`}
+                              >
+                                <code>{issueCandidateId}</code>
+                              </a>
+                            ) : (
+                              <span
+                                className="trace-chip trace-chip-muted"
+                                key={`${traceabilityPlan.id}:${issueCandidateId}`}
+                              >
+                                <code>{issueCandidateId}</code>
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                       <details className="trace-expander">
@@ -714,9 +866,15 @@ function App() {
                           ) : null}
                         </div>
                       </details>
-                    </article>
-                  );
-                })}
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <p className="empty-copy">
+                      No PR patch plans match the active readiness filters.
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="empty-copy">
@@ -728,6 +886,7 @@ function App() {
           <Panel
             className="panel-wide"
             eyebrow="PR Candidates"
+            id={TRACEABILITY_PR_CANDIDATES_SECTION_ID}
             title="PR candidate traceability"
           >
             {traceability.referencedCandidates.length > 0 ? (
@@ -857,7 +1016,166 @@ function App() {
 
           <Panel
             className="panel-wide"
+            eyebrow="Issue Candidates"
+            id={TRACEABILITY_ISSUE_CANDIDATES_SECTION_ID}
+            title="Issue candidate traceability"
+          >
+            {traceability.referencedIssueCandidates.length > 0 ? (
+              <div className="traceability-list">
+                {traceability.referencedIssueCandidates.map((candidate) => {
+                  const candidateAnchorId = getIssueCandidateAnchorId(candidate.id);
+                  const relatedPatchPlans =
+                    traceability.patchPlansByIssueCandidateId.get(candidate.id) ?? [];
+
+                  return (
+                    <article
+                      className="trace-card"
+                      id={candidateAnchorId}
+                      key={candidate.id}
+                    >
+                      <div className="trace-card-header">
+                        <div>
+                          <p className="subsection-label">
+                            {prCandidateTypeLabels[candidate.candidateType]}
+                          </p>
+                          <h3>{candidate.title}</h3>
+                        </div>
+                        <div className="badge-row">
+                          <StatusBadge
+                            label={formatSeverity(candidate.severity)}
+                            tone={getSeverityTone(candidate.severity)}
+                          />
+                          <StatusBadge
+                            label={formatConfidence(candidate.confidence)}
+                            tone={getConfidenceTone(candidate.confidence)}
+                          />
+                          <StatusBadge
+                            label={formatIssueScope(candidate.scope)}
+                            tone="muted"
+                          />
+                        </div>
+                      </div>
+                      <p className="trace-copy">{candidate.summary}</p>
+                      <div className="traceability-section">
+                        <p className="subsection-label">Traceability</p>
+                        <div className="trace-chip-row">
+                          <a
+                            className="trace-chip trace-chip-link"
+                            href={`#${candidateAnchorId}`}
+                          >
+                            <code>{candidate.id}</code>
+                          </a>
+                          {relatedPatchPlans.map((patchPlan) => (
+                            <a
+                              className="trace-chip trace-chip-link"
+                              href={`#${getPatchPlanAnchorId(patchPlan.id)}`}
+                              key={`${candidate.id}:${patchPlan.id}`}
+                            >
+                              <code>{patchPlan.id}</code>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="trace-meta-grid">
+                        <div>
+                          <p className="subsection-label">Affected paths</p>
+                          <ul className="simple-list">
+                            {candidate.affectedPaths.map((path) => (
+                              <li key={`${candidate.id}:${path}`}>
+                                <code>{path}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="subsection-label">Affected packages</p>
+                          {candidate.affectedPackages.length > 0 ? (
+                            <ul className="simple-list">
+                              {candidate.affectedPackages.map((pkg) => (
+                                <li key={`${candidate.id}:${pkg}`}>
+                                  <code>{pkg}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="trace-copy">No package-level scope.</p>
+                          )}
+                        </div>
+                      </div>
+                      <details className="trace-expander">
+                        <summary>Issue detail</summary>
+                        <div className="trace-expander-content">
+                          <div>
+                            <p className="subsection-label">Why it matters</p>
+                            <p className="trace-copy">{candidate.whyItMatters}</p>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Acceptance criteria</p>
+                            <ul className="simple-list">
+                              {candidate.acceptanceCriteria.map((criterion) => (
+                                <li key={`${candidate.id}:${criterion}`}>
+                                  {criterion}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Labels</p>
+                            <div className="trace-chip-row">
+                              {candidate.labels.map((label) => (
+                                <span
+                                  className="trace-chip trace-chip-muted"
+                                  key={`${candidate.id}:${label}`}
+                                >
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Suggested body</p>
+                            <p className="trace-copy">{candidate.suggestedBody}</p>
+                          </div>
+                          <div>
+                            <p className="subsection-label">Linked findings</p>
+                            <div className="trace-chip-row">
+                              {candidate.relatedFindingIds.map((findingId) =>
+                                traceability.findingById.has(findingId) ? (
+                                  <a
+                                    className="trace-chip trace-chip-link"
+                                    href={`#${getFindingAnchorId(findingId)}`}
+                                    key={`${candidate.id}:${findingId}`}
+                                  >
+                                    <code>{findingId}</code>
+                                  </a>
+                                ) : (
+                                  <span
+                                    className="trace-chip trace-chip-muted"
+                                    key={`${candidate.id}:${findingId}`}
+                                  >
+                                    <code>{findingId}</code>
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="empty-copy">
+                No issue candidates are referenced by the current readiness cards.
+              </p>
+            )}
+          </Panel>
+
+          <Panel
+            className="panel-wide"
             eyebrow="Findings"
+            id={TRACEABILITY_FINDINGS_SECTION_ID}
             title="Linked findings"
           >
             {traceability.referencedFindings.length > 0 ? (

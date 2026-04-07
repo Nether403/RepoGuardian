@@ -5,6 +5,7 @@ type PanelProps = PropsWithChildren<{
   eyebrow?: string;
   footer?: ReactNode;
   className?: string;
+  id?: string;
 }>;
 
 export function Panel({
@@ -12,10 +13,11 @@ export function Panel({
   className,
   eyebrow,
   footer,
+  id,
   title
 }: PanelProps) {
   return (
-    <section className={className ? `panel ${className}` : "panel"}>
+    <section className={className ? `panel ${className}` : "panel"} id={id}>
       <div className="panel-header">
         {eyebrow ? <p className="panel-eyebrow">{eyebrow}</p> : null}
         <h2>{title}</h2>

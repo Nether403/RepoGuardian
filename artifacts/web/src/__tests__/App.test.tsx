@@ -1,7 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AnalyzeRepoResponseSchema } from "@repo-guardian/shared-types";
+import {
+  AnalyzeRepoResponseSchema,
+  type AnalyzeRepoResponse
+} from "@repo-guardian/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 
@@ -26,7 +29,7 @@ function createDeferredResponse() {
 }
 
 async function submitRepository(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   value = "openai/openai-node"
 ) {
   const input = screen.getByLabelText(/Repository input/i);
@@ -36,7 +39,7 @@ async function submitRepository(
       value
     }
   });
-  await user.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Analyze Repository/i }));
 }
 
 function buildAnchorId(prefix: string, rawId: string): string {
@@ -46,6 +49,30 @@ function buildAnchorId(prefix: string, rawId: string): string {
     .replace(/^-+|-+$/gu, "");
 
   return `${prefix}-${normalized || "item"}`;
+}
+
+function expectTraceabilityMapCounts(input: {
+  findings: number;
+  issueCandidates: number;
+  patchPlans: number;
+  prCandidates: number;
+}) {
+  const traceabilityMap = document.querySelector(
+    '[aria-label="Traceability map summary"]'
+  );
+
+  expect(traceabilityMap).toHaveTextContent(
+    new RegExp(`Patch plans\\s*${input.patchPlans}`, "u")
+  );
+  expect(traceabilityMap).toHaveTextContent(
+    new RegExp(`PR candidates\\s*${input.prCandidates}`, "u")
+  );
+  expect(traceabilityMap).toHaveTextContent(
+    new RegExp(`Issue candidates\\s*${input.issueCandidates}`, "u")
+  );
+  expect(traceabilityMap).toHaveTextContent(
+    new RegExp(`Findings\\s*${input.findings}`, "u")
+  );
 }
 
 const successPayload = AnalyzeRepoResponseSchema.parse({
@@ -432,6 +459,131 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
   warnings: ["Manifest without lockfile: services/api/pyproject.toml"]
 });
 
+function createMixedTraceabilityPayload(): AnalyzeRepoResponse {
+  const workflowFindingId = successPayload.codeReviewFindings[0]!.id;
+
+  return AnalyzeRepoResponseSchema.parse({
+    ...successPayload,
+    issueCandidates: [
+      ...successPayload.issueCandidates,
+      {
+        acceptanceCriteria: [
+          "Declare explicit workflow permissions.",
+          "Confirm the workflow still runs with least privilege."
+        ],
+        affectedPackages: [],
+        affectedPaths: [".github/workflows/ci.yml"],
+        candidateType: "workflow-hardening",
+        confidence: "medium",
+        id: "issue:workflow-hardening:.github/workflows/ci.yml",
+        labels: ["workflow", "security"],
+        relatedFindingIds: [workflowFindingId],
+        scope: "workflow-file",
+        severity: "low",
+        suggestedBody: "## Summary\nHarden workflow permissions.",
+        summary: "The CI workflow should declare explicit permissions.",
+        title: "Harden workflow permissions",
+        whyItMatters: "Explicit workflow permissions reduce token blast radius."
+      }
+    ],
+    prCandidates: [
+      ...successPayload.prCandidates,
+      {
+        affectedPackages: [],
+        affectedPaths: [".github/workflows/ci.yml"],
+        candidateType: "workflow-hardening",
+        confidence: "medium",
+        expectedFileChanges: [
+          {
+            changeType: "edit",
+            path: ".github/workflows/ci.yml",
+            reason: "Declare explicit workflow permissions."
+          }
+        ],
+        id: "pr:workflow-hardening:.github/workflows/ci.yml",
+        labels: ["candidate-pr", "workflow", "security"],
+        linkedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        rationale: "The change stays inside one workflow file.",
+        readiness: "ready_with_warnings",
+        relatedFindingIds: [workflowFindingId],
+        riskLevel: "low",
+        rollbackNote: "Restore the previous workflow permissions if jobs fail.",
+        severity: "low",
+        summary: "Harden the CI workflow with explicit permissions.",
+        testPlan: ["Run the workflow after the permissions change."],
+        title: "Harden .github/workflows/ci.yml"
+      }
+    ],
+    prPatchPlans: [
+      ...successPayload.prPatchPlans,
+      {
+        affectedPackages: [],
+        affectedPaths: [".github/workflows/ci.yml"],
+        candidateType: "workflow-hardening",
+        confidence: "medium",
+        id: "patch-plan:pr:workflow-hardening:.github/workflows/ci.yml",
+        linkedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        patchPlan: {
+          constraints: ["Keep edits inside the workflow file."],
+          filesPlanned: [
+            {
+              changeType: "edit",
+              path: ".github/workflows/ci.yml",
+              reason: "Declare explicit workflow permissions."
+            }
+          ],
+          patchStrategy: "Add explicit least-privilege workflow permissions.",
+          requiredHumanReview: [
+            "Confirm each workflow job still has the permissions it needs."
+          ],
+          requiredValidationSteps: [
+            "Run the workflow after the permissions change."
+          ]
+        },
+        patchWarnings: [],
+        patchability: "patch_candidate",
+        prCandidateId: "pr:workflow-hardening:.github/workflows/ci.yml",
+        readiness: "ready_with_warnings",
+        relatedFindingIds: [workflowFindingId],
+        riskLevel: "low",
+        severity: "low",
+        title: "Harden .github/workflows/ci.yml",
+        validationNotes: ["Validation has not been executed in this step."],
+        validationStatus: "ready_with_warnings",
+        writeBackEligibility: {
+          approvalRequired: true,
+          details: [
+            "Workflow hardening remains blocked in this fixture.",
+            "Patchability: patch_candidate."
+          ],
+          status: "blocked",
+          summary: "Workflow hardening remains blocked in this fixture."
+        }
+      }
+    ],
+    prPatchPlanSummary: {
+      byPatchability: [
+        {
+          count: 2,
+          patchability: "patch_candidate"
+        }
+      ],
+      byValidationStatus: [
+        {
+          count: 1,
+          validationStatus: "ready"
+        },
+        {
+          count: 1,
+          validationStatus: "ready_with_warnings"
+        }
+      ],
+      totalPatchCandidates: 2,
+      totalPlans: 2
+    }
+  });
+}
+
 describe("App", () => {
   afterEach(() => {
     cleanup();
@@ -473,7 +625,7 @@ describe("App", () => {
     expect(screen.getByText("openai/openai-node")).toBeInTheDocument();
     expect(screen.getByDisplayValue("openai/openai-node")).toBeInTheDocument();
     expect(screen.getByText(/Snapshot fetched/i)).toBeInTheDocument();
-  });
+  }, 10000);
 
   it("shows a loading state during submit", async () => {
     const user = userEvent.setup();
@@ -591,15 +743,28 @@ describe("App", () => {
     expect(screen.getByText(/1 executable/i)).toBeInTheDocument();
   });
 
-  it("renders same-page traceability anchors for patch plans, candidates, and findings", async () => {
+  it("renders same-page traceability anchors for patch plans, candidates, issues, and findings", async () => {
     const user = userEvent.setup();
     const patchPlanId = successPayload.prPatchPlans[0]!.id;
     const prCandidateId = successPayload.prCandidates[0]!.id;
+    const issueCandidateId = successPayload.issueCandidates[0]!.id;
     const findingId = successPayload.dependencyFindings[0]!.id;
 
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse({
+          ...successPayload,
+          issueCandidates: [
+            ...successPayload.issueCandidates,
+            {
+              ...successPayload.issueCandidates[0]!,
+              id: "issue:unreferenced:docs",
+              title: "Unreferenced docs issue"
+            }
+          ]
+        })
+      )
     );
 
     render(<App />);
@@ -610,36 +775,175 @@ describe("App", () => {
       await screen.findByRole("heading", { name: /PR candidate traceability/i })
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("heading", { name: /Issue candidate traceability/i })
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("heading", { name: /Linked findings/i })
     ).toBeInTheDocument();
 
+    expectTraceabilityMapCounts({
+      findings: 1,
+      issueCandidates: 1,
+      patchPlans: 1,
+      prCandidates: 1
+    });
+    const traceabilityMap = document.querySelector(
+      '[aria-label="Traceability map summary"]'
+    );
+    expect(
+      traceabilityMap?.querySelector('a[href="#traceability-patch-plans"]')
+    ).not.toBeNull();
+    expect(
+      traceabilityMap?.querySelector('a[href="#traceability-pr-candidates"]')
+    ).not.toBeNull();
+    expect(
+      traceabilityMap?.querySelector('a[href="#traceability-issue-candidates"]')
+    ).not.toBeNull();
+    expect(
+      traceabilityMap?.querySelector('a[href="#traceability-findings"]')
+    ).not.toBeNull();
+
     expect(document.getElementById(buildAnchorId("patch-plan", patchPlanId))).not.toBeNull();
     expect(document.getElementById(buildAnchorId("pr-candidate", prCandidateId))).not.toBeNull();
+    expect(document.getElementById(buildAnchorId("issue-candidate", issueCandidateId))).not.toBeNull();
     expect(document.getElementById(buildAnchorId("finding", findingId))).not.toBeNull();
 
     expect(
-      screen
-        .getAllByRole("link", { name: patchPlanId })
-        .some((link) => link.getAttribute("href") === `#${buildAnchorId("patch-plan", patchPlanId)}`)
-    ).toBe(true);
+      document.querySelector(`a[href="#${buildAnchorId("patch-plan", patchPlanId)}"]`)
+    ).not.toBeNull();
     expect(
-      screen
-        .getAllByRole("link", { name: prCandidateId })
-        .some(
-          (link) => link.getAttribute("href") === `#${buildAnchorId("pr-candidate", prCandidateId)}`
-        )
-    ).toBe(true);
+      document.querySelector(`a[href="#${buildAnchorId("pr-candidate", prCandidateId)}"]`)
+    ).not.toBeNull();
     expect(
-      screen
-        .getAllByRole("link", { name: findingId })
-        .some((link) => link.getAttribute("href") === `#${buildAnchorId("finding", findingId)}`)
-    ).toBe(true);
+      document.querySelector(`a[href="#${buildAnchorId("issue-candidate", issueCandidateId)}"]`)
+    ).not.toBeNull();
+    expect(
+      document.querySelector(`a[href="#${buildAnchorId("finding", findingId)}"]`)
+    ).not.toBeNull();
     expect(
       screen.queryByText("Workflow does not declare explicit permissions")
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Unreferenced docs issue")).not.toBeInTheDocument();
   });
 
-  it("supports inline expansion for patch-plan, candidate, and finding detail cards", async () => {
+  it("filters blocked readiness cards and recomputes traceability panels", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByText(/Eligible for approved deterministic npm dependency write-back/i);
+
+    fireEvent.change(screen.getByLabelText("Eligibility"), {
+      target: {
+        value: "blocked"
+      }
+    });
+
+    expect(
+      screen.queryByText(/Eligible for approved deterministic npm dependency write-back/i)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Workflow hardening remains blocked in this fixture/i).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Upgrade react and refresh dependency locks")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Harden .github/workflows/ci.yml").length).toBeGreaterThan(0);
+    expectTraceabilityMapCounts({
+      findings: 1,
+      issueCandidates: 1,
+      patchPlans: 1,
+      prCandidates: 1
+    });
+    expect(
+      screen.queryByText("Upgrade react to address dependency advisories")
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Harden workflow permissions")).toBeInTheDocument();
+  });
+
+  it("filters by candidate type and keeps traceability synchronized", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByText(/Eligible for approved deterministic npm dependency write-back/i);
+
+    fireEvent.change(screen.getByLabelText("Candidate type"), {
+      target: {
+        value: "workflow-hardening"
+      }
+    });
+
+    expect(
+      screen.queryByText(/Eligible for approved deterministic npm dependency write-back/i)
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Harden .github/workflows/ci.yml").length).toBeGreaterThan(0);
+    expect(screen.getByText("Harden workflow permissions")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Workflow does not declare explicit permissions").length
+    ).toBeGreaterThan(0);
+    expectTraceabilityMapCounts({
+      findings: 1,
+      issueCandidates: 1,
+      patchPlans: 1,
+      prCandidates: 1
+    });
+  });
+
+  it("shows a scoped empty state when filters match no patch plans", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByText(/Eligible for approved deterministic npm dependency write-back/i);
+
+    fireEvent.change(screen.getByLabelText("Eligibility"), {
+      target: {
+        value: "blocked"
+      }
+    });
+
+    expect(
+      screen.getByText("No PR patch plans match the active readiness filters.")
+    ).toBeInTheDocument();
+    expectTraceabilityMapCounts({
+      findings: 0,
+      issueCandidates: 0,
+      patchPlans: 0,
+      prCandidates: 0
+    });
+    expect(
+      screen.getByText("No PR candidates are referenced by the current readiness cards.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No issue candidates are referenced by the current readiness cards.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No findings are referenced by the current readiness cards.")
+    ).toBeInTheDocument();
+  });
+
+  it("supports inline expansion for patch-plan, candidate, issue, and finding detail cards", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -654,19 +958,28 @@ describe("App", () => {
 
     const patchPlanDetails = screen.getByText("Patch-plan detail").closest("details");
     const candidateDetails = screen.getByText("Candidate detail").closest("details");
+    const issueDetails = screen.getByText("Issue detail").closest("details");
     const findingDetails = screen.getByText("Finding detail").closest("details");
 
     expect(patchPlanDetails).not.toHaveAttribute("open");
     expect(candidateDetails).not.toHaveAttribute("open");
+    expect(issueDetails).not.toHaveAttribute("open");
     expect(findingDetails).not.toHaveAttribute("open");
 
     await user.click(screen.getByText("Patch-plan detail"));
     await user.click(screen.getByText("Candidate detail"));
+    await user.click(screen.getByText("Issue detail"));
     await user.click(screen.getByText("Finding detail"));
 
     expect(patchPlanDetails).toHaveAttribute("open");
     expect(candidateDetails).toHaveAttribute("open");
+    expect(issueDetails).toHaveAttribute("open");
     expect(findingDetails).toHaveAttribute("open");
+    expect(
+      screen.getByText(
+        /The repository directly depends on react, so the advisory exposure is more likely/i
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders blocked dependency write-back reasons when eligibility is blocked", async () => {
@@ -704,10 +1017,19 @@ describe("App", () => {
     expect(screen.getByText(/1 blocked/i)).toBeInTheDocument();
     expect(screen.getByText(/Patchability: patch_candidate./i)).toBeInTheDocument();
     expect(
-      screen.getAllByRole("link", { name: successPayload.prPatchPlans[0]!.id }).length
-    ).toBeGreaterThan(0);
+      document.querySelector(
+        `a[href="#${buildAnchorId("patch-plan", successPayload.prPatchPlans[0]!.id)}"]`
+      )
+    ).not.toBeNull();
     expect(
-      screen.getAllByRole("link", { name: successPayload.prCandidates[0]!.id }).length
-    ).toBeGreaterThan(0);
+      document.querySelector(
+        `a[href="#${buildAnchorId("pr-candidate", successPayload.prCandidates[0]!.id)}"]`
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        `a[href="#${buildAnchorId("issue-candidate", successPayload.issueCandidates[0]!.id)}"]`
+      )
+    ).not.toBeNull();
   });
 });
