@@ -122,6 +122,9 @@ importers:
 
   artifacts/web:
     dependencies:
+      '@repo-guardian/analysis-view-model':
+        specifier: workspace:*
+        version: link:../../lib/analysis-view-model
       '@repo-guardian/shared-types':
         specifier: workspace:*
         version: link:../../lib/shared-types
@@ -133,6 +136,12 @@ importers:
         version: 19.2.4(react@19.2.4)
 
   lib/advisory:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  lib/analysis-view-model:
     dependencies:
       '@repo-guardian/shared-types':
         specifier: workspace:*

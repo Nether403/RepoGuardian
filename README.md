@@ -25,6 +25,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true
 - real branch creation, bounded root `package.json` plus `package-lock.json` patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
 - Vite + React UI for repository analysis, candidate selection, dry-run execution previews, approved execution submission, and structured action results
+- reusable analysis view-model helpers for traceability formatting, anchors, filters, summaries, and status tones
 - shared typed schemas across API and web
 
 ## Commands
@@ -42,6 +43,6 @@ pnpm run build
 
 ## Next step
 
-The next step after the analyze-to-action UI loop is to split the web app into a real presentation layer and move traceability formatting, anchors, and selectors into reusable view-model helpers before adding Guardian Graph or broader write-back slices.
+The next step is to build the deterministic Guardian Graph view from existing analysis entities and the reusable analysis view-model layer, before adding saved runs, compare mode, or broader write-back slices.
 
 
