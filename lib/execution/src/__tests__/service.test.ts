@@ -647,6 +647,90 @@ describe("createExecutionPlanResult", () => {
     );
   });
 
+  it("creates a branch, commits a workflow patch, and opens a pull request for inline permissions: { contents: write }", async () => {
+    const fetchRepositoryFileText = vi.fn().mockResolvedValue([
+      "name: CI",
+      "on:",
+      "  push:",
+      "permissions: { contents: write }",
+      "jobs:",
+      "  test:",
+      "    runs-on: ubuntu-latest"
+    ].join("\n"));
+    const createBranchFromDefaultBranch = vi.fn().mockResolvedValue({
+      baseCommitSha: "base-sha-inline",
+      branchName: "repo-guardian/inline-contents-write-branch"
+    });
+    const commitFileChanges = vi.fn().mockResolvedValue({
+      branchName: "repo-guardian/inline-contents-write-branch",
+      commitSha: "commit-sha-inline"
+    });
+    const openPullRequest = vi.fn().mockResolvedValue({
+      pullRequestNumber: 24,
+      pullRequestUrl: "https://github.com/openai/openai-node/pull/24"
+    });
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: analysisContext(),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch,
+          commitFileChanges,
+          openPullRequest
+        }
+      }
+    );
+
+    expect(result.status).toBe("completed");
+    expect(commitFileChanges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchName: "repo-guardian/inline-contents-write-branch",
+        fileChanges: [
+          expect.objectContaining({
+            path: ".github/workflows/ci.yml",
+            content: expect.stringContaining("permissions: { contents: read }")
+          })
+        ]
+      })
+    );
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "create_branch",
+          attempted: true,
+          branchName: "repo-guardian/inline-contents-write-branch",
+          commitSha: "base-sha-inline",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "commit_patch",
+          attempted: true,
+          branchName: "repo-guardian/inline-contents-write-branch",
+          commitSha: "commit-sha-inline",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: true,
+          branchName: "repo-guardian/inline-contents-write-branch",
+          pullRequestNumber: 24,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/24",
+          succeeded: true
+        })
+      ])
+    );
+  });
+
   it("creates a branch, commits a deterministic dependency patch, and opens a pull request for an approved npm dependency candidate", async () => {
     const fetchRepositoryFileText = vi
       .fn()

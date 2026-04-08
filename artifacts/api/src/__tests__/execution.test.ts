@@ -631,6 +631,82 @@ describe("POST /api/execution/plan", () => {
     expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
   });
 
+  it("executes an approved workflow PR creation request for inline permissions: { contents: write }", async () => {
+    const commitFileChanges = vi.fn().mockResolvedValue({
+      branchName: "repo-guardian/inline-contents-write-branch",
+      commitSha: "commit-sha-inline"
+    });
+    const app = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn().mockResolvedValue(
+          [
+            "name: CI",
+            "on:",
+            "  push:",
+            "permissions: { contents: write }",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+          ].join("\n")
+        )
+      },
+      writeClient: {
+        createIssue: vi.fn(),
+        createBranchFromDefaultBranch: vi.fn().mockResolvedValue({
+          baseCommitSha: "base-sha-inline",
+          branchName: "repo-guardian/inline-contents-write-branch"
+        }),
+        commitFileChanges,
+        openPullRequest: vi.fn().mockResolvedValue({
+          pullRequestNumber: 21,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/21"
+        })
+      }
+    });
+
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("completed");
+    expect(commitFileChanges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchName: "repo-guardian/inline-contents-write-branch",
+        fileChanges: [
+          expect.objectContaining({
+            path: ".github/workflows/ci.yml",
+            content: expect.stringContaining("permissions: { contents: read }")
+          })
+        ]
+      })
+    );
+    expect(response.body.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "commit_patch",
+          attempted: true,
+          branchName: "repo-guardian/inline-contents-write-branch",
+          commitSha: "commit-sha-inline",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: true,
+          branchName: "repo-guardian/inline-contents-write-branch",
+          pullRequestNumber: 21,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/21",
+          succeeded: true
+        })
+      ])
+    );
+    expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
+  });
+
   it("executes an approved dependency PR creation request", async () => {
     const app = createTestApp({
       readClient: {

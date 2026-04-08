@@ -314,6 +314,25 @@ function findWorkflowFindings(file: ReviewFile): CodeReviewFinding[] {
       );
     }
 
+    if (/^permissions\s*:\s*\{\s*contents\s*:\s*write\s*\}(?:\s*#.*)?$/ui.test(line)) {
+      findings.push(
+        createFinding({
+          category: "workflow-permissions",
+          confidence: "high",
+          evidence: [{ label: "Matched line", value: line }],
+          lineSpans: [createLineSpan(file.path, index + 1)],
+          path: file.path,
+          recommendedAction:
+            "Reduce repository write access to contents: read unless the workflow explicitly needs to push commits, create releases, or write repository contents.",
+          severity: "high",
+          sourceType: "workflow",
+          summary:
+            "Inline contents: write permission grants repository write access to the workflow token and should be narrowed when write access is not required.",
+          title: "Broad GitHub Actions permissions detected"
+        })
+      );
+    }
+
     if (/^permissions\s*:\s*(?:#.*)?$/u.test(line)) {
       permissionsBlockIndentation = indentation;
       continue;

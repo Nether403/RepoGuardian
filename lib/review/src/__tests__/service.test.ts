@@ -168,4 +168,50 @@ describe("createCodeReviewResult", () => {
       ])
     );
   });
+
+  it("flags inline permissions maps that grant contents: write", () => {
+    const result = createCodeReviewResult({
+      reviewedFiles: [
+        {
+          content: [
+            "name: ci",
+            "on:",
+            "  push:",
+            "permissions: { contents: write }",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+          ].join("\n"),
+          path: ".github/workflows/ci.yml",
+          priority: 300,
+          selectionReason: "workflow",
+          sourceType: "workflow"
+        }
+      ],
+      selection: {
+        candidateCount: 1,
+        isCapped: false,
+        targets: [
+          {
+            path: ".github/workflows/ci.yml",
+            priority: 300,
+            selectionReason: "workflow",
+            sourceType: "workflow"
+          }
+        ],
+        totalFileCount: 3
+      }
+    });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "workflow-permissions",
+          lineSpans: [{ endLine: 4, path: ".github/workflows/ci.yml", startLine: 4 }],
+          sourceType: "workflow",
+          title: "Broad GitHub Actions permissions detected"
+        })
+      ])
+    );
+  });
 });

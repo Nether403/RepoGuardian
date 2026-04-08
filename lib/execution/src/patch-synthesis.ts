@@ -415,6 +415,19 @@ function replaceBroadWorkflowPermissions(content: string, newline: string): stri
       continue;
     }
 
+    const inlineContentsWriteMatch = rawLine.match(
+      /^([ \t]*)permissions\s*:\s*\{\s*contents\s*:\s*write\s*\}([ \t]*(?:#.*)?)$/u
+    );
+
+    if (inlineContentsWriteMatch) {
+      const baseIndentation = inlineContentsWriteMatch[1] ?? "";
+      const trailingComment = inlineContentsWriteMatch[2] ?? "";
+
+      replaced = true;
+      updatedLines.push(`${baseIndentation}permissions: { contents: read }${trailingComment}`);
+      continue;
+    }
+
     if (/^permissions\s*:\s*(?:#.*)?$/u.test(trimmedLine)) {
       permissionsBlockIndentation = indentation;
       updatedLines.push(rawLine);

@@ -6,7 +6,7 @@ Current real-write scope:
 
 - approved GitHub Issue creation for selected issue candidates
 - approved branch creation from the default branch
-- approved bounded workflow-hardening patch synthesis for a single workflow file with deterministic permissions rewrites (`permissions: write-all`, explicit `contents: write`, or missing top-level permissions)
+- approved bounded workflow-hardening patch synthesis for a single workflow file with deterministic permissions rewrites (`permissions: write-all`, explicit `contents: write`, inline `permissions: { contents: write }`, or missing top-level permissions)
 - approved bounded deterministic dependency-upgrade patch synthesis for repo-root `package.json` plus `package-lock.json` v2/v3
 - approved commit creation for the synthesized workflow patch
 - approved commit creation for the synthesized dependency patch
