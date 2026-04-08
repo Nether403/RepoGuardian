@@ -526,7 +526,8 @@ export const PRWriteBackEligibilitySchema = z.object({
   status: PRWriteBackEligibilityStatusSchema,
   summary: z.string().min(1),
   details: z.array(z.string().min(1)),
-  approvalRequired: z.boolean()
+  approvalRequired: z.boolean(),
+  matchedPatterns: z.array(z.string().min(1)).optional()
 });
 
 export const PRPatchPlanSchema = z.object({

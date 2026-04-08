@@ -11,6 +11,7 @@ export const fallbackWriteBackEligibility: PRWriteBackEligibility = {
   details: [
     "This analysis payload did not include write-back eligibility details."
   ],
+  matchedPatterns: [],
   status: "blocked",
   summary: "Write-back eligibility details were not included in this analysis payload."
 };

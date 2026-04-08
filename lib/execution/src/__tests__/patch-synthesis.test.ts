@@ -464,16 +464,31 @@ describe("explainPRWriteBackEligibility", () => {
     const result = explainPRWriteBackEligibility({
       analysis,
       candidate,
+      fileContentsByPath: {
+        ".github/workflows/ci.yml": [
+          "name: ci",
+          "on:",
+          "  push:",
+          "permissions: { contents: write }",
+          "jobs:",
+          "  test:",
+          "    runs-on: ubuntu-latest"
+        ].join("\n")
+      },
       patchPlan
     });
 
     expect(result).toMatchObject({
       approvalRequired: true,
+      matchedPatterns: ["inline permissions: { contents: write }"],
       status: "executable",
       summary: "Eligible for approved workflow write-back."
     });
     expect(result.details).toContain(
       "The PR candidate is patch-capable for the current workflow-hardening write-back slice."
+    );
+    expect(result.details).toContain(
+      "Matched deterministic workflow permission patterns: inline permissions: { contents: write }."
     );
   });
 

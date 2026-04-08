@@ -108,6 +108,7 @@ describe("analyze schemas", () => {
             details: [
               "Approval is still required before Repo Guardian performs any GitHub write-back."
             ],
+            matchedPatterns: ["permissions: write-all"],
             status: "executable",
             summary: "Eligible for approved deterministic npm dependency write-back."
           }

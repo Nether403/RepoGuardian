@@ -87,6 +87,18 @@ function PatchPlanCard({ plan, traceability }: PatchPlanCardProps) {
           <StatusBadge label="Approval required" tone="up-next" />
         ) : null}
       </div>
+      {(eligibility.matchedPatterns?.length ?? 0) > 0 ? (
+        <div className="traceability-section">
+          <p className="subsection-label">Matched workflow patterns</p>
+          <div className="trace-chip-row">
+            {eligibility.matchedPatterns?.map((pattern) => (
+              <span className="trace-chip trace-chip-muted" key={`${plan.id}:${pattern}`}>
+                {pattern}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <p className="readiness-summary">{eligibility.summary}</p>
       <ul className="detail-list readiness-details">
         {eligibility.details.map((detail) => (

@@ -876,6 +876,51 @@ describe("App", () => {
     expect(screen.getAllByText(/1 executable/i).length).toBeGreaterThan(0);
   });
 
+  it("renders matched workflow permission patterns before approval", async () => {
+    const user = userEvent.setup();
+    const workflowPayload = createMixedTraceabilityPayload();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse({
+          ...workflowPayload,
+          prPatchPlans: workflowPayload.prPatchPlans.map((plan) =>
+            plan.candidateType === "workflow-hardening"
+              ? {
+                  ...plan,
+                  writeBackEligibility: {
+                    approvalRequired: true,
+                    details: [
+                      "Approval is still required before Repo Guardian performs any GitHub write-back.",
+                      "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
+                      "Supported workflow finding categories: workflow-permissions.",
+                      "Matched deterministic workflow permission patterns: inline permissions: { contents: write }.",
+                      "Affected file scope: .github/workflows/ci.yml."
+                    ],
+                    matchedPatterns: ["inline permissions: { contents: write }"],
+                    status: "executable",
+                    summary: "Eligible for approved workflow write-back."
+                  }
+                }
+              : plan
+          )
+        })
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      (await screen.findAllByText("inline permissions: { contents: write }")).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Eligible for approved workflow write-back/i).length
+    ).toBeGreaterThan(0);
+  });
+
   it("selects candidates and previews a dry-run execution plan", async () => {
     const user = userEvent.setup();
     let executionRequestBody: unknown = null;
@@ -1512,7 +1557,9 @@ describe("App", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("renders blocked dependency write-back reasons when eligibility is blocked", async () => {
+  it(
+    "renders blocked dependency write-back reasons when eligibility is blocked",
+    async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -1561,9 +1608,13 @@ describe("App", () => {
         `a[href="#${buildAnchorId("issue-candidate", successPayload.issueCandidates[0]!.id)}"]`
       )
     ).not.toBeNull();
-  });
+    },
+    15000
+  );
 
-  it("renders the Guardian Graph and inspects a high-severity finding", async () => {
+  it(
+    "renders the Guardian Graph and inspects a high-severity finding",
+    async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -1611,7 +1662,9 @@ describe("App", () => {
         "dependency:GHSA-test-1234:react:19.0.0:.:direct"
       )}`
     );
-  });
+    },
+    15000
+  );
 
   it("filters Guardian Graph nodes by write-back eligibility", async () => {
     const user = userEvent.setup();

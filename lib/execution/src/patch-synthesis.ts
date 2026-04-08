@@ -72,6 +72,11 @@ type PreparedDeterministicDependencyUpdate = {
   packageLockIndentation: string;
   sourcePackageEntry: JsonObject;
 };
+type WorkflowPermissionRewritePattern =
+  | "permissions: write-all"
+  | "block-style contents: write"
+  | "inline permissions: { contents: write }"
+  | "missing permissions block";
 
 function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -295,6 +300,7 @@ function createBlockedWriteBackEligibility(input: {
 
 function createExecutableWriteBackEligibility(input: {
   details: string[];
+  matchedPatterns?: string[];
   summary: string;
 }): PRWriteBackEligibility {
   return {
@@ -303,6 +309,7 @@ function createExecutableWriteBackEligibility(input: {
       "Approval is still required before Repo Guardian performs any GitHub write-back.",
       ...input.details
     ],
+    matchedPatterns: input.matchedPatterns,
     status: "executable",
     summary: input.summary
   };
@@ -379,6 +386,65 @@ function isRecord(value: unknown): value is JsonObject {
 
 function cloneJsonObject<T extends JsonObject>(value: T): T {
   return structuredClone(value);
+}
+
+function detectWorkflowPermissionRewritePatterns(
+  content: string
+): WorkflowPermissionRewritePattern[] {
+  const lines = content.split(/\r?\n/u);
+  const matchedPatterns = new Set<WorkflowPermissionRewritePattern>();
+  let permissionsBlockIndentation: number | null = null;
+  let hasPermissionsBlock = false;
+
+  for (const rawLine of lines) {
+    const leadingWhitespace = rawLine.match(/^[ \t]*/u)?.[0] ?? "";
+    const indentation = leadingWhitespace.length;
+    const trimmedLine = rawLine.trim();
+
+    if (
+      permissionsBlockIndentation !== null &&
+      trimmedLine.length > 0 &&
+      indentation <= permissionsBlockIndentation
+    ) {
+      permissionsBlockIndentation = null;
+    }
+
+    if (/^permissions\s*:\s*write-all\b/ui.test(trimmedLine)) {
+      matchedPatterns.add("permissions: write-all");
+      hasPermissionsBlock = true;
+      continue;
+    }
+
+    if (
+      /^permissions\s*:\s*\{\s*contents\s*:\s*write\s*\}(?:\s*#.*)?$/ui.test(
+        trimmedLine
+      )
+    ) {
+      matchedPatterns.add("inline permissions: { contents: write }");
+      hasPermissionsBlock = true;
+      continue;
+    }
+
+    if (/^permissions\s*:\s*(?:#.*)?$/u.test(trimmedLine)) {
+      permissionsBlockIndentation = indentation;
+      hasPermissionsBlock = true;
+      continue;
+    }
+
+    if (
+      permissionsBlockIndentation !== null &&
+      indentation > permissionsBlockIndentation &&
+      /^contents\s*:\s*write\b/ui.test(trimmedLine)
+    ) {
+      matchedPatterns.add("block-style contents: write");
+    }
+  }
+
+  if (!hasPermissionsBlock) {
+    matchedPatterns.add("missing permissions block");
+  }
+
+  return [...matchedPatterns];
 }
 
 function replaceBroadWorkflowPermissions(content: string, newline: string): string {
@@ -800,12 +866,54 @@ export function explainPRWriteBackEligibility(input: {
     });
   }
 
+  const workflowPath = input.candidate.affectedPaths[0];
+  const workflowContent = workflowPath
+    ? input.fileContentsByPath?.[workflowPath]
+    : undefined;
+  const matchedPatterns = workflowContent
+    ? detectWorkflowPermissionRewritePatterns(workflowContent)
+    : [];
+
+  if (
+    support.findingCategories.includes("workflow-permissions") &&
+    !matchedPatterns.some((pattern) => pattern !== "missing permissions block")
+  ) {
+    return createBlockedWriteBackEligibility({
+      patchPlan: input.patchPlan,
+      reason:
+        "Repo Guardian could not match a supported workflow permission rewrite pattern in the fetched workflow file.",
+      extraDetails: workflowPath
+        ? [`Affected workflow file: ${workflowPath}.`]
+        : undefined
+    });
+  }
+
+  if (
+    support.findingCategories.includes("workflow-hardening") &&
+    !matchedPatterns.includes("missing permissions block")
+  ) {
+    return createBlockedWriteBackEligibility({
+      patchPlan: input.patchPlan,
+      reason:
+        "Repo Guardian could not confirm the missing-permissions insertion pattern in the fetched workflow file.",
+      extraDetails: workflowPath
+        ? [`Affected workflow file: ${workflowPath}.`]
+        : undefined
+    });
+  }
+
   return createExecutableWriteBackEligibility({
     details: [
       "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
       `Supported workflow finding categories: ${support.findingCategories.join(", ")}.`,
+      ...(matchedPatterns.length > 0
+        ? [
+            `Matched deterministic workflow permission patterns: ${matchedPatterns.join(", ")}.`
+          ]
+        : []),
       `Affected file scope: ${input.candidate.affectedPaths.join(", ")}.`
     ],
+    matchedPatterns,
     summary: "Eligible for approved workflow write-back."
   });
 }

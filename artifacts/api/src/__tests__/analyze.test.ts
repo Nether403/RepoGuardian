@@ -882,6 +882,88 @@ describe("POST /api/analyze", () => {
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
   });
 
+  it("surfaces matched workflow permission patterns for executable workflow write-back", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          default_branch: "main",
+          description: "SDK repository",
+          forks_count: 12,
+          full_name: "openai/openai-node",
+          html_url: "https://github.com/openai/openai-node",
+          language: "TypeScript",
+          name: "openai-node",
+          owner: {
+            login: "openai"
+          },
+          stargazers_count: 42
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          object: {
+            sha: "commit-sha",
+            type: "commit"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: {
+            sha: "tree-sha"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: [
+            {
+              path: ".github/workflows/ci.yml",
+              type: "blob"
+            }
+          ],
+          truncated: false
+        })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "name: ci",
+            "on:",
+            "  push:",
+            "permissions: { contents: write }",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+          ].join("\n")
+        )
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post("/api/analyze")
+      .send({ repoInput: "github.com/openai/openai-node" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.prPatchPlans).toHaveLength(1);
+    expect(response.body.prPatchPlans[0]).toMatchObject({
+      id: "patch-plan:pr:workflow-hardening:.github/workflows/ci.yml",
+      prCandidateId: "pr:workflow-hardening:.github/workflows/ci.yml",
+      writeBackEligibility: {
+        approvalRequired: true,
+        matchedPatterns: ["inline permissions: { contents: write }"],
+        status: "executable",
+        summary: "Eligible for approved workflow write-back."
+      }
+    });
+    expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
+      "Matched deterministic workflow permission patterns: inline permissions: { contents: write }."
+    );
+    expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
+  });
+
   it("returns 400 for invalid repo input", async () => {
     const response = await request(app)
       .post("/api/analyze")

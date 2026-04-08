@@ -16,6 +16,7 @@ type PRCandidatesPanelProps = {
 const fallbackEligibility: PRWriteBackEligibility = {
   approvalRequired: true,
   details: ["No write-back eligibility details were provided for this PR candidate."],
+  matchedPatterns: [],
   status: "blocked",
   summary: "Write-back eligibility is not available for this PR candidate."
 };
@@ -105,6 +106,21 @@ export function PRCandidatesPanel({
                     </div>
                   </div>
                   <p className="trace-copy">{candidate.summary}</p>
+                  {(eligibility.matchedPatterns?.length ?? 0) > 0 ? (
+                    <div className="traceability-section">
+                      <p className="subsection-label">Matched workflow patterns</p>
+                      <div className="trace-chip-row">
+                        {eligibility.matchedPatterns?.map((pattern) => (
+                          <span
+                            className="trace-chip trace-chip-muted"
+                            key={`${candidate.id}:${pattern}`}
+                          >
+                            {pattern}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <p className="readiness-summary">{eligibility.summary}</p>
                   <div className="trace-meta-grid">
                     <div>
