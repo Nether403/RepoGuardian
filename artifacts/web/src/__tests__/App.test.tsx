@@ -2098,6 +2098,57 @@ describe("App", () => {
     );
   });
 
+  function estimateRenderedEdgeLabelRect(element: Element) {
+    const text = element.textContent ?? "";
+    const x = Number.parseFloat(element.getAttribute("x") ?? "0");
+    const y = Number.parseFloat(element.getAttribute("y") ?? "0");
+    const width = Math.max(56, text.length * 6.4 + 16);
+    const height = 16;
+
+    return {
+      bottom: y + height / 2,
+      label: text,
+      left: x - width / 2,
+      right: x + width / 2,
+      top: y - height / 2
+    };
+  }
+
+  function renderedEdgeLabelRectsOverlap(
+    left: ReturnType<typeof estimateRenderedEdgeLabelRect>,
+    right: ReturnType<typeof estimateRenderedEdgeLabelRect>
+  ) {
+    const padding = 4;
+
+    return !(
+      left.right + padding < right.left ||
+      left.left - padding > right.right ||
+      left.bottom + padding < right.top ||
+      left.top - padding > right.bottom
+    );
+  }
+
+  function readGuardianGraphViewport(
+    graph: HTMLElement
+  ): { scale: number; translateX: number; translateY: number } {
+    const viewport = graph.querySelector(".guardian-graph-viewport");
+
+    expect(viewport).not.toBeNull();
+
+    const transform = viewport?.getAttribute("transform") ?? "";
+    const match = transform.match(
+      /^matrix\(([-\d.]+) 0 0 ([-\d.]+) ([-\d.]+) ([-\d.]+)\)$/
+    );
+
+    expect(match).not.toBeNull();
+
+    return {
+      scale: Number.parseFloat(match?.[1] ?? "1"),
+      translateX: Number.parseFloat(match?.[3] ?? "0"),
+      translateY: Number.parseFloat(match?.[4] ?? "0")
+    };
+  }
+
   it("toggles visible relationship labels on the Guardian Graph", async () => {
     const user = userEvent.setup();
 
@@ -2141,6 +2192,125 @@ describe("App", () => {
     await user.click(screen.getByLabelText("Show relationship labels"));
 
     expect(graph.querySelectorAll(".guardian-graph-edge-label")).toHaveLength(0);
+  });
+
+  it("places visible relationship labels without overlap in the current graph fixture", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+    await screen.findByRole("img", { name: "Guardian Graph visual map" });
+    await user.click(screen.getByLabelText("Show relationship labels"));
+
+    const graph = await screen.findByRole("img", {
+      name: "Guardian Graph visual map"
+    });
+    const labelRects = Array.from(
+      graph.querySelectorAll(".guardian-graph-edge-label")
+    ).map((element) => estimateRenderedEdgeLabelRect(element));
+    const overlappingPairs: string[] = [];
+
+    for (let index = 0; index < labelRects.length; index += 1) {
+      const currentRect = labelRects[index];
+
+      if (!currentRect) {
+        continue;
+      }
+
+      for (let otherIndex = index + 1; otherIndex < labelRects.length; otherIndex += 1) {
+        const otherRect = labelRects[otherIndex];
+
+        if (!otherRect) {
+          continue;
+        }
+
+        if (renderedEdgeLabelRectsOverlap(currentRect, otherRect)) {
+          overlappingPairs.push(`${currentRect.label} <> ${otherRect.label}`);
+        }
+      }
+    }
+
+    expect(overlappingPairs).toEqual([]);
+  });
+
+  it("supports zoom, drag pan, and reset on the Guardian Graph canvas", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    const graph = await screen.findByRole("img", {
+      name: "Guardian Graph visual map"
+    });
+    const zoomInButton = screen.getByRole("button", { name: "Zoom in graph" });
+    const resetButton = screen.getByRole("button", { name: "Reset graph view" });
+
+    expect(readGuardianGraphViewport(graph)).toEqual({
+      scale: 1,
+      translateX: 0,
+      translateY: 0
+    });
+    expect(resetButton).toBeDisabled();
+
+    fireEvent.wheel(graph, {
+      clientX: 460,
+      clientY: 260,
+      deltaY: -160
+    });
+
+    const zoomedViewport = readGuardianGraphViewport(graph);
+
+    expect(zoomedViewport.scale).toBeGreaterThan(1);
+    expect(resetButton).toBeEnabled();
+
+    fireEvent.pointerDown(graph, {
+      button: 0,
+      clientX: 460,
+      clientY: 260,
+      pointerId: 1
+    });
+    fireEvent.pointerMove(graph, {
+      button: 0,
+      clientX: 400,
+      clientY: 220,
+      pointerId: 1
+    });
+    fireEvent.pointerUp(graph, {
+      button: 0,
+      clientX: 400,
+      clientY: 220,
+      pointerId: 1
+    });
+
+    const pannedViewport = readGuardianGraphViewport(graph);
+
+    expect(pannedViewport.translateX).not.toBe(zoomedViewport.translateX);
+    expect(pannedViewport.translateY).not.toBe(zoomedViewport.translateY);
+
+    await user.click(zoomInButton);
+
+    expect(readGuardianGraphViewport(graph).scale).toBeGreaterThan(zoomedViewport.scale);
+
+    await user.click(resetButton);
+
+    expect(readGuardianGraphViewport(graph)).toEqual({
+      scale: 1,
+      translateX: 0,
+      translateY: 0
+    });
+    expect(resetButton).toBeDisabled();
   });
 
   it("keeps workflow edge tooltips and status markers when relationship labels are shown", async () => {

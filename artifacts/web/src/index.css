@@ -573,6 +573,11 @@ code {
   gap: 1rem;
 }
 
+.guardian-graph-stage {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .guardian-graph-copy {
   display: grid;
   gap: 0.85rem;
@@ -696,10 +701,76 @@ code {
     rgba(4, 11, 19, 0.72);
 }
 
+.guardian-graph-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.guardian-graph-view-hint {
+  margin: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.guardian-graph-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.guardian-graph-view-status,
+.guardian-graph-view-button {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(140, 201, 255, 0.16);
+  background: rgba(140, 201, 255, 0.06);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.74rem;
+  color: #dcecff;
+}
+
+.guardian-graph-view-button {
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.guardian-graph-view-button:hover,
+.guardian-graph-view-button:focus-visible {
+  border-color: rgba(140, 201, 255, 0.34);
+  background: rgba(140, 201, 255, 0.14);
+  color: #eff7ff;
+}
+
+.guardian-graph-view-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .guardian-graph-svg {
   width: 100%;
   height: auto;
   overflow: visible;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+}
+
+.guardian-graph-stage-zoomed .guardian-graph-svg {
+  cursor: grab;
+}
+
+.guardian-graph-stage-panning .guardian-graph-svg {
+  cursor: grabbing;
 }
 
 .guardian-graph-empty,
@@ -735,6 +806,10 @@ code {
 .guardian-graph-edge-labels,
 .guardian-graph-node-status-marker {
   pointer-events: none;
+}
+
+.guardian-graph-viewport {
+  transform-origin: 0 0;
 }
 
 .guardian-graph-edge-label {
