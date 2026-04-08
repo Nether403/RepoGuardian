@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: Repo Guardian API
+  version: 0.1.0
+  description: Public API contract for supervised repository analysis, execution planning, and local saved analysis runs.
+servers:
+  - url: /
+paths:
+  /api/analyze:
+    post:
+      operationId: analyzeRepository
+      summary: Analyze a public GitHub repository snapshot
+      x-repo-guardian-request-type: AnalyzeRepoRequest
+      x-repo-guardian-response-type: AnalyzeRepoResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRepoRequest"
+      responses:
+        "200":
+          description: Repository analysis payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeRepoResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+        "502":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/execution/plan:
+    post:
+      operationId: createExecutionPlan
+      summary: Preview or execute an approval-gated execution plan
+      x-repo-guardian-request-type: ExecutionRequest
+      x-repo-guardian-response-type: ExecutionResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionRequest"
+      responses:
+        "200":
+          description: Structured execution result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionResult"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/runs:
+    get:
+      operationId: listAnalysisRuns
+      summary: List locally saved analysis runs
+      x-repo-guardian-response-type: ListAnalysisRunsResponse
+      responses:
+        "200":
+          description: Saved analysis run summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAnalysisRunsResponse"
+    post:
+      operationId: saveAnalysisRun
+      summary: Save the current analysis payload as a local run
+      x-repo-guardian-request-type: SaveAnalysisRunRequest
+      x-repo-guardian-response-type: SaveAnalysisRunResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveAnalysisRunRequest"
+      responses:
+        "201":
+          description: Saved analysis run and summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveAnalysisRunResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/runs/{runId}:
+    get:
+      operationId: getAnalysisRun
+      summary: Reopen a locally saved analysis run
+      x-repo-guardian-response-type: GetAnalysisRunResponse
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Saved analysis run and summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetAnalysisRunResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/runs/compare:
+    post:
+      operationId: compareAnalysisRuns
+      summary: Compare two locally saved analysis runs
+      x-repo-guardian-request-type: CompareAnalysisRunsRequest
+      x-repo-guardian-response-type: CompareAnalysisRunsResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompareAnalysisRunsRequest"
+      responses:
+        "200":
+          description: Saved analysis run comparison.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareAnalysisRunsResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  responses:
+    ErrorResponse:
+      description: Structured error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        details:
+          nullable: true
+    AnalyzeRepoRequest:
+      type: object
+      required:
+        - repoInput
+      properties:
+        repoInput:
+          type: string
+          minLength: 1
+      x-repo-guardian-zod-schema: AnalyzeRepoRequestSchema
+    AnalyzeRepoResponse:
+      type: object
+      description: Runtime schema is owned by AnalyzeRepoResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: AnalyzeRepoResponseSchema
+    ExecutionRequest:
+      type: object
+      description: Runtime schema is owned by ExecutionRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionRequestSchema
+    ExecutionResult:
+      type: object
+      description: Runtime schema is owned by ExecutionResultSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionResultSchema
+    SaveAnalysisRunRequest:
+      type: object
+      description: Runtime schema is owned by SaveAnalysisRunRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: SaveAnalysisRunRequestSchema
+    SaveAnalysisRunResponse:
+      type: object
+      description: Runtime schema is owned by SaveAnalysisRunResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: SaveAnalysisRunResponseSchema
+    ListAnalysisRunsResponse:
+      type: object
+      description: Runtime schema is owned by ListAnalysisRunsResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListAnalysisRunsResponseSchema
+    GetAnalysisRunResponse:
+      type: object
+      description: Runtime schema is owned by GetAnalysisRunResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: GetAnalysisRunResponseSchema
+    CompareAnalysisRunsRequest:
+      type: object
+      description: Runtime schema is owned by CompareAnalysisRunsRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CompareAnalysisRunsRequestSchema
+    CompareAnalysisRunsResponse:
+      type: object
+      description: Runtime schema is owned by CompareAnalysisRunsResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CompareAnalysisRunsResponseSchema

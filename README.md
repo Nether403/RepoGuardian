@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` path.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` path.
 
 ## Current scope
 
@@ -30,6 +30,8 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - `GET /api/runs`, `POST /api/runs`, `GET /api/runs/:runId`, and `POST /api/runs/compare` for local saved analysis runs and compare mode
 - file-backed local/dev saved-run storage under `.repo-guardian/runs` by default, overridable with `REPO_GUARDIAN_RUN_STORE_DIR`
 - UI for saving current analyses, reopening saved reports without re-analyzing live, and comparing findings, candidates, executable patch plans, blocked patch plans, ecosystems, manifests, and lockfiles across runs
+- `lib/api-spec/openapi.yaml` as the API contract for analyze, execution planning, and saved-run endpoints
+- generated `@repo-guardian/api-client` endpoint functions consumed by the web app's validated client wrappers
 - shared typed schemas across API and web
 
 ## Commands
@@ -39,6 +41,7 @@ pnpm install
 pnpm run dev
 pnpm run dev:api
 pnpm run dev:web
+pnpm run generate:api-client
 pnpm run lint
 pnpm run typecheck
 pnpm run test
@@ -47,6 +50,6 @@ pnpm run build
 
 ## Next step
 
-The next step is to formalize the API contract and generate the web client before broadening write-back slices.
+The next step is to expand bounded write-back slices while keeping the existing approval and deterministic patch-synthesis guardrails.
 
 

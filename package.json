@@ -7,6 +7,7 @@
     "dev": "pnpm --parallel --filter @repo-guardian/api --filter @repo-guardian/web run dev",
     "dev:api": "pnpm --filter @repo-guardian/api run dev",
     "dev:web": "pnpm --filter @repo-guardian/web run dev",
+    "generate:api-client": "pnpm --filter @repo-guardian/api-spec run generate",
     "lint": "pnpm -r --if-present run lint",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",

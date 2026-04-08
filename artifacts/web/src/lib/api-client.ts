@@ -3,19 +3,10 @@ import {
   AnalyzeRepoResponseSchema,
   type AnalyzeRepoResponse
 } from "@repo-guardian/shared-types";
-
-function getErrorMessage(payload: unknown, fallback: string): string {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "error" in payload &&
-    typeof payload.error === "string"
-  ) {
-    return payload.error;
-  }
-
-  return fallback;
-}
+import {
+  analyzeRepository as requestAnalyzeRepository,
+  RepoGuardianApiError
+} from "@repo-guardian/api-client";
 
 export class AnalyzeRepoClientError extends Error {
   readonly details: unknown;
@@ -30,46 +21,26 @@ export class AnalyzeRepoClientError extends Error {
 }
 
 export async function analyzeRepository(repoInput: string): Promise<AnalyzeRepoResponse> {
+  let requestBody: ReturnType<typeof AnalyzeRepoRequestSchema.parse>;
+
   try {
-    const requestBody = AnalyzeRepoRequestSchema.parse({ repoInput });
-    const response = await fetch("/api/analyze", {
-      body: JSON.stringify(requestBody),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    });
-
-    let payload: unknown = null;
-
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (!response.ok) {
-      throw new AnalyzeRepoClientError(
-        getErrorMessage(
-          payload,
-          `Analyze request failed with status ${response.status}`
-        ),
-        response.status,
-        payload
-      );
-    }
-
-    return AnalyzeRepoResponseSchema.parse(payload);
+    requestBody = AnalyzeRepoRequestSchema.parse({ repoInput });
   } catch (error) {
-    if (error instanceof AnalyzeRepoClientError) {
-      throw error;
-    }
+    throw new AnalyzeRepoClientError("Repository input is required", 400, null, {
+      cause: error
+    });
+  }
 
-    if (error instanceof Error && error.name === "ZodError") {
+  try {
+    return AnalyzeRepoResponseSchema.parse(
+      await requestAnalyzeRepository(requestBody)
+    );
+  } catch (error) {
+    if (error instanceof RepoGuardianApiError) {
       throw new AnalyzeRepoClientError(
-        "Repository input is required",
-        400,
-        null,
+        error.message,
+        error.status,
+        error.details,
         {
           cause: error
         }

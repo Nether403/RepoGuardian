@@ -5,19 +5,10 @@ import {
   type ExecutionMode,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
-
-function getErrorMessage(payload: unknown, fallback: string): string {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "error" in payload &&
-    typeof payload.error === "string"
-  ) {
-    return payload.error;
-  }
-
-  return fallback;
-}
+import {
+  createExecutionPlan,
+  RepoGuardianApiError
+} from "@repo-guardian/api-client";
 
 export class ExecutionPlanClientError extends Error {
   readonly details: unknown;
@@ -38,46 +29,29 @@ export async function requestExecutionPlan(input: {
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
 }): Promise<ExecutionResult> {
+  let requestBody: ReturnType<typeof ExecutionRequestSchema.parse>;
+
   try {
-    const requestBody = ExecutionRequestSchema.parse(input);
-    const response = await fetch("/api/execution/plan", {
-      body: JSON.stringify(requestBody),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    });
-
-    let payload: unknown = null;
-
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (!response.ok) {
-      throw new ExecutionPlanClientError(
-        getErrorMessage(
-          payload,
-          `Execution request failed with status ${response.status}`
-        ),
-        response.status,
-        payload
-      );
-    }
-
-    return ExecutionResultSchema.parse(payload);
+    requestBody = ExecutionRequestSchema.parse(input);
   } catch (error) {
-    if (error instanceof ExecutionPlanClientError) {
-      throw error;
-    }
+    throw new ExecutionPlanClientError(
+      "Execution request could not be validated",
+      400,
+      null,
+      {
+        cause: error
+      }
+    );
+  }
 
-    if (error instanceof Error && error.name === "ZodError") {
+  try {
+    return ExecutionResultSchema.parse(await createExecutionPlan(requestBody));
+  } catch (error) {
+    if (error instanceof RepoGuardianApiError) {
       throw new ExecutionPlanClientError(
-        "Execution request could not be validated",
-        400,
-        null,
+        error.message,
+        error.status,
+        error.details,
         {
           cause: error
         }

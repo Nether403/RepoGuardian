@@ -279,6 +279,9 @@ Repo Guardian should be a pnpm workspace monorepo.
 - `lib/advisory` — vulnerability/advisory normalization
 - `lib/review` — targeted review logic
 - `lib/execution` — write-action execution and logs
+- `lib/runs` — local saved analysis run storage and compare logic
+- `lib/api-spec` — OpenAPI contract for API routes
+- `lib/api-client` — generated web API client functions
 
 ---
 

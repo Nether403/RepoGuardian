@@ -11,27 +11,13 @@ import {
   type ListAnalysisRunsResponse,
   type SaveAnalysisRunResponse
 } from "@repo-guardian/shared-types";
-
-function getErrorMessage(payload: unknown, fallback: string): string {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "error" in payload &&
-    typeof payload.error === "string"
-  ) {
-    return payload.error;
-  }
-
-  return fallback;
-}
-
-async function parseJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
+import {
+  compareAnalysisRuns,
+  getAnalysisRun,
+  listAnalysisRuns,
+  RepoGuardianApiError,
+  saveAnalysisRun as requestSaveAnalysisRun
+} from "@repo-guardian/api-client";
 
 export class SavedRunsClientError extends Error {
   readonly details: unknown;
@@ -47,21 +33,17 @@ export class SavedRunsClientError extends Error {
 
 export async function listSavedAnalysisRuns(): Promise<ListAnalysisRunsResponse> {
   try {
-    const response = await fetch("/api/runs");
-    const payload = await parseJsonResponse(response);
-
-    if (!response.ok) {
-      throw new SavedRunsClientError(
-        getErrorMessage(payload, `Saved runs request failed with status ${response.status}`),
-        response.status,
-        payload
-      );
-    }
-
-    return ListAnalysisRunsResponseSchema.parse(payload);
+    return ListAnalysisRunsResponseSchema.parse(await listAnalysisRuns());
   } catch (error) {
-    if (error instanceof SavedRunsClientError) {
-      throw error;
+    if (error instanceof RepoGuardianApiError) {
+      throw new SavedRunsClientError(
+        error.message,
+        error.status,
+        error.details,
+        {
+          cause: error
+        }
+      );
     }
 
     throw new SavedRunsClientError(
@@ -79,29 +61,30 @@ export async function saveAnalysisRun(input: {
   analysis: AnalyzeRepoResponse;
   label?: string | null;
 }): Promise<SaveAnalysisRunResponse> {
+  let requestBody: ReturnType<typeof SaveAnalysisRunRequestSchema.parse>;
+
   try {
-    const requestBody = SaveAnalysisRunRequestSchema.parse(input);
-    const response = await fetch("/api/runs", {
-      body: JSON.stringify(requestBody),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    });
-    const payload = await parseJsonResponse(response);
-
-    if (!response.ok) {
-      throw new SavedRunsClientError(
-        getErrorMessage(payload, `Save run request failed with status ${response.status}`),
-        response.status,
-        payload
-      );
-    }
-
-    return SaveAnalysisRunResponseSchema.parse(payload);
+    requestBody = SaveAnalysisRunRequestSchema.parse(input);
   } catch (error) {
-    if (error instanceof SavedRunsClientError) {
-      throw error;
+    throw new SavedRunsClientError("Repo Guardian could not save the analysis run", 0, null, {
+      cause: error
+    });
+  }
+
+  try {
+    return SaveAnalysisRunResponseSchema.parse(
+      await requestSaveAnalysisRun(requestBody)
+    );
+  } catch (error) {
+    if (error instanceof RepoGuardianApiError) {
+      throw new SavedRunsClientError(
+        error.message,
+        error.status,
+        error.details,
+        {
+          cause: error
+        }
+      );
     }
 
     throw new SavedRunsClientError("Repo Guardian could not save the analysis run", 0, null, {
@@ -114,21 +97,17 @@ export async function getSavedAnalysisRun(
   runId: string
 ): Promise<GetAnalysisRunResponse> {
   try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
-    const payload = await parseJsonResponse(response);
-
-    if (!response.ok) {
-      throw new SavedRunsClientError(
-        getErrorMessage(payload, `Get saved run request failed with status ${response.status}`),
-        response.status,
-        payload
-      );
-    }
-
-    return GetAnalysisRunResponseSchema.parse(payload);
+    return GetAnalysisRunResponseSchema.parse(await getAnalysisRun(runId));
   } catch (error) {
-    if (error instanceof SavedRunsClientError) {
-      throw error;
+    if (error instanceof RepoGuardianApiError) {
+      throw new SavedRunsClientError(
+        error.message,
+        error.status,
+        error.details,
+        {
+          cause: error
+        }
+      );
     }
 
     throw new SavedRunsClientError("Repo Guardian could not reopen the saved run", 0, null, {
@@ -141,29 +120,30 @@ export async function compareSavedAnalysisRuns(input: {
   baseRunId: string;
   targetRunId: string;
 }): Promise<CompareAnalysisRunsResponse> {
+  let requestBody: ReturnType<typeof CompareAnalysisRunsRequestSchema.parse>;
+
   try {
-    const requestBody = CompareAnalysisRunsRequestSchema.parse(input);
-    const response = await fetch("/api/runs/compare", {
-      body: JSON.stringify(requestBody),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    });
-    const payload = await parseJsonResponse(response);
-
-    if (!response.ok) {
-      throw new SavedRunsClientError(
-        getErrorMessage(payload, `Compare runs request failed with status ${response.status}`),
-        response.status,
-        payload
-      );
-    }
-
-    return CompareAnalysisRunsResponseSchema.parse(payload);
+    requestBody = CompareAnalysisRunsRequestSchema.parse(input);
   } catch (error) {
-    if (error instanceof SavedRunsClientError) {
-      throw error;
+    throw new SavedRunsClientError("Repo Guardian could not compare saved runs", 0, null, {
+      cause: error
+    });
+  }
+
+  try {
+    return CompareAnalysisRunsResponseSchema.parse(
+      await compareAnalysisRuns(requestBody)
+    );
+  } catch (error) {
+    if (error instanceof RepoGuardianApiError) {
+      throw new SavedRunsClientError(
+        error.message,
+        error.status,
+        error.details,
+        {
+          cause: error
+        }
+      );
     }
 
     throw new SavedRunsClientError("Repo Guardian could not compare saved runs", 0, null, {
