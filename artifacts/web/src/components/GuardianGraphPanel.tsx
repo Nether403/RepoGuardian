@@ -42,6 +42,7 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
     defaultGuardianGraphFilters
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showRelationshipLabels, setShowRelationshipLabels] = useState(false);
   const graph = useMemo(() => buildGuardianGraph(analysis), [analysis]);
   const deferredQuery = useDeferredValue(filters.query);
   const appliedFilters = useMemo(
@@ -259,12 +260,25 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
               ))}
             </select>
           </label>
+          <label className="guardian-graph-toggle-control">
+            <span>Display</span>
+            <span className="guardian-graph-toggle-input">
+              <input
+                aria-label="Show relationship labels"
+                checked={showRelationshipLabels}
+                onChange={(event) => setShowRelationshipLabels(event.target.checked)}
+                type="checkbox"
+              />
+              Show relationship labels
+            </span>
+          </label>
         </div>
         <div className="guardian-graph-workspace">
           <GuardianGraph
             graph={filteredGraph}
             onSelectNode={setSelectedNodeId}
             selectedNodeId={selectedNodeId}
+            showRelationshipLabels={showRelationshipLabels}
           />
           <GraphInspector selection={selection} />
         </div>

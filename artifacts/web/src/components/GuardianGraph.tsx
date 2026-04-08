@@ -18,6 +18,7 @@ type GuardianGraphProps = {
   graph: GuardianGraphModel;
   onSelectNode: (nodeId: string) => void;
   selectedNodeId: string | null;
+  showRelationshipLabels: boolean;
 };
 
 type LayoutNode = GuardianGraphNode &
@@ -36,6 +37,12 @@ const graphWidth = 920;
 const graphHeight = 520;
 const nodeMarkerHeight = 16;
 const edgeMarkerHeight = 16;
+const edgePadding = 4;
+const arrowHeadInset = 12;
+const arrowMarkerRefX = 7;
+const arrowMarkerRefY = 4;
+const edgeLabelOffset = 12;
+const edgeLabelStatusOffset = 18;
 
 function getStatusMarkerLabel(status: "blocked" | "executable"): string {
   return status === "executable" ? "exec" : "blocked";
@@ -59,6 +66,23 @@ function getNodeRadius(node: GuardianGraphNode): number {
   }
 
   return 13;
+}
+
+function edgeHasDirectionCue(edge: GuardianGraphEdge): boolean {
+  return (
+    edge.type === "detected-in" ||
+    edge.type === "grouped-into" ||
+    edge.type === "remediated-by" ||
+    edge.type === "eligible-for"
+  );
+}
+
+function getEdgeArrowMarkerId(edge: GuardianGraphEdge): string | null {
+  if (!edgeHasDirectionCue(edge)) {
+    return null;
+  }
+
+  return `guardian-graph-arrow-${edge.type}`;
 }
 
 function getNodePosition(index: number, total: number): { x: number; y: number } {
@@ -85,6 +109,62 @@ function resolveLayoutPoint(value: string | LayoutNode): LayoutNode {
   }
 
   return value;
+}
+
+function getTrimmedEdgePoints(edge: GuardianGraphEdge, source: LayoutNode, target: LayoutNode) {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance === 0) {
+    return {
+      x1: source.x,
+      x2: target.x,
+      y1: source.y,
+      y2: target.y
+    };
+  }
+
+  const unitX = dx / distance;
+  const unitY = dy / distance;
+  const sourceInset = getNodeRadius(source) + edgePadding;
+  const targetInset =
+    getNodeRadius(target) + edgePadding + (edgeHasDirectionCue(edge) ? arrowHeadInset : 0);
+
+  return {
+    x1: source.x + unitX * sourceInset,
+    x2: target.x - unitX * targetInset,
+    y1: source.y + unitY * sourceInset,
+    y2: target.y - unitY * targetInset
+  };
+}
+
+function getEdgeLabelPosition(edge: GuardianGraphEdge, source: LayoutNode, target: LayoutNode) {
+  const trimmedPoints = getTrimmedEdgePoints(edge, source, target);
+  const dx = trimmedPoints.x2 - trimmedPoints.x1;
+  const dy = trimmedPoints.y2 - trimmedPoints.y1;
+  const distance = Math.hypot(dx, dy);
+  const midpointX = (trimmedPoints.x1 + trimmedPoints.x2) / 2;
+  const midpointY = (trimmedPoints.y1 + trimmedPoints.y2) / 2;
+
+  if (distance === 0) {
+    return {
+      x: midpointX,
+      y: midpointY
+    };
+  }
+
+  const normalX = -dy / distance;
+  const normalY = dx / distance;
+  const offset =
+    edge.type === "eligible-for" && edge.writeBackHint
+      ? edgeLabelStatusOffset
+      : edgeLabelOffset;
+
+  return {
+    x: midpointX + normalX * offset,
+    y: midpointY + normalY * offset
+  };
 }
 
 function buildLayout(graph: GuardianGraphModel): {
@@ -171,10 +251,11 @@ function renderEdgeStatusMarker(edge: GuardianGraphEdge, source: LayoutNode, tar
     return null;
   }
 
+  const trimmedPoints = getTrimmedEdgePoints(edge, source, target);
   const label = getStatusMarkerLabel(edge.writeBackHint.status);
   const width = getStatusMarkerWidth(edge.writeBackHint.status);
-  const midpointX = (source.x + target.x) / 2;
-  const midpointY = (source.y + target.y) / 2;
+  const midpointX = (trimmedPoints.x1 + trimmedPoints.x2) / 2;
+  const midpointY = (trimmedPoints.y1 + trimmedPoints.y2) / 2;
 
   return (
     <g
@@ -200,7 +281,8 @@ function renderEdgeStatusMarker(edge: GuardianGraphEdge, source: LayoutNode, tar
 export function GuardianGraph({
   graph,
   onSelectNode,
-  selectedNodeId
+  selectedNodeId,
+  showRelationshipLabels
 }: GuardianGraphProps) {
   const layout = useMemo(() => buildLayout(graph), [graph]);
 
@@ -219,26 +301,99 @@ export function GuardianGraph({
       role="img"
       viewBox={`0 0 ${graphWidth} ${graphHeight}`}
     >
+      <defs>
+        <marker
+          id="guardian-graph-arrow-detected-in"
+          markerHeight="8"
+          markerUnits="userSpaceOnUse"
+          markerWidth="8"
+          orient="auto"
+          refX={arrowMarkerRefX}
+          refY={arrowMarkerRefY}
+        >
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(140, 201, 255, 0.74)" />
+        </marker>
+        <marker
+          id="guardian-graph-arrow-grouped-into"
+          markerHeight="8"
+          markerUnits="userSpaceOnUse"
+          markerWidth="8"
+          orient="auto"
+          refX={arrowMarkerRefX}
+          refY={arrowMarkerRefY}
+        >
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(140, 201, 255, 0.74)" />
+        </marker>
+        <marker
+          id="guardian-graph-arrow-remediated-by"
+          markerHeight="8"
+          markerUnits="userSpaceOnUse"
+          markerWidth="8"
+          orient="auto"
+          refX={arrowMarkerRefX}
+          refY={arrowMarkerRefY}
+        >
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(155, 217, 176, 0.82)" />
+        </marker>
+        <marker
+          id="guardian-graph-arrow-eligible-for"
+          markerHeight="8"
+          markerUnits="userSpaceOnUse"
+          markerWidth="8"
+          orient="auto"
+          refX={arrowMarkerRefX}
+          refY={arrowMarkerRefY}
+        >
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(155, 217, 176, 0.82)" />
+        </marker>
+      </defs>
       <g className="guardian-graph-edges">
         {layout.edges.map((edge) => {
           const source = resolveLayoutPoint(edge.source);
           const target = resolveLayoutPoint(edge.target);
           const tooltip = edge.tooltip ?? null;
+          const trimmedPoints = getTrimmedEdgePoints(edge, source, target);
+          const markerId = getEdgeArrowMarkerId(edge);
 
           return (
             <line
               className={`guardian-graph-edge guardian-graph-edge-${edge.type}`}
               key={edge.id}
-              x1={source.x}
-              x2={target.x}
-              y1={source.y}
-              y2={target.y}
+              markerEnd={markerId ? `url(#${markerId})` : undefined}
+              x1={trimmedPoints.x1}
+              x2={trimmedPoints.x2}
+              y1={trimmedPoints.y1}
+              y2={trimmedPoints.y2}
             >
               {tooltip ? <title>{tooltip}</title> : null}
             </line>
           );
         })}
       </g>
+      {showRelationshipLabels ? (
+        <g aria-hidden="true" className="guardian-graph-edge-labels">
+          {layout.edges.map((edge) => {
+            if (!edge.label.trim()) {
+              return null;
+            }
+
+            const source = resolveLayoutPoint(edge.source);
+            const target = resolveLayoutPoint(edge.target);
+            const position = getEdgeLabelPosition(edge, source, target);
+
+            return (
+              <text
+                className="guardian-graph-edge-label"
+                key={`${edge.id}:label`}
+                x={position.x}
+                y={position.y}
+              >
+                {edge.label}
+              </text>
+            );
+          })}
+        </g>
+      ) : null}
       <g className="guardian-graph-edge-markers">
         {layout.edges.map((edge) => {
           const source = resolveLayoutPoint(edge.source);

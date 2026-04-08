@@ -536,6 +536,32 @@ code {
   text-transform: none;
 }
 
+.guardian-graph-toggle-control {
+  justify-content: space-between;
+}
+
+.guardian-graph-toggle-input {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(7, 17, 29, 0.92);
+  color: #eff7ff;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.guardian-graph-toggle-input input {
+  width: auto;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .readiness-card-section {
   display: grid;
   gap: 1rem;
@@ -692,6 +718,7 @@ code {
 
 .guardian-graph-edge {
   stroke: rgba(140, 201, 255, 0.26);
+  stroke-linecap: round;
   stroke-width: 1.4;
 }
 
@@ -705,8 +732,20 @@ code {
 }
 
 .guardian-graph-edge-markers,
+.guardian-graph-edge-labels,
 .guardian-graph-node-status-marker {
   pointer-events: none;
+}
+
+.guardian-graph-edge-label {
+  fill: rgba(220, 236, 255, 0.86);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: rgba(4, 11, 19, 0.88);
+  stroke-width: 3px;
+  text-anchor: middle;
 }
 
 .guardian-graph-edge-markers .guardian-graph-edge-status-marker rect,

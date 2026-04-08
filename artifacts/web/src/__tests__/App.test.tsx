@@ -2065,6 +2065,10 @@ describe("App", () => {
     const edgeTooltips = Array.from(graph.querySelectorAll("line > title")).map(
       (element) => element.textContent ?? ""
     );
+    const detectedInEdge = graph.querySelector(".guardian-graph-edge-detected-in");
+    const groupedIntoEdge = graph.querySelector(".guardian-graph-edge-grouped-into");
+    const remediatedByEdge = graph.querySelector(".guardian-graph-edge-remediated-by");
+    const eligibleForEdge = graph.querySelector(".guardian-graph-edge-eligible-for");
 
     expect(
       edgeTooltips.some((text) =>
@@ -2074,6 +2078,103 @@ describe("App", () => {
     expect(
       edgeTooltips.some((text) =>
         text.includes("issue candidate remediated by pr candidate")
+      )
+    ).toBe(true);
+    expect(detectedInEdge).toHaveAttribute(
+      "marker-end",
+      "url(#guardian-graph-arrow-detected-in)"
+    );
+    expect(groupedIntoEdge).toHaveAttribute(
+      "marker-end",
+      "url(#guardian-graph-arrow-grouped-into)"
+    );
+    expect(remediatedByEdge).toHaveAttribute(
+      "marker-end",
+      "url(#guardian-graph-arrow-remediated-by)"
+    );
+    expect(eligibleForEdge).toHaveAttribute(
+      "marker-end",
+      "url(#guardian-graph-arrow-eligible-for)"
+    );
+  });
+
+  it("toggles visible relationship labels on the Guardian Graph", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    const graph = await screen.findByRole("img", {
+      name: "Guardian Graph visual map"
+    });
+    const relationshipToggle = screen.getByLabelText("Show relationship labels");
+
+    expect(relationshipToggle).not.toBeChecked();
+    expect(graph.querySelectorAll(".guardian-graph-edge-label")).toHaveLength(0);
+
+    await user.click(relationshipToggle);
+
+    const initialLabels = Array.from(
+      graph.querySelectorAll(".guardian-graph-edge-label")
+    ).map((element) => element.textContent ?? "");
+
+    expect(initialLabels.length).toBeGreaterThan(0);
+    expect(initialLabels).toContain("detected in");
+    expect(initialLabels).toContain("remediated by");
+
+    fireEvent.change(screen.getByLabelText("Search graph"), {
+      target: {
+        value: "react"
+      }
+    });
+
+    expect(graph.querySelectorAll(".guardian-graph-edge-label").length).toBeLessThan(
+      initialLabels.length
+    );
+
+    await user.click(screen.getByLabelText("Show relationship labels"));
+
+    expect(graph.querySelectorAll(".guardian-graph-edge-label")).toHaveLength(0);
+  });
+
+  it("keeps workflow edge tooltips and status markers when relationship labels are shown", async () => {
+    const user = userEvent.setup();
+    const workflowPayload = createMixedTraceabilityPayload();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(workflowPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+    await screen.findByRole("img", { name: "Guardian Graph visual map" });
+    await user.click(screen.getByLabelText("Show relationship labels"));
+
+    const graph = screen.getByRole("img", { name: "Guardian Graph visual map" });
+    const relationshipLabels = Array.from(
+      graph.querySelectorAll(".guardian-graph-edge-label")
+    ).map((element) => element.textContent ?? "");
+    const workflowEdgeTooltips = Array.from(graph.querySelectorAll("line > title")).map(
+      (element) => element.textContent ?? ""
+    );
+
+    expect(relationshipLabels).toContain("eligible for");
+    expect(
+      graph.querySelectorAll(".guardian-graph-edge-status-marker-blocked").length
+    ).toBeGreaterThan(0);
+    expect(
+      workflowEdgeTooltips.some(
+        (text) =>
+          text.includes("Workflow write-back: blocked") &&
+          text.includes("Workflow hardening remains blocked in this fixture.")
       )
     ).toBe(true);
   });
