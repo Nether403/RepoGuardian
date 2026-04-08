@@ -133,12 +133,35 @@ function getNodeLabel(node: GuardianGraphNode): string {
   return `${node.label.slice(0, 29)}...`;
 }
 
+function getWorkflowWriteBackTooltip(
+  node: GuardianGraphNode | null | undefined
+): string | null {
+  if (!node || !node.writeBackHint) {
+    return null;
+  }
+
+  const lines = [
+    `Workflow write-back: ${node.writeBackHint.status}`,
+    node.writeBackHint.summary
+  ];
+
+  if (node.matchedPatterns && node.matchedPatterns.length > 0) {
+    lines.push(`Matched patterns: ${node.matchedPatterns.join(", ")}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function GuardianGraph({
   graph,
   onSelectNode,
   selectedNodeId
 }: GuardianGraphProps) {
   const layout = useMemo(() => buildLayout(graph), [graph]);
+  const nodeById = useMemo(
+    () => new Map(layout.nodes.map((node) => [node.id, node])),
+    [layout.nodes]
+  );
 
   if (graph.nodes.length === 0) {
     return (
@@ -159,6 +182,12 @@ export function GuardianGraph({
         {layout.edges.map((edge) => {
           const source = resolveLayoutPoint(edge.source);
           const target = resolveLayoutPoint(edge.target);
+          const sourceNode = nodeById.get(source.id);
+          const targetNode = nodeById.get(target.id);
+          const tooltip =
+            edge.type === "eligible-for"
+              ? getWorkflowWriteBackTooltip(targetNode ?? sourceNode ?? null)
+              : null;
 
           return (
             <line
@@ -168,31 +197,38 @@ export function GuardianGraph({
               x2={target.x}
               y1={source.y}
               y2={target.y}
-            />
+            >
+              {tooltip ? <title>{tooltip}</title> : null}
+            </line>
           );
         })}
       </g>
       <g className="guardian-graph-nodes">
-        {layout.nodes.map((node) => (
-          <g
-            aria-label={`${node.type}: ${node.title}`}
-            className={getNodeClassName(node, selectedNodeId)}
-            key={node.id}
-            onClick={() => onSelectNode(node.id)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onSelectNode(node.id);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            transform={`translate(${node.x}, ${node.y})`}
-          >
-            <circle r={getNodeRadius(node)} />
-            <text dy={getNodeRadius(node) + 14}>{getNodeLabel(node)}</text>
-          </g>
-        ))}
+        {layout.nodes.map((node) => {
+          const tooltip = getWorkflowWriteBackTooltip(node);
+
+          return (
+            <g
+              aria-label={`${node.type}: ${node.title}`}
+              className={getNodeClassName(node, selectedNodeId)}
+              key={node.id}
+              onClick={() => onSelectNode(node.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectNode(node.id);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              transform={`translate(${node.x}, ${node.y})`}
+            >
+              {tooltip ? <title>{tooltip}</title> : null}
+              <circle r={getNodeRadius(node)} />
+              <text dy={getNodeRadius(node) + 14}>{getNodeLabel(node)}</text>
+            </g>
+          );
+        })}
       </g>
     </svg>
   );

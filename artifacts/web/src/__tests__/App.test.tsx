@@ -1755,6 +1755,111 @@ describe("App", () => {
     15000
   );
 
+  it(
+    "surfaces executable workflow write-back tooltips on graph PR nodes and edges",
+    async () => {
+      const user = userEvent.setup();
+      const baseWorkflowPayload = createMixedTraceabilityPayload();
+      const workflowPayload = AnalyzeRepoResponseSchema.parse({
+        ...baseWorkflowPayload,
+        prPatchPlans: baseWorkflowPayload.prPatchPlans.map((plan) =>
+          plan.candidateType === "workflow-hardening"
+            ? {
+                ...plan,
+                writeBackEligibility: {
+                  approvalRequired: true,
+                  details: [
+                    "Approval is still required before Repo Guardian performs any GitHub write-back.",
+                    "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
+                    "Matched deterministic workflow permission patterns: inline permissions: { contents: write }."
+                  ],
+                  matchedPatterns: ["inline permissions: { contents: write }"],
+                  status: "executable",
+                  summary: "Eligible for approved workflow write-back."
+                }
+              }
+            : plan
+        )
+      });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(workflowPayload))
+      );
+
+      render(<App />);
+
+      await submitRepository(user);
+
+      const workflowPRNode = await screen.findByRole("button", {
+        name: /pr-candidate: Harden \.github\/workflows\/ci\.yml/i
+      });
+      const graph = screen.getByRole("img", { name: "Guardian Graph visual map" });
+      const workflowEdgeTooltips = Array.from(graph.querySelectorAll("line > title")).map(
+        (element) => element.textContent ?? ""
+      );
+
+      expect(workflowPRNode.querySelector("title")).toHaveTextContent(
+        /Workflow write-back: executable/i
+      );
+      expect(workflowPRNode.querySelector("title")).toHaveTextContent(
+        /Eligible for approved workflow write-back\./i
+      );
+      expect(workflowPRNode.querySelector("title")).toHaveTextContent(
+        /Matched patterns: inline permissions: \{ contents: write \}/i
+      );
+      expect(
+        workflowEdgeTooltips.some(
+          (text) =>
+            text.includes("Workflow write-back: executable") &&
+            text.includes("Eligible for approved workflow write-back.") &&
+            text.includes("Matched patterns: inline permissions: { contents: write }")
+        )
+      ).toBe(true);
+    },
+    15000
+  );
+
+  it(
+    "surfaces blocked workflow write-back tooltips on graph PR nodes and edges",
+    async () => {
+      const user = userEvent.setup();
+      const workflowPayload = createMixedTraceabilityPayload();
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(workflowPayload))
+      );
+
+      render(<App />);
+
+      await submitRepository(user);
+
+      const workflowPRNode = await screen.findByRole("button", {
+        name: /pr-candidate: Harden \.github\/workflows\/ci\.yml/i
+      });
+      const graph = screen.getByRole("img", { name: "Guardian Graph visual map" });
+      const workflowEdgeTooltips = Array.from(graph.querySelectorAll("line > title")).map(
+        (element) => element.textContent ?? ""
+      );
+
+      expect(workflowPRNode.querySelector("title")).toHaveTextContent(
+        /Workflow write-back: blocked/i
+      );
+      expect(workflowPRNode.querySelector("title")).toHaveTextContent(
+        /Workflow hardening remains blocked in this fixture\./i
+      );
+      expect(
+        workflowEdgeTooltips.some(
+          (text) =>
+            text.includes("Workflow write-back: blocked") &&
+            text.includes("Workflow hardening remains blocked in this fixture.")
+        )
+      ).toBe(true);
+    },
+    15000
+  );
+
   it("filters Guardian Graph nodes by write-back eligibility", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
