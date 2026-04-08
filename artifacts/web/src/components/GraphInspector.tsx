@@ -56,9 +56,14 @@ export function GraphInspector({ selection }: GraphInspectorProps) {
       </div>
       <p className="trace-copy">{selection.node.summary}</p>
       {selection.node.anchorId ? (
-        <p className="resource-link">
-          <a href={`#${selection.node.anchorId}`}>Jump to report detail</a>
-        </p>
+        <div>
+          <p className="subsection-label">Jump links</p>
+          <div className="trace-chip-row">
+            <a className="trace-chip trace-chip-link" href={`#${selection.node.anchorId}`}>
+              Jump to report detail
+            </a>
+          </div>
+        </div>
       ) : null}
       {selection.node.badges.length > 0 ? (
         <div className="trace-chip-row">

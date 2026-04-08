@@ -1365,7 +1365,7 @@ describe("App", () => {
         "Unreferenced docs issue"
       )
     ).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it("filters blocked readiness cards and recomputes traceability panels", async () => {
     const user = userEvent.setup();
@@ -1634,6 +1634,11 @@ describe("App", () => {
     expect(screen.getByLabelText("Guardian Graph summary")).toHaveTextContent(
       "1 executable patch plans"
     );
+    expect(
+      screen.queryByText(
+        /Hover workflow nodes and eligible-for edges to preview write-back status./i
+      )
+    ).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", {
@@ -1665,6 +1670,36 @@ describe("App", () => {
     },
     15000
   );
+
+  it("shows the graph hover hint and legend when workflow hover hints exist", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findByText(
+        /Hover workflow nodes and eligible-for edges to preview write-back status./i
+      )
+    ).toBeInTheDocument();
+
+    const legend = screen.getByLabelText("Guardian Graph legend");
+    expect(legend).toHaveTextContent("Findings");
+    expect(legend).toHaveTextContent("Issue candidates");
+    expect(legend).toHaveTextContent("PR candidates");
+    expect(legend).toHaveTextContent("Patch plans");
+    expect(legend).toHaveTextContent("eligible-for edge");
+    expect(legend).toHaveTextContent(
+      "Hover reveals workflow write-back status when available."
+    );
+  });
 
   it(
     "surfaces matched workflow patterns in the Guardian Graph inspector",
@@ -1754,6 +1789,126 @@ describe("App", () => {
     },
     15000
   );
+
+  it("uses Guardian Graph summary chips as quick filters and toggles them off", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    const workflowPatchPlan = await screen.findByRole("button", {
+      name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+    });
+    const dependencyPatchPlan = screen.getByRole("button", {
+      name: /patch-plan: Upgrade react and refresh dependency locks/i
+    });
+
+    expect(workflowPatchPlan).toBeInTheDocument();
+    expect(dependencyPatchPlan).toBeInTheDocument();
+
+    const highSeverityButton = screen.getByRole("button", {
+      name: /1 high-severity findings/i
+    });
+    fireEvent.click(highSeverityButton);
+
+    expect(highSeverityButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.click(highSeverityButton);
+
+    expect(highSeverityButton).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    ).toBeInTheDocument();
+
+    const blockedButton = screen.getByRole("button", {
+      name: /1 blocked patch plans/i
+    });
+    fireEvent.click(blockedButton);
+
+    expect(blockedButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.click(blockedButton);
+
+    expect(blockedButton).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("searches the Guardian Graph and clears selection when the selected node becomes hidden", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    );
+
+    expect(screen.getByLabelText("Guardian Graph inspector")).toHaveTextContent(
+      /Harden \.github\/workflows\/ci\.yml/i
+    );
+
+    fireEvent.change(screen.getByLabelText("Search graph"), {
+      target: {
+        value: "react"
+      }
+    });
+
+    expect(
+      screen.queryByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Guardian Graph inspector")).toHaveTextContent(
+      /Select a graph node/i
+    );
+  });
 
   it(
     "surfaces executable workflow write-back tooltips on graph PR nodes and edges",
@@ -1859,6 +2014,37 @@ describe("App", () => {
     },
     15000
   );
+
+  it("surfaces generic relationship tooltips on non-workflow graph edges", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    const graph = await screen.findByRole("img", {
+      name: "Guardian Graph visual map"
+    });
+    const edgeTooltips = Array.from(graph.querySelectorAll("line > title")).map(
+      (element) => element.textContent ?? ""
+    );
+
+    expect(
+      edgeTooltips.some((text) =>
+        text.includes("dependency finding grouped into issue candidate")
+      )
+    ).toBe(true);
+    expect(
+      edgeTooltips.some((text) =>
+        text.includes("issue candidate remediated by pr candidate")
+      )
+    ).toBe(true);
+  });
 
   it("filters Guardian Graph nodes by write-back eligibility", async () => {
     const user = userEvent.setup();

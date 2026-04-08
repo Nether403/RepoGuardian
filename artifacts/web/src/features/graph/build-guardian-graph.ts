@@ -27,15 +27,44 @@ const graphNodeTypeOrder: GuardianGraphNodeType[] = [
 
 const severityOrder = ["critical", "high", "medium", "low", "info"] as const;
 
+function nodeMatchesQuery(node: GuardianGraphNode, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  return [node.entityId, node.label, node.summary, node.title]
+    .join("\n")
+    .toLowerCase()
+    .includes(normalized);
+}
+
 function nodeMatchesFilters(
   node: GuardianGraphNode,
   filters: GuardianGraphFilters
 ): boolean {
+  if (!nodeMatchesQuery(node, filters.query)) {
+    return false;
+  }
+
   if (filters.entityType !== "all" && node.type !== filters.entityType) {
     return false;
   }
 
-  if (filters.severity !== "all" && node.severity !== filters.severity) {
+  if (
+    filters.severity === "high-severity" &&
+    node.severity !== "critical" &&
+    node.severity !== "high"
+  ) {
+    return false;
+  }
+
+  if (
+    filters.severity !== "all" &&
+    filters.severity !== "high-severity" &&
+    node.severity !== filters.severity
+  ) {
     return false;
   }
 
@@ -99,6 +128,9 @@ export function getGuardianGraphFilterOptions(
     ],
     severities: [
       "all",
+      ...(severities.has("critical") || severities.has("high")
+        ? (["high-severity"] as const)
+        : []),
       ...severityOrder.filter((severity) => severities.has(severity))
     ]
   };

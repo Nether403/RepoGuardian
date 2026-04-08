@@ -37,6 +37,7 @@ export type GuardianGraphNode = {
   severity?: FindingSeverity;
   summary: string;
   title: string;
+  tooltip?: string;
   type: GuardianGraphNodeType;
   writeBackHint?: {
     status: PRWriteBackEligibilityStatus;
@@ -49,6 +50,7 @@ export type GuardianGraphEdge = {
   label: string;
   source: string;
   target: string;
+  tooltip?: string;
   type: GuardianGraphEdgeType;
 };
 

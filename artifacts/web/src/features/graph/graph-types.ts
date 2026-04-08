@@ -19,7 +19,10 @@ export type {
 };
 
 export type GuardianGraphEntityTypeFilter = "all" | GuardianGraphNodeType;
-export type GuardianGraphSeverityFilter = "all" | FindingSeverity;
+export type GuardianGraphSeverityFilter =
+  | "all"
+  | "high-severity"
+  | FindingSeverity;
 export type GuardianGraphEligibilityFilter =
   | "all"
   | PRWriteBackEligibilityStatus;
@@ -27,12 +30,14 @@ export type GuardianGraphEligibilityFilter =
 export type GuardianGraphFilters = {
   eligibility: GuardianGraphEligibilityFilter;
   entityType: GuardianGraphEntityTypeFilter;
+  query: string;
   severity: GuardianGraphSeverityFilter;
 };
 
 export const defaultGuardianGraphFilters: GuardianGraphFilters = {
   eligibility: "all",
   entityType: "all",
+  query: "",
   severity: "all"
 };
 

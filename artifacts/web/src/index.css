@@ -524,6 +524,18 @@ code {
   text-transform: none;
 }
 
+.readiness-filter-row input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0;
+  padding: 0.65rem 0.75rem;
+  background: rgba(7, 17, 29, 0.92);
+  color: #eff7ff;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .readiness-card-section {
   display: grid;
   gap: 1rem;
@@ -540,13 +552,25 @@ code {
   gap: 0.85rem;
 }
 
+.guardian-graph-hint {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(155, 217, 176, 0.18);
+  background: rgba(155, 217, 176, 0.08);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #dff5e6;
+}
+
 .guardian-graph-stats {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
 }
 
-.guardian-graph-stats span {
+.guardian-graph-stats span,
+.guardian-graph-stat-button {
   min-height: 2rem;
   padding: 0.35rem 0.7rem;
   border: 1px solid rgba(140, 201, 255, 0.16);
@@ -554,6 +578,78 @@ code {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.76rem;
   color: #dcecff;
+}
+
+.guardian-graph-stat-button {
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.guardian-graph-stat-button:hover,
+.guardian-graph-stat-button:focus-visible,
+.guardian-graph-stat-button[aria-pressed="true"] {
+  border-color: rgba(140, 201, 255, 0.34);
+  background: rgba(140, 201, 255, 0.14);
+  color: #eff7ff;
+}
+
+.guardian-graph-stat-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.guardian-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.guardian-graph-legend-item,
+.guardian-graph-legend-note {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.74rem;
+  color: var(--text-soft);
+}
+
+.guardian-graph-legend-note {
+  color: #dcecff;
+}
+
+.guardian-graph-legend-node {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(239, 247, 255, 0.72);
+}
+
+.guardian-graph-legend-node-finding {
+  background: rgba(255, 141, 148, 0.84);
+}
+
+.guardian-graph-legend-node-issue,
+.guardian-graph-legend-node-pr {
+  background: rgba(241, 197, 108, 0.8);
+}
+
+.guardian-graph-legend-node-patch {
+  background: rgba(155, 217, 176, 0.86);
+}
+
+.guardian-graph-legend-edge {
+  width: 1.35rem;
+  height: 0;
+  border-top: 2px solid rgba(155, 217, 176, 0.34);
 }
 
 .guardian-graph-workspace {

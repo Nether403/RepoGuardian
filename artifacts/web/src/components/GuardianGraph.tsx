@@ -133,35 +133,12 @@ function getNodeLabel(node: GuardianGraphNode): string {
   return `${node.label.slice(0, 29)}...`;
 }
 
-function getWorkflowWriteBackTooltip(
-  node: GuardianGraphNode | null | undefined
-): string | null {
-  if (!node || !node.writeBackHint) {
-    return null;
-  }
-
-  const lines = [
-    `Workflow write-back: ${node.writeBackHint.status}`,
-    node.writeBackHint.summary
-  ];
-
-  if (node.matchedPatterns && node.matchedPatterns.length > 0) {
-    lines.push(`Matched patterns: ${node.matchedPatterns.join(", ")}`);
-  }
-
-  return lines.join("\n");
-}
-
 export function GuardianGraph({
   graph,
   onSelectNode,
   selectedNodeId
 }: GuardianGraphProps) {
   const layout = useMemo(() => buildLayout(graph), [graph]);
-  const nodeById = useMemo(
-    () => new Map(layout.nodes.map((node) => [node.id, node])),
-    [layout.nodes]
-  );
 
   if (graph.nodes.length === 0) {
     return (
@@ -182,12 +159,7 @@ export function GuardianGraph({
         {layout.edges.map((edge) => {
           const source = resolveLayoutPoint(edge.source);
           const target = resolveLayoutPoint(edge.target);
-          const sourceNode = nodeById.get(source.id);
-          const targetNode = nodeById.get(target.id);
-          const tooltip =
-            edge.type === "eligible-for"
-              ? getWorkflowWriteBackTooltip(targetNode ?? sourceNode ?? null)
-              : null;
+          const tooltip = edge.tooltip ?? null;
 
           return (
             <line
@@ -205,7 +177,7 @@ export function GuardianGraph({
       </g>
       <g className="guardian-graph-nodes">
         {layout.nodes.map((node) => {
-          const tooltip = getWorkflowWriteBackTooltip(node);
+          const tooltip = node.tooltip ?? null;
 
           return (
             <g

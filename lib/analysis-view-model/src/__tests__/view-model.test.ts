@@ -423,6 +423,12 @@ describe("analysis view model", () => {
     const workflowFindingNode = graph.nodes.find(
       (node) => node.id === "code-finding:review:workflow"
     );
+    const eligibleForEdge = graph.edges.find(
+      (edge) =>
+        edge.source === "pr-candidate:pr:dependency:react" &&
+        edge.target === "patch-plan:patch-plan:pr:dependency:react" &&
+        edge.type === "eligible-for"
+    );
 
     expect(graph.nodes.map((node) => node.id)).toContain(
       "repository:openai/openai-node"
@@ -458,6 +464,10 @@ describe("analysis view model", () => {
       status: "blocked",
       summary: "Workflow hardening remains blocked in this fixture."
     });
+    expect(workflowFindingNode?.tooltip).toContain(
+      "code finding: Workflow permissions are implicit"
+    );
+    expect(eligibleForEdge?.tooltip).toContain("pr candidate eligible for patch plan");
   });
 
   it("surfaces matched workflow patterns in graph selections", () => {
@@ -503,6 +513,9 @@ describe("analysis view model", () => {
       status: "executable",
       summary: "Eligible for approved workflow write-back."
     });
+    expect(patchPlanSelection?.node.tooltip).toContain(
+      "Matched patterns: inline permissions: { contents: write }"
+    );
   });
 
   it("selects a graph node with connected remediation context", () => {

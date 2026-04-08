@@ -78,6 +78,10 @@ function isHighSeverity(severity: FindingSeverity): boolean {
   return severityRank(severity) >= severityRank("high");
 }
 
+function formatGraphNodeType(type: GuardianGraphNodeType): string {
+  return type.replace(/-/gu, " ");
+}
+
 function collectMatchedWorkflowPatterns(plans: PRPatchPlan[]): string[] {
   const seen = new Set<string>();
   const matchedPatterns: string[] = [];
@@ -119,6 +123,63 @@ function deriveWorkflowWriteBackHint(
     status: eligibility.status,
     summary: eligibility.summary
   };
+}
+
+function buildNodeTooltip(node: GuardianGraphNode): string {
+  const lines = [`${formatGraphNodeType(node.type)}: ${node.title}`];
+
+  if (node.severity) {
+    lines.push(`Severity: ${node.severity}`);
+  }
+
+  if (node.eligibilityStatus && !node.writeBackHint) {
+    lines.push(`Write-back: ${node.eligibilityStatus}`);
+  }
+
+  if (node.writeBackHint) {
+    lines.push(`Workflow write-back: ${node.writeBackHint.status}`);
+    lines.push(node.writeBackHint.summary);
+  }
+
+  if (node.matchedPatterns && node.matchedPatterns.length > 0) {
+    lines.push(`Matched patterns: ${node.matchedPatterns.join(", ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildEdgeTooltip(
+  edge: GuardianGraphEdge,
+  nodeById: Map<string, GuardianGraphNode>
+): string {
+  const sourceNode = nodeById.get(edge.source);
+  const targetNode = nodeById.get(edge.target);
+  const sourceType = formatGraphNodeType(sourceNode?.type ?? "repository");
+  const targetType = formatGraphNodeType(targetNode?.type ?? "repository");
+  const sourceTitle = sourceNode?.title ?? edge.source;
+  const targetTitle = targetNode?.title ?? edge.target;
+  const relationship =
+    edge.type === "detected-in"
+      ? `${targetType} detected in ${sourceType}`
+      : edge.type === "caused-by"
+        ? `${targetType} caused by ${sourceType}`
+        : edge.type === "grouped-into"
+          ? `${sourceType} grouped into ${targetType}`
+          : edge.type === "remediated-by"
+            ? `${sourceType} remediated by ${targetType}`
+            : `${sourceType} eligible for ${targetType}`;
+  const lines = [relationship, `${sourceTitle} -> ${targetTitle}`];
+
+  if (edge.type === "eligible-for" && targetNode?.writeBackHint) {
+    lines.push(`Workflow write-back: ${targetNode.writeBackHint.status}`);
+    lines.push(targetNode.writeBackHint.summary);
+
+    if (targetNode.matchedPatterns && targetNode.matchedPatterns.length > 0) {
+      lines.push(`Matched patterns: ${targetNode.matchedPatterns.join(", ")}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function createDependencyFindingNode(
@@ -636,18 +697,27 @@ export function buildGuardianGraph(analysis: AnalyzeRepoResponse): GuardianGraph
     ...analysis.dependencyFindings,
     ...analysis.codeReviewFindings
   ].filter((finding) => isHighSeverity(finding.severity)).length;
+  const nodesWithTooltips = nodes.map((node) => ({
+    ...node,
+    tooltip: buildNodeTooltip(node)
+  }));
+  const nodeById = new Map(nodesWithTooltips.map((node) => [node.id, node]));
+  const edgesWithTooltips = edges.map((edge) => ({
+    ...edge,
+    tooltip: buildEdgeTooltip(edge, nodeById)
+  }));
 
   return {
-    edges,
-    nodes,
+    edges: edgesWithTooltips,
+    nodes: nodesWithTooltips,
     summary: {
       blockedPatchPlans,
       codeFindingCount,
       dependencyFindingCount,
-      edgeCount: edges.length,
+      edgeCount: edgesWithTooltips.length,
       executablePatchPlans,
       highSeverityFindingCount,
-      nodeCount: nodes.length
+      nodeCount: nodesWithTooltips.length
     }
   };
 }
