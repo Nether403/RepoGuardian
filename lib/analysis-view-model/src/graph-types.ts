@@ -32,11 +32,16 @@ export type GuardianGraphNode = {
   entityId: string;
   id: string;
   label: string;
+  matchedPatterns?: string[];
   path?: string;
   severity?: FindingSeverity;
   summary: string;
   title: string;
   type: GuardianGraphNodeType;
+  writeBackHint?: {
+    status: PRWriteBackEligibilityStatus;
+    summary: string;
+  };
 };
 
 export type GuardianGraphEdge = {

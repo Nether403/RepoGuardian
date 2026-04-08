@@ -25,6 +25,12 @@ function getNodeTone(selection: GuardianGraphSelection): "active" | "muted" | "w
   return "muted";
 }
 
+function getHintTone(
+  status: "blocked" | "executable"
+): "active" | "warning" {
+  return status === "executable" ? "active" : "warning";
+}
+
 export function GraphInspector({ selection }: GraphInspectorProps) {
   if (!selection) {
     return (
@@ -61,6 +67,38 @@ export function GraphInspector({ selection }: GraphInspectorProps) {
               {formatValue(badge)}
             </span>
           ))}
+        </div>
+      ) : null}
+      {selection.node.writeBackHint ? (
+        <div>
+          <p className="subsection-label">Workflow write-back hint</p>
+          <div className="badge-row">
+            <StatusBadge
+              label={formatValue(selection.node.writeBackHint.status)}
+              tone={getHintTone(selection.node.writeBackHint.status)}
+            />
+          </div>
+          <p className="trace-copy">{selection.node.writeBackHint.summary}</p>
+          {(selection.node.matchedPatterns?.length ?? 0) > 0 ? (
+            <div className="trace-chip-row">
+              {selection.node.matchedPatterns?.map((pattern) => (
+                <span className="trace-chip trace-chip-muted" key={pattern}>
+                  {pattern}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : (selection.node.matchedPatterns?.length ?? 0) > 0 ? (
+        <div>
+          <p className="subsection-label">Matched workflow patterns</p>
+          <div className="trace-chip-row">
+            {selection.node.matchedPatterns?.map((pattern) => (
+              <span className="trace-chip trace-chip-muted" key={pattern}>
+                {pattern}
+              </span>
+            ))}
+          </div>
         </div>
       ) : null}
       {selection.node.details.length > 0 ? (

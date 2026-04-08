@@ -420,6 +420,9 @@ describe("analysis view model", () => {
 
   it("builds a deterministic guardian graph from analysis entities", () => {
     const graph = buildGuardianGraph(analysis);
+    const workflowFindingNode = graph.nodes.find(
+      (node) => node.id === "code-finding:review:workflow"
+    );
 
     expect(graph.nodes.map((node) => node.id)).toContain(
       "repository:openai/openai-node"
@@ -450,6 +453,55 @@ describe("analysis view model", () => {
       dependencyFindingCount: 1,
       executablePatchPlans: 1,
       highSeverityFindingCount: 1
+    });
+    expect(workflowFindingNode?.writeBackHint).toEqual({
+      status: "blocked",
+      summary: "Workflow hardening remains blocked in this fixture."
+    });
+  });
+
+  it("surfaces matched workflow patterns in graph selections", () => {
+    const workflowExecutableAnalysis: AnalyzeRepoResponse = {
+      ...analysis,
+      prPatchPlans: analysis.prPatchPlans.map((plan) =>
+        plan.id === workflowPatchPlan.id
+          ? {
+              ...plan,
+              writeBackEligibility: {
+                approvalRequired: true,
+                details: [
+                  "Approval is still required before Repo Guardian performs any GitHub write-back.",
+                  "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
+                  "Matched deterministic workflow permission patterns: inline permissions: { contents: write }."
+                ],
+                matchedPatterns: ["inline permissions: { contents: write }"],
+                status: "executable",
+                summary: "Eligible for approved workflow write-back."
+              }
+            }
+          : plan
+      )
+    };
+    const graph = buildGuardianGraph(workflowExecutableAnalysis);
+    const codeFindingSelection = selectGuardianGraphNode(graph, "code-finding:review:workflow");
+    const patchPlanSelection = selectGuardianGraphNode(
+      graph,
+      `patch-plan:${workflowPatchPlan.id}`
+    );
+
+    expect(codeFindingSelection?.node.matchedPatterns).toEqual([
+      "inline permissions: { contents: write }"
+    ]);
+    expect(codeFindingSelection?.node.writeBackHint).toEqual({
+      status: "executable",
+      summary: "Eligible for approved workflow write-back."
+    });
+    expect(patchPlanSelection?.node.matchedPatterns).toEqual([
+      "inline permissions: { contents: write }"
+    ]);
+    expect(patchPlanSelection?.node.writeBackHint).toEqual({
+      status: "executable",
+      summary: "Eligible for approved workflow write-back."
     });
   });
 

@@ -78,6 +78,49 @@ function isHighSeverity(severity: FindingSeverity): boolean {
   return severityRank(severity) >= severityRank("high");
 }
 
+function collectMatchedWorkflowPatterns(plans: PRPatchPlan[]): string[] {
+  const seen = new Set<string>();
+  const matchedPatterns: string[] = [];
+
+  for (const plan of plans) {
+    const eligibility = getWriteBackEligibility(plan);
+
+    for (const pattern of eligibility.matchedPatterns ?? []) {
+      if (!seen.has(pattern)) {
+        seen.add(pattern);
+        matchedPatterns.push(pattern);
+      }
+    }
+  }
+
+  return matchedPatterns;
+}
+
+function deriveWorkflowWriteBackHint(
+  plans: PRPatchPlan[]
+): GuardianGraphNode["writeBackHint"] | undefined {
+  const workflowPlans = plans.filter(
+    (plan) => plan.candidateType === "workflow-hardening"
+  );
+
+  if (workflowPlans.length !== 1) {
+    return undefined;
+  }
+
+  const workflowPlan = workflowPlans[0];
+
+  if (!workflowPlan) {
+    return undefined;
+  }
+
+  const eligibility = getWriteBackEligibility(workflowPlan);
+
+  return {
+    status: eligibility.status,
+    summary: eligibility.summary
+  };
+}
+
 function createDependencyFindingNode(
   finding: DependencyFinding,
   analysis: AnalyzeRepoResponse
@@ -143,6 +186,8 @@ function createCodeFindingNode(
 
     return `${plan.title}: ${eligibility.status} - ${eligibility.summary}`;
   });
+  const matchedPatterns = collectMatchedWorkflowPatterns(linkedPatchPlans);
+  const writeBackHint = deriveWorkflowWriteBackHint(linkedPatchPlans);
 
   return {
     anchorId: getFindingAnchorId(finding.id),
@@ -157,11 +202,13 @@ function createCodeFindingNode(
     entityId: finding.id,
     id: graphNodeId("code-finding", finding.id),
     label: finding.title,
+    matchedPatterns: matchedPatterns.length > 0 ? matchedPatterns : undefined,
     path: finding.paths[0],
     severity: finding.severity,
     summary: finding.summary,
     title: finding.title,
-    type: "code-finding"
+    type: "code-finding",
+    writeBackHint
   };
 }
 
@@ -185,7 +232,16 @@ function createIssueCandidateNode(candidate: IssueCandidate): GuardianGraphNode 
   };
 }
 
-function createPRCandidateNode(candidate: PRCandidate): GuardianGraphNode {
+function createPRCandidateNode(
+  candidate: PRCandidate,
+  analysis: AnalyzeRepoResponse
+): GuardianGraphNode {
+  const linkedPatchPlans = analysis.prPatchPlans.filter(
+    (plan) => plan.prCandidateId === candidate.id
+  );
+  const matchedPatterns = collectMatchedWorkflowPatterns(linkedPatchPlans);
+  const writeBackHint = deriveWorkflowWriteBackHint(linkedPatchPlans);
+
   return {
     anchorId: getPRCandidateAnchorId(candidate.id),
     badges: [
@@ -203,15 +259,25 @@ function createPRCandidateNode(candidate: PRCandidate): GuardianGraphNode {
     entityId: candidate.id,
     id: graphNodeId("pr-candidate", candidate.id),
     label: candidate.title,
+    matchedPatterns: matchedPatterns.length > 0 ? matchedPatterns : undefined,
     severity: candidate.severity,
     summary: candidate.summary,
     title: candidate.title,
-    type: "pr-candidate"
+    type: "pr-candidate",
+    writeBackHint
   };
 }
 
 function createPatchPlanNode(plan: PRPatchPlan): GuardianGraphNode {
   const eligibility = getWriteBackEligibility(plan);
+  const matchedPatterns = eligibility.matchedPatterns ?? [];
+  const writeBackHint =
+    plan.candidateType === "workflow-hardening"
+      ? {
+          status: eligibility.status,
+          summary: eligibility.summary
+        }
+      : undefined;
 
   return {
     anchorId: getPatchPlanAnchorId(plan.id),
@@ -227,10 +293,12 @@ function createPatchPlanNode(plan: PRPatchPlan): GuardianGraphNode {
     entityId: plan.id,
     id: graphNodeId("patch-plan", plan.id),
     label: plan.title,
+    matchedPatterns: matchedPatterns.length > 0 ? matchedPatterns : undefined,
     severity: plan.severity,
     summary: eligibility.summary,
     title: plan.title,
-    type: "patch-plan"
+    type: "patch-plan",
+    writeBackHint
   };
 }
 
@@ -498,7 +566,7 @@ export function buildGuardianGraph(analysis: AnalyzeRepoResponse): GuardianGraph
 
   for (const candidate of analysis.prCandidates) {
     const prNodeId = graphNodeId("pr-candidate", candidate.id);
-    addNode(createPRCandidateNode(candidate));
+    addNode(createPRCandidateNode(candidate, analysis));
 
     for (const issueCandidateId of candidate.linkedIssueCandidateIds) {
       const issueNodeId = graphNodeId("issue-candidate", issueCandidateId);

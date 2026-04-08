@@ -1666,6 +1666,95 @@ describe("App", () => {
     15000
   );
 
+  it(
+    "surfaces matched workflow patterns in the Guardian Graph inspector",
+    async () => {
+      const user = userEvent.setup();
+      const baseWorkflowPayload = createMixedTraceabilityPayload();
+      const workflowPayload = AnalyzeRepoResponseSchema.parse({
+        ...baseWorkflowPayload,
+        prPatchPlans: baseWorkflowPayload.prPatchPlans.map((plan) =>
+          plan.candidateType === "workflow-hardening"
+            ? {
+                ...plan,
+                writeBackEligibility: {
+                  approvalRequired: true,
+                  details: [
+                    "Approval is still required before Repo Guardian performs any GitHub write-back.",
+                    "The PR candidate is patch-capable for the current workflow-hardening write-back slice.",
+                    "Matched deterministic workflow permission patterns: inline permissions: { contents: write }."
+                  ],
+                  matchedPatterns: ["inline permissions: { contents: write }"],
+                  status: "executable",
+                  summary: "Eligible for approved workflow write-back."
+                }
+              }
+            : plan
+        )
+      });
+      const workflowFindingTitle = workflowPayload.codeReviewFindings[0]!.title;
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(workflowPayload))
+      );
+
+      render(<App />);
+
+      await submitRepository(user);
+
+      await user.click(
+        await screen.findByRole("button", {
+          name: `code-finding: ${workflowFindingTitle}`
+        })
+      );
+
+      const inspector = screen.getByLabelText("Guardian Graph inspector");
+
+      expect(within(inspector).getByText("Workflow write-back hint")).toBeInTheDocument();
+      expect(
+        within(inspector).getAllByText(/Eligible for approved workflow write-back./i).length
+      ).toBeGreaterThan(0);
+      expect(
+        within(inspector).getByText("inline permissions: { contents: write }")
+      ).toBeInTheDocument();
+    },
+    15000
+  );
+
+  it(
+    "surfaces blocked workflow hints in the Guardian Graph inspector",
+    async () => {
+      const user = userEvent.setup();
+      const workflowPayload = createMixedTraceabilityPayload();
+      const workflowFindingTitle = workflowPayload.codeReviewFindings[0]!.title;
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(workflowPayload))
+      );
+
+      render(<App />);
+
+      await submitRepository(user);
+
+      await user.click(
+        await screen.findByRole("button", {
+          name: `code-finding: ${workflowFindingTitle}`
+        })
+      );
+
+      const inspector = screen.getByLabelText("Guardian Graph inspector");
+
+      expect(within(inspector).getByText("Workflow write-back hint")).toBeInTheDocument();
+      expect(
+        within(inspector).getAllByText(/Workflow hardening remains blocked in this fixture./i)
+          .length
+      ).toBeGreaterThan(0);
+    },
+    15000
+  );
+
   it("filters Guardian Graph nodes by write-back eligibility", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
