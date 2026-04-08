@@ -425,8 +425,8 @@ describe("analysis view model", () => {
     );
     const eligibleForEdge = graph.edges.find(
       (edge) =>
-        edge.source === "pr-candidate:pr:dependency:react" &&
-        edge.target === "patch-plan:patch-plan:pr:dependency:react" &&
+        edge.source === "pr-candidate:pr:workflow:permissions" &&
+        edge.target === `patch-plan:${workflowPatchPlan.id}` &&
         edge.type === "eligible-for"
     );
 
@@ -448,8 +448,8 @@ describe("analysis view model", () => {
     );
     expect(graph.edges).toContainEqual(
       expect.objectContaining({
-        source: "pr-candidate:pr:dependency:react",
-        target: "patch-plan:patch-plan:pr:dependency:react",
+        source: "pr-candidate:pr:workflow:permissions",
+        target: `patch-plan:${workflowPatchPlan.id}`,
         type: "eligible-for"
       })
     );
@@ -461,6 +461,10 @@ describe("analysis view model", () => {
       highSeverityFindingCount: 1
     });
     expect(workflowFindingNode?.writeBackHint).toEqual({
+      status: "blocked",
+      summary: "Workflow hardening remains blocked in this fixture."
+    });
+    expect(eligibleForEdge?.writeBackHint).toEqual({
       status: "blocked",
       summary: "Workflow hardening remains blocked in this fixture."
     });
@@ -498,6 +502,12 @@ describe("analysis view model", () => {
       graph,
       `patch-plan:${workflowPatchPlan.id}`
     );
+    const eligibleForEdge = graph.edges.find(
+      (edge) =>
+        edge.source === "pr-candidate:pr:workflow:permissions" &&
+        edge.target === `patch-plan:${workflowPatchPlan.id}` &&
+        edge.type === "eligible-for"
+    );
 
     expect(codeFindingSelection?.node.matchedPatterns).toEqual([
       "inline permissions: { contents: write }"
@@ -510,6 +520,10 @@ describe("analysis view model", () => {
       "inline permissions: { contents: write }"
     ]);
     expect(patchPlanSelection?.node.writeBackHint).toEqual({
+      status: "executable",
+      summary: "Eligible for approved workflow write-back."
+    });
+    expect(eligibleForEdge?.writeBackHint).toEqual({
       status: "executable",
       summary: "Eligible for approved workflow write-back."
     });

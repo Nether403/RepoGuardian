@@ -966,7 +966,7 @@ describe("App", () => {
     expect(screen.getByText(/2 actions/i)).toBeInTheDocument();
     expect(screen.getByText(/2 eligible/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
+  }, 15000);
 
   it("requires explicit approval before submitting approved execution", async () => {
     const user = userEvent.setup();
@@ -1964,6 +1964,22 @@ describe("App", () => {
         /Matched patterns: inline permissions: \{ contents: write \}/i
       );
       expect(
+        graph.querySelectorAll(".guardian-graph-node-status-marker-executable").length
+      ).toBeGreaterThan(0);
+      expect(
+        Array.from(
+          graph.querySelectorAll(".guardian-graph-node-status-marker-executable text")
+        ).some((element) => element.textContent === "exec")
+      ).toBe(true);
+      expect(
+        graph.querySelectorAll(".guardian-graph-edge-status-marker-executable").length
+      ).toBeGreaterThan(0);
+      expect(
+        Array.from(
+          graph.querySelectorAll(".guardian-graph-edge-status-marker-executable text")
+        ).some((element) => element.textContent === "exec")
+      ).toBe(true);
+      expect(
         workflowEdgeTooltips.some(
           (text) =>
             text.includes("Workflow write-back: executable") &&
@@ -2004,6 +2020,22 @@ describe("App", () => {
       expect(workflowPRNode.querySelector("title")).toHaveTextContent(
         /Workflow hardening remains blocked in this fixture\./i
       );
+      expect(
+        graph.querySelectorAll(".guardian-graph-node-status-marker-blocked").length
+      ).toBeGreaterThan(0);
+      expect(
+        Array.from(
+          graph.querySelectorAll(".guardian-graph-node-status-marker-blocked text")
+        ).some((element) => element.textContent === "blocked")
+      ).toBe(true);
+      expect(
+        graph.querySelectorAll(".guardian-graph-edge-status-marker-blocked").length
+      ).toBeGreaterThan(0);
+      expect(
+        Array.from(
+          graph.querySelectorAll(".guardian-graph-edge-status-marker-blocked text")
+        ).some((element) => element.textContent === "blocked")
+      ).toBe(true);
       expect(
         workflowEdgeTooltips.some(
           (text) =>

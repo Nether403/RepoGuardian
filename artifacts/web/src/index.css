@@ -704,6 +704,44 @@ code {
   stroke: rgba(241, 197, 108, 0.32);
 }
 
+.guardian-graph-edge-markers,
+.guardian-graph-node-status-marker {
+  pointer-events: none;
+}
+
+.guardian-graph-edge-markers .guardian-graph-edge-status-marker rect,
+.guardian-graph-node .guardian-graph-node-status-marker rect {
+  fill: rgba(11, 25, 40, 0.92);
+  stroke: rgba(239, 247, 255, 0.62);
+  stroke-width: 1;
+}
+
+.guardian-graph-edge-markers .guardian-graph-edge-status-marker text,
+.guardian-graph-node .guardian-graph-node-status-marker text {
+  fill: #eff7ff;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.52rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  paint-order: stroke;
+  stroke: rgba(4, 11, 19, 0.84);
+  stroke-width: 1.8px;
+  text-anchor: middle;
+  text-transform: uppercase;
+}
+
+.guardian-graph-edge-status-marker-executable rect,
+.guardian-graph-node-status-marker-executable rect {
+  fill: rgba(52, 104, 76, 0.94);
+  stroke: rgba(155, 217, 176, 0.9);
+}
+
+.guardian-graph-edge-status-marker-blocked rect,
+.guardian-graph-node-status-marker-blocked rect {
+  fill: rgba(117, 74, 40, 0.96);
+  stroke: rgba(241, 197, 108, 0.92);
+}
+
 .guardian-graph-node {
   cursor: pointer;
   outline: none;

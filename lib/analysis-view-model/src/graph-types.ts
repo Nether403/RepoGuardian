@@ -23,6 +23,11 @@ export type GuardianGraphEdgeType =
   | "remediated-by"
   | "eligible-for";
 
+export type GuardianGraphWriteBackHint = {
+  status: PRWriteBackEligibilityStatus;
+  summary: string;
+};
+
 export type GuardianGraphNode = {
   anchorId?: string;
   badges: string[];
@@ -39,10 +44,7 @@ export type GuardianGraphNode = {
   title: string;
   tooltip?: string;
   type: GuardianGraphNodeType;
-  writeBackHint?: {
-    status: PRWriteBackEligibilityStatus;
-    summary: string;
-  };
+  writeBackHint?: GuardianGraphWriteBackHint;
 };
 
 export type GuardianGraphEdge = {
@@ -52,6 +54,7 @@ export type GuardianGraphEdge = {
   target: string;
   tooltip?: string;
   type: GuardianGraphEdgeType;
+  writeBackHint?: GuardianGraphWriteBackHint;
 };
 
 export type GuardianGraphModel = {

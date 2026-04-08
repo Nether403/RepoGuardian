@@ -34,6 +34,16 @@ type LayoutEdge = GuardianGraphEdge &
 
 const graphWidth = 920;
 const graphHeight = 520;
+const nodeMarkerHeight = 16;
+const edgeMarkerHeight = 16;
+
+function getStatusMarkerLabel(status: "blocked" | "executable"): string {
+  return status === "executable" ? "exec" : "blocked";
+}
+
+function getStatusMarkerWidth(status: "blocked" | "executable"): number {
+  return status === "executable" ? 34 : 50;
+}
 
 function getNodeRadius(node: GuardianGraphNode): number {
   if (node.type === "repository") {
@@ -133,6 +143,60 @@ function getNodeLabel(node: GuardianGraphNode): string {
   return `${node.label.slice(0, 29)}...`;
 }
 
+function renderNodeStatusMarker(node: GuardianGraphNode) {
+  if (!node.writeBackHint) {
+    return null;
+  }
+
+  const label = getStatusMarkerLabel(node.writeBackHint.status);
+  const width = getStatusMarkerWidth(node.writeBackHint.status);
+  const radius = getNodeRadius(node);
+
+  return (
+    <g
+      aria-hidden="true"
+      className={`guardian-graph-node-status-marker guardian-graph-node-status-marker-${node.writeBackHint.status}`}
+      transform={`translate(${radius - 2}, ${-radius - 12})`}
+    >
+      <rect height={nodeMarkerHeight} rx={8} ry={8} width={width} x={0} y={0} />
+      <text x={width / 2} y={11}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function renderEdgeStatusMarker(edge: GuardianGraphEdge, source: LayoutNode, target: LayoutNode) {
+  if (edge.type !== "eligible-for" || !edge.writeBackHint) {
+    return null;
+  }
+
+  const label = getStatusMarkerLabel(edge.writeBackHint.status);
+  const width = getStatusMarkerWidth(edge.writeBackHint.status);
+  const midpointX = (source.x + target.x) / 2;
+  const midpointY = (source.y + target.y) / 2;
+
+  return (
+    <g
+      aria-hidden="true"
+      className={`guardian-graph-edge-status-marker guardian-graph-edge-status-marker-${edge.writeBackHint.status}`}
+      transform={`translate(${midpointX}, ${midpointY})`}
+    >
+      <rect
+        height={edgeMarkerHeight}
+        rx={8}
+        ry={8}
+        width={width}
+        x={-width / 2}
+        y={-edgeMarkerHeight / 2}
+      />
+      <text x={0} y={3}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
 export function GuardianGraph({
   graph,
   onSelectNode,
@@ -175,6 +239,18 @@ export function GuardianGraph({
           );
         })}
       </g>
+      <g className="guardian-graph-edge-markers">
+        {layout.edges.map((edge) => {
+          const source = resolveLayoutPoint(edge.source);
+          const target = resolveLayoutPoint(edge.target);
+
+          return (
+            <g key={`${edge.id}:status-marker`}>
+              {renderEdgeStatusMarker(edge, source, target)}
+            </g>
+          );
+        })}
+      </g>
       <g className="guardian-graph-nodes">
         {layout.nodes.map((node) => {
           const tooltip = node.tooltip ?? null;
@@ -197,6 +273,7 @@ export function GuardianGraph({
             >
               {tooltip ? <title>{tooltip}</title> : null}
               <circle r={getNodeRadius(node)} />
+              {renderNodeStatusMarker(node)}
               <text dy={getNodeRadius(node) + 14}>{getNodeLabel(node)}</text>
             </g>
           );

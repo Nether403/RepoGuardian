@@ -21,7 +21,8 @@ import type {
   GuardianGraphModel,
   GuardianGraphNode,
   GuardianGraphNodeType,
-  GuardianGraphSelection
+  GuardianGraphSelection,
+  GuardianGraphWriteBackHint
 } from "./graph-types.js";
 
 function graphNodeId(type: GuardianGraphNodeType, entityId: string): string {
@@ -41,13 +42,15 @@ function createEdge(input: {
   source: string;
   target: string;
   type: GuardianGraphEdgeType;
+  writeBackHint?: GuardianGraphWriteBackHint;
 }): GuardianGraphEdge {
   return {
     id: graphEdgeId(input.type, input.source, input.target),
     label: input.label,
     source: input.source,
     target: input.target,
-    type: input.type
+    type: input.type,
+    writeBackHint: input.writeBackHint
   };
 }
 
@@ -125,6 +128,21 @@ function deriveWorkflowWriteBackHint(
   };
 }
 
+function derivePlanWriteBackHint(
+  plan: PRPatchPlan
+): GuardianGraphWriteBackHint | undefined {
+  if (plan.candidateType !== "workflow-hardening") {
+    return undefined;
+  }
+
+  const eligibility = getWriteBackEligibility(plan);
+
+  return {
+    status: eligibility.status,
+    summary: eligibility.summary
+  };
+}
+
 function buildNodeTooltip(node: GuardianGraphNode): string {
   const lines = [`${formatGraphNodeType(node.type)}: ${node.title}`];
 
@@ -170,11 +188,11 @@ function buildEdgeTooltip(
             : `${sourceType} eligible for ${targetType}`;
   const lines = [relationship, `${sourceTitle} -> ${targetTitle}`];
 
-  if (edge.type === "eligible-for" && targetNode?.writeBackHint) {
-    lines.push(`Workflow write-back: ${targetNode.writeBackHint.status}`);
-    lines.push(targetNode.writeBackHint.summary);
+  if (edge.type === "eligible-for" && edge.writeBackHint) {
+    lines.push(`Workflow write-back: ${edge.writeBackHint.status}`);
+    lines.push(edge.writeBackHint.summary);
 
-    if (targetNode.matchedPatterns && targetNode.matchedPatterns.length > 0) {
+    if (targetNode && targetNode.matchedPatterns && targetNode.matchedPatterns.length > 0) {
       lines.push(`Matched patterns: ${targetNode.matchedPatterns.join(", ")}`);
     }
   }
@@ -332,13 +350,7 @@ function createPRCandidateNode(
 function createPatchPlanNode(plan: PRPatchPlan): GuardianGraphNode {
   const eligibility = getWriteBackEligibility(plan);
   const matchedPatterns = eligibility.matchedPatterns ?? [];
-  const writeBackHint =
-    plan.candidateType === "workflow-hardening"
-      ? {
-          status: eligibility.status,
-          summary: eligibility.summary
-        }
-      : undefined;
+  const writeBackHint = derivePlanWriteBackHint(plan);
 
   return {
     anchorId: getPatchPlanAnchorId(plan.id),
@@ -681,7 +693,8 @@ export function buildGuardianGraph(analysis: AnalyzeRepoResponse): GuardianGraph
           label: "eligible for",
           source: prNodeId,
           target: patchPlanNodeId,
-          type: "eligible-for"
+          type: "eligible-for",
+          writeBackHint: derivePlanWriteBackHint(plan)
         })
       );
     }
