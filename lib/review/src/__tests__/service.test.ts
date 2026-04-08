@@ -114,4 +114,58 @@ describe("createCodeReviewResult", () => {
       ])
     );
   });
+
+  it("flags explicit contents: write permissions inside workflow permission blocks", () => {
+    const result = createCodeReviewResult({
+      reviewedFiles: [
+        {
+          content: [
+            "name: ci",
+            "on:",
+            "  push:",
+            "permissions:",
+            "  contents: write",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+          ].join("\n"),
+          path: ".github/workflows/ci.yml",
+          priority: 300,
+          selectionReason: "workflow",
+          sourceType: "workflow"
+        }
+      ],
+      selection: {
+        candidateCount: 1,
+        isCapped: false,
+        targets: [
+          {
+            path: ".github/workflows/ci.yml",
+            priority: 300,
+            selectionReason: "workflow",
+            sourceType: "workflow"
+          }
+        ],
+        totalFileCount: 3
+      }
+    });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "workflow-permissions",
+          lineSpans: [{ endLine: 5, path: ".github/workflows/ci.yml", startLine: 5 }],
+          sourceType: "workflow",
+          title: "Broad GitHub Actions permissions detected"
+        })
+      ])
+    );
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "workflow-hardening"
+        })
+      ])
+    );
+  });
 });

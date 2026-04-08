@@ -381,23 +381,73 @@ function cloneJsonObject<T extends JsonObject>(value: T): T {
   return structuredClone(value);
 }
 
-function replaceWriteAllPermissions(content: string, newline: string): string {
+function replaceBroadWorkflowPermissions(content: string, newline: string): string {
+  const lines = content.split(/\r?\n/u);
+  const updatedLines: string[] = [];
+  let permissionsBlockIndentation: number | null = null;
   let replaced = false;
-  const updated = content.replace(
-    /^([ \t]*)permissions\s*:\s*write-all\b[^\r\n]*$/gmu,
-    (_match, indentation: string) => {
-      replaced = true;
-      return `${indentation}permissions:${newline}${indentation}  contents: read`;
+
+  for (const rawLine of lines) {
+    const leadingWhitespace = rawLine.match(/^[ \t]*/u)?.[0] ?? "";
+    const indentation = leadingWhitespace.length;
+    const trimmedLine = rawLine.trim();
+
+    if (
+      permissionsBlockIndentation !== null &&
+      trimmedLine.length > 0 &&
+      indentation <= permissionsBlockIndentation
+    ) {
+      permissionsBlockIndentation = null;
     }
-  );
+
+    const writeAllMatch = rawLine.match(
+      /^([ \t]*)permissions\s*:\s*write-all\b([ \t]*(?:#.*)?)$/u
+    );
+
+    if (writeAllMatch) {
+      const baseIndentation = writeAllMatch[1] ?? "";
+      const trailingComment = writeAllMatch[2] ?? "";
+
+      replaced = true;
+      updatedLines.push(`${baseIndentation}permissions:${trailingComment}`);
+      updatedLines.push(`${baseIndentation}  contents: read`);
+      permissionsBlockIndentation = baseIndentation.length;
+      continue;
+    }
+
+    if (/^permissions\s*:\s*(?:#.*)?$/u.test(trimmedLine)) {
+      permissionsBlockIndentation = indentation;
+      updatedLines.push(rawLine);
+      continue;
+    }
+
+    if (
+      permissionsBlockIndentation !== null &&
+      indentation > permissionsBlockIndentation
+    ) {
+      const contentsWriteMatch = rawLine.match(
+        /^([ \t]*)contents\s*:\s*write\b([ \t]*(?:#.*)?)$/u
+      );
+
+      if (contentsWriteMatch) {
+        const [, contentsIndentation, trailingComment = ""] = contentsWriteMatch;
+
+        replaced = true;
+        updatedLines.push(`${contentsIndentation}contents: read${trailingComment}`);
+        continue;
+      }
+    }
+
+    updatedLines.push(rawLine);
+  }
 
   if (!replaced) {
     throw new Error(
-      "The workflow still needs permissions hardening, but no permissions: write-all line was found during patch synthesis."
+      "The workflow still needs permissions hardening, but no supported broad permissions line was found during patch synthesis."
     );
   }
 
-  return updated;
+  return updatedLines.join(newline);
 }
 
 function insertExplicitPermissions(content: string, newline: string): string {
@@ -890,7 +940,7 @@ async function synthesizeWorkflowPatch(input: {
   let updatedContent = originalContent;
 
   if (input.support.findingCategories.includes("workflow-permissions")) {
-    updatedContent = replaceWriteAllPermissions(updatedContent, newline);
+    updatedContent = replaceBroadWorkflowPermissions(updatedContent, newline);
   }
 
   if (input.support.findingCategories.includes("workflow-hardening")) {

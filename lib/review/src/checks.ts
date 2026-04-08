@@ -281,9 +281,20 @@ function findWorkflowFindings(file: ReviewFile): CodeReviewFinding[] {
 
   const findings: CodeReviewFinding[] = [];
   const lines = file.content.split(/\r?\n/u);
+  let permissionsBlockIndentation: number | null = null;
 
   for (const [index, rawLine] of lines.entries()) {
+    const leadingWhitespace = rawLine.match(/^[ \t]*/u)?.[0] ?? "";
+    const indentation = leadingWhitespace.length;
     const line = rawLine.trim();
+
+    if (
+      permissionsBlockIndentation !== null &&
+      line.length > 0 &&
+      indentation <= permissionsBlockIndentation
+    ) {
+      permissionsBlockIndentation = null;
+    }
 
     if (/^permissions\s*:\s*write-all\b/ui.test(line)) {
       findings.push(
@@ -298,6 +309,34 @@ function findWorkflowFindings(file: ReviewFile): CodeReviewFinding[] {
           severity: "high",
           sourceType: "workflow",
           summary: "Broad write-all workflow permissions increase the blast radius of a compromised workflow token.",
+          title: "Broad GitHub Actions permissions detected"
+        })
+      );
+    }
+
+    if (/^permissions\s*:\s*(?:#.*)?$/u.test(line)) {
+      permissionsBlockIndentation = indentation;
+      continue;
+    }
+
+    if (
+      permissionsBlockIndentation !== null &&
+      indentation > permissionsBlockIndentation &&
+      /^contents\s*:\s*write\b/ui.test(line)
+    ) {
+      findings.push(
+        createFinding({
+          category: "workflow-permissions",
+          confidence: "high",
+          evidence: [{ label: "Matched line", value: line }],
+          lineSpans: [createLineSpan(file.path, index + 1)],
+          path: file.path,
+          recommendedAction:
+            "Reduce repository write access to contents: read unless the workflow explicitly needs to push commits, create releases, or write repository contents.",
+          severity: "high",
+          sourceType: "workflow",
+          summary:
+            "Explicit contents: write permission grants repository write access to the workflow token and should be narrowed when write access is not required.",
           title: "Broad GitHub Actions permissions detected"
         })
       );

@@ -22,7 +22,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - `POST /api/execution/plan` for approval-gated dry-run planning and explicitly approved execution
 - structured execution action results with per-action success/failure, branch metadata, commit metadata, and issue/PR metadata
 - real GitHub Issue creation for selected issue candidates when `approvalGranted` is explicitly true
-- real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true
+- real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true for deterministic permissions rewrites such as `permissions: write-all`, explicit `contents: write`, and missing top-level permissions insertion
 - real branch creation, bounded root `package.json` plus `package-lock.json` v2/v3 patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
 - Vite + React UI for repository analysis, candidate selection, dry-run execution previews, approved execution submission, and structured action results
 - reusable analysis view-model helpers for traceability formatting, anchors, filters, summaries, and status tones
