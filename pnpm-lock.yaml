@@ -107,6 +107,9 @@ importers:
       '@repo-guardian/review':
         specifier: workspace:*
         version: link:../../lib/review
+      '@repo-guardian/runs':
+        specifier: workspace:*
+        version: link:../../lib/runs
       '@repo-guardian/shared-types':
         specifier: workspace:*
         version: link:../../lib/shared-types
@@ -206,6 +209,12 @@ importers:
         version: link:../shared-types
 
   lib/review:
+    dependencies:
+      '@repo-guardian/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+
+  lib/runs:
     dependencies:
       '@repo-guardian/shared-types':
         specifier: workspace:*

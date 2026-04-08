@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AnalyzeRepoResponseSchema } from "../analyze.js";
+import {
+  AnalyzeRepoResponseSchema,
+  CompareAnalysisRunsResponseSchema,
+  SavedAnalysisRunSummarySchema
+} from "../analyze.js";
 
 describe("analyze schemas", () => {
   it("accepts pr patch plans with write-back eligibility details", () => {
@@ -139,6 +143,109 @@ describe("analyze schemas", () => {
       },
       warningDetails: [],
       warnings: []
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts saved-run summaries and compare responses", () => {
+    const baseRun = SavedAnalysisRunSummarySchema.parse({
+      blockedPatchPlans: 1,
+      createdAt: "2026-04-08T00:00:00.000Z",
+      defaultBranch: "main",
+      executablePatchPlans: 0,
+      fetchedAt: "2026-04-08T00:00:00.000Z",
+      highSeverityFindings: 1,
+      id: "run-baseline",
+      issueCandidates: 1,
+      label: "Baseline",
+      prCandidates: 1,
+      repositoryFullName: "openai/openai-node",
+      totalFindings: 1
+    });
+    const targetRun = SavedAnalysisRunSummarySchema.parse({
+      ...baseRun,
+      blockedPatchPlans: 0,
+      createdAt: "2026-04-08T00:10:00.000Z",
+      executablePatchPlans: 1,
+      fetchedAt: "2026-04-08T00:10:00.000Z",
+      id: "run-latest",
+      label: "Latest",
+      totalFindings: 2
+    });
+
+    const result = CompareAnalysisRunsResponseSchema.safeParse({
+      baseRun,
+      candidates: {
+        blockedPatchPlans: {
+          base: 1,
+          delta: -1,
+          target: 0
+        },
+        executablePatchPlans: {
+          base: 0,
+          delta: 1,
+          target: 1
+        },
+        issueCandidates: {
+          base: 1,
+          delta: 0,
+          target: 1
+        },
+        prCandidates: {
+          base: 1,
+          delta: 0,
+          target: 1
+        }
+      },
+      findings: {
+        bySeverity: {
+          base: {
+            critical: 0,
+            high: 1,
+            info: 0,
+            low: 0,
+            medium: 0
+          },
+          target: {
+            critical: 0,
+            high: 2,
+            info: 0,
+            low: 0,
+            medium: 0
+          }
+        },
+        newFindingIds: ["finding:new"],
+        resolvedFindingIds: ["finding:old"],
+        total: {
+          base: 1,
+          delta: 1,
+          target: 2
+        }
+      },
+      repository: {
+        baseRepositoryFullName: "openai/openai-node",
+        sameRepository: true,
+        targetRepositoryFullName: "openai/openai-node"
+      },
+      structure: {
+        ecosystems: {
+          added: [],
+          removed: [],
+          unchanged: ["node"]
+        },
+        lockfiles: {
+          added: [],
+          removed: [],
+          unchanged: ["package-lock.json"]
+        },
+        manifests: {
+          added: ["packages/app/package.json"],
+          removed: [],
+          unchanged: ["package.json"]
+        }
+      },
+      targetRun
     });
 
     expect(result.success).toBe(true);

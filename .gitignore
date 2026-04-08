@@ -3,6 +3,7 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
+.repo-guardian/
 RepoRadar-main/
 VISUALGIT-main/
 dev-due-diligence-main/

@@ -51,6 +51,7 @@ A user pastes a GitHub repo and gets:
 - selected PR creation
 - execution logging
 - confidence and evidence for every finding
+- local saved analysis runs and compare mode for reopening prior reports without re-analyzing live
 
 ### Out of scope
 - autonomous background fixing
@@ -319,6 +320,7 @@ Main views should include:
 - repository intake
 - analysis state
 - repository summary
+- saved analysis runs and compare results
 - ecosystems
 - manifests and lockfiles
 - findings

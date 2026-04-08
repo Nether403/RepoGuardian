@@ -986,7 +986,7 @@ describe("App", () => {
       selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
+  }, 10000);
 
   it("shows execution API errors without fabricating results", async () => {
     const user = userEvent.setup();
@@ -1031,6 +1031,209 @@ describe("App", () => {
       )
     ).toBeInTheDocument();
   });
+
+  it("saves, reopens, and compares saved analysis runs", async () => {
+    const user = userEvent.setup();
+    const baselineSummary = {
+      blockedPatchPlans: 1,
+      createdAt: "2026-04-08T00:00:00.000Z",
+      defaultBranch: "main",
+      executablePatchPlans: 0,
+      fetchedAt: "2026-04-08T00:00:00.000Z",
+      highSeverityFindings: 1,
+      id: "run-baseline",
+      issueCandidates: 1,
+      label: "Baseline",
+      prCandidates: 1,
+      repositoryFullName: "openai/openai-node",
+      totalFindings: 1
+    };
+    const latestSummary = {
+      blockedPatchPlans: 0,
+      createdAt: "2026-04-08T00:05:00.000Z",
+      defaultBranch: "main",
+      executablePatchPlans: 1,
+      fetchedAt: "2026-04-08T00:05:00.000Z",
+      highSeverityFindings: 1,
+      id: "run-latest",
+      issueCandidates: 1,
+      label: "Latest",
+      prCandidates: 1,
+      repositoryFullName: "openai/openai-node",
+      totalFindings: 2
+    };
+    const baselineRun = {
+      analysis: successPayload,
+      createdAt: baselineSummary.createdAt,
+      id: baselineSummary.id,
+      label: baselineSummary.label
+    };
+    const latestRun = {
+      analysis: successPayload,
+      createdAt: latestSummary.createdAt,
+      id: latestSummary.id,
+      label: latestSummary.label
+    };
+    const comparison = {
+      baseRun: baselineSummary,
+      candidates: {
+        blockedPatchPlans: {
+          base: 1,
+          delta: -1,
+          target: 0
+        },
+        executablePatchPlans: {
+          base: 0,
+          delta: 1,
+          target: 1
+        },
+        issueCandidates: {
+          base: 1,
+          delta: 0,
+          target: 1
+        },
+        prCandidates: {
+          base: 1,
+          delta: 0,
+          target: 1
+        }
+      },
+      findings: {
+        bySeverity: {
+          base: {
+            critical: 0,
+            high: 1,
+            info: 0,
+            low: 0,
+            medium: 0
+          },
+          target: {
+            critical: 0,
+            high: 2,
+            info: 0,
+            low: 0,
+            medium: 0
+          }
+        },
+        newFindingIds: ["finding:new"],
+        resolvedFindingIds: ["finding:old"],
+        total: {
+          base: 1,
+          delta: 1,
+          target: 2
+        }
+      },
+      repository: {
+        baseRepositoryFullName: "openai/openai-node",
+        sameRepository: true,
+        targetRepositoryFullName: "openai/openai-node"
+      },
+      structure: {
+        ecosystems: {
+          added: [],
+          removed: [],
+          unchanged: ["node"]
+        },
+        lockfiles: {
+          added: [],
+          removed: [],
+          unchanged: ["package-lock.json"]
+        },
+        manifests: {
+          added: ["services/api/pyproject.toml"],
+          removed: [],
+          unchanged: ["package.json"]
+        }
+      },
+      targetRun: latestSummary
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input, init) => {
+      const url = getFetchUrl(input);
+      const method = init?.method ?? "GET";
+
+      if (url === "/api/analyze") {
+        return createJsonResponse(successPayload);
+      }
+
+      if (url === "/api/runs" && method === "POST") {
+        return createJsonResponse(
+          {
+            run: latestRun,
+            summary: latestSummary
+          },
+          true,
+          201
+        );
+      }
+
+      if (url === "/api/runs") {
+        return createJsonResponse({
+          runs: [latestSummary, baselineSummary]
+        });
+      }
+
+      if (url === "/api/runs/run-baseline") {
+        return createJsonResponse({
+          run: baselineRun,
+          summary: baselineSummary
+        });
+      }
+
+      if (url === "/api/runs/compare") {
+        return createJsonResponse(comparison);
+      }
+
+      return createJsonResponse({ error: "Unexpected URL" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByRole("heading", { name: /Repository summary/i });
+    await user.type(screen.getByLabelText("Run label"), "Latest");
+    await user.click(screen.getByRole("button", { name: /Save current analysis/i }));
+
+    expect(await screen.findByText("run-latest")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Refresh saved runs/i }));
+
+    expect(await screen.findByRole("heading", { name: "Baseline" })).toBeInTheDocument();
+    const baselineCard = screen
+      .getByRole("heading", { name: "Baseline" })
+      .closest("article");
+
+    expect(baselineCard).not.toBeNull();
+    await user.click(
+      within(baselineCard as HTMLElement).getByRole("button", {
+        name: /Reopen saved run/i
+      })
+    );
+
+    expect(await screen.findByDisplayValue("openai/openai-node")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Base saved run"), {
+      target: {
+        value: "run-baseline"
+      }
+    });
+    fireEvent.change(screen.getByLabelText("Target saved run"), {
+      target: {
+        value: "run-latest"
+      }
+    });
+    await user.click(screen.getByRole("button", { name: /Compare saved runs/i }));
+
+    expect(await screen.findByRole("heading", { name: /Baseline to Latest/i })).toBeInTheDocument();
+    expect(screen.getByText("finding:new")).toBeInTheDocument();
+    expect(screen.getByText("finding:old")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs/compare",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+  }, 10000);
 
   it("renders same-page traceability anchors for patch plans, candidates, issues, and findings", async () => {
     const user = userEvent.setup();

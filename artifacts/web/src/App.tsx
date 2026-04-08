@@ -1,9 +1,12 @@
 import { useState, type FormEvent } from "react";
 import type {
   AnalyzeRepoResponse,
+  CompareAnalysisRunsResponse,
   ExecutionMode,
-  ExecutionResult
+  ExecutionResult,
+  SavedAnalysisRunSummary
 } from "@repo-guardian/shared-types";
+import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
@@ -14,6 +17,7 @@ import { Panel } from "./components/Panel";
 import { PRCandidatesPanel } from "./components/PRCandidatesPanel";
 import { RepoInputForm } from "./components/RepoInputForm";
 import { RepositorySummaryPanel } from "./components/RepositorySummaryPanel";
+import { SavedRunsPanel } from "./components/SavedRunsPanel";
 import { StatusBadge } from "./components/StatusBadge";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { PartialAnalysisPanel, WarningsPanel } from "./components/WarningsPanel";
@@ -41,6 +45,13 @@ import {
   ExecutionPlanClientError,
   requestExecutionPlan
 } from "./lib/execution-client";
+import {
+  compareSavedAnalysisRuns,
+  getSavedAnalysisRun,
+  listSavedAnalysisRuns,
+  saveAnalysisRun,
+  SavedRunsClientError
+} from "./lib/runs-client";
 
 function App() {
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
@@ -58,15 +69,27 @@ function App() {
     null
   );
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [baseRunId, setBaseRunId] = useState("");
+  const [compareResult, setCompareResult] =
+    useState<CompareAnalysisRunsResponse | null>(null);
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
+  const [isCompareLoading, setIsCompareLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isOpeningRun, setIsOpeningRun] = useState(false);
+  const [isSavedRunsLoading, setIsSavedRunsLoading] = useState(false);
+  const [isSavingRun, setIsSavingRun] = useState(false);
   const [repoInput, setRepoInput] = useState("");
+  const [savedRuns, setSavedRuns] = useState<SavedAnalysisRunSummary[]>([]);
+  const [savedRunsErrorMessage, setSavedRunsErrorMessage] = useState<string | null>(
+    null
+  );
   const [selectedIssueCandidateIds, setSelectedIssueCandidateIds] = useState<
     string[]
   >([]);
   const [selectedPRCandidateIds, setSelectedPRCandidateIds] = useState<string[]>(
     []
   );
+  const [targetRunId, setTargetRunId] = useState("");
 
   const statusLabel = isLoading
     ? "Analyzing snapshot"
@@ -108,6 +131,125 @@ function App() {
     setIsExecutionLoading(false);
     setSelectedIssueCandidateIds([]);
     setSelectedPRCandidateIds([]);
+  }
+
+  function applySavedRuns(nextRuns: SavedAnalysisRunSummary[]) {
+    setSavedRuns(nextRuns);
+    setBaseRunId((currentRunId) =>
+      currentRunId && nextRuns.some((run) => run.id === currentRunId)
+        ? currentRunId
+        : (nextRuns[1]?.id ?? nextRuns[0]?.id ?? "")
+    );
+    setTargetRunId((currentRunId) =>
+      currentRunId && nextRuns.some((run) => run.id === currentRunId)
+        ? currentRunId
+        : (nextRuns[0]?.id ?? "")
+    );
+  }
+
+  async function handleRefreshSavedRuns() {
+    setSavedRunsErrorMessage(null);
+    setIsSavedRunsLoading(true);
+
+    try {
+      const response = await listSavedAnalysisRuns();
+      applySavedRuns(response.runs);
+    } catch (error) {
+      setSavedRunsErrorMessage(
+        error instanceof SavedRunsClientError
+          ? error.message
+          : "Repo Guardian could not load saved analysis runs."
+      );
+    } finally {
+      setIsSavedRunsLoading(false);
+    }
+  }
+
+  async function handleSaveCurrentRun(label: string | null) {
+    if (!analysis) {
+      setSavedRunsErrorMessage("Analyze or reopen a repository before saving a run.");
+      return;
+    }
+
+    setSavedRunsErrorMessage(null);
+    setIsSavingRun(true);
+
+    try {
+      const response = await saveAnalysisRun({
+        analysis,
+        label
+      });
+      const nextRuns = [
+        response.summary,
+        ...savedRuns.filter((run) => run.id !== response.summary.id)
+      ];
+      applySavedRuns(nextRuns);
+      setTargetRunId(response.summary.id);
+    } catch (error) {
+      setSavedRunsErrorMessage(
+        error instanceof SavedRunsClientError
+          ? error.message
+          : "Repo Guardian could not save the current analysis run."
+      );
+    } finally {
+      setIsSavingRun(false);
+    }
+  }
+
+  async function handleOpenSavedRun(runId: string) {
+    setSavedRunsErrorMessage(null);
+    setIsOpeningRun(true);
+
+    try {
+      const response = await getSavedAnalysisRun(runId);
+      setAnalysis(response.run.analysis);
+      setRepoInput(response.summary.repositoryFullName);
+      setHasSubmitted(true);
+      setCompareResult(null);
+      setEligibilityFilter("all");
+      setCandidateTypeFilter("all");
+      resetExecutionState();
+    } catch (error) {
+      setSavedRunsErrorMessage(
+        error instanceof SavedRunsClientError
+          ? error.message
+          : "Repo Guardian could not reopen the saved analysis run."
+      );
+    } finally {
+      setIsOpeningRun(false);
+    }
+  }
+
+  async function handleCompareSavedRuns() {
+    if (!baseRunId || !targetRunId) {
+      setSavedRunsErrorMessage("Select a base run and target run before comparing.");
+      return;
+    }
+
+    if (baseRunId === targetRunId) {
+      setSavedRunsErrorMessage("Select two different saved runs before comparing.");
+      return;
+    }
+
+    setSavedRunsErrorMessage(null);
+    setIsCompareLoading(true);
+
+    try {
+      setCompareResult(
+        await compareSavedAnalysisRuns({
+          baseRunId,
+          targetRunId
+        })
+      );
+    } catch (error) {
+      setSavedRunsErrorMessage(
+        error instanceof SavedRunsClientError
+          ? error.message
+          : "Repo Guardian could not compare the selected saved runs."
+      );
+    } finally {
+      setIsCompareLoading(false);
+    }
   }
 
   function handleIssueCandidateSelection(candidateId: string, selected: boolean) {
@@ -183,6 +325,7 @@ function App() {
     setHasSubmitted(true);
     setIsLoading(true);
     setErrorMessage(null);
+    setCompareResult(null);
 
     try {
       const nextAnalysis = await analyzeRepository(repoInput);
@@ -241,6 +384,25 @@ function App() {
           value={repoInput}
         />
       </Panel>
+
+      <SavedRunsPanel
+        analysis={analysis}
+        baseRunId={baseRunId}
+        errorMessage={savedRunsErrorMessage}
+        isComparing={isCompareLoading}
+        isLoading={isSavedRunsLoading}
+        isOpening={isOpeningRun}
+        isSaving={isSavingRun}
+        onBaseRunChange={setBaseRunId}
+        onCompareRuns={handleCompareSavedRuns}
+        onOpenRun={handleOpenSavedRun}
+        onRefreshRuns={handleRefreshSavedRuns}
+        onSaveCurrentRun={handleSaveCurrentRun}
+        onTargetRunChange={setTargetRunId}
+        runs={savedRuns}
+        targetRunId={targetRunId}
+      />
+      <CompareRunsPanel comparison={compareResult} />
 
       {!hasSubmitted ? (
         <Panel

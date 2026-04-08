@@ -247,7 +247,8 @@ code {
 }
 
 .repo-input,
-.submit-button {
+.submit-button,
+.secondary-button {
   min-height: 3.25rem;
   border: 1px solid var(--border);
   font: inherit;
@@ -265,13 +266,15 @@ code {
 }
 
 .repo-input:focus,
-.submit-button:focus {
+.submit-button:focus,
+.secondary-button:focus {
   outline: 2px solid rgba(140, 201, 255, 0.5);
   outline-offset: 2px;
 }
 
 .repo-input:disabled,
-.submit-button:disabled {
+.submit-button:disabled,
+.secondary-button:disabled {
   cursor: wait;
   opacity: 0.7;
 }
@@ -279,6 +282,13 @@ code {
 .submit-button {
   padding: 0 1.1rem;
   background: linear-gradient(180deg, rgba(140, 201, 255, 0.2), rgba(140, 201, 255, 0.08));
+  color: #eff7ff;
+  font-weight: 600;
+}
+
+.secondary-button {
+  padding: 0 1rem;
+  background: rgba(255, 255, 255, 0.04);
   color: #eff7ff;
   font-weight: 600;
 }
@@ -659,6 +669,72 @@ code {
   fill: rgba(241, 197, 108, 0.84);
 }
 
+.saved-runs-shell,
+.compare-runs-shell,
+.saved-run-list,
+.compare-structure-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.saved-run-form,
+.saved-run-compare-row {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+}
+
+.saved-run-compare-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.saved-run-form label,
+.saved-run-compare-row label {
+  display: grid;
+  gap: 0.45rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.saved-run-form input,
+.saved-run-compare-row select {
+  width: 100%;
+  min-height: 3.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0;
+  padding: 0 0.75rem;
+  background: rgba(4, 10, 18, 0.58);
+  color: var(--text);
+  font: inherit;
+}
+
+.saved-run-card,
+.compare-metric-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.saved-run-card .secondary-button {
+  justify-self: start;
+}
+
+.compare-metric-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.compare-metric-card strong {
+  font-size: 2rem;
+  letter-spacing: -0.06em;
+}
+
 .candidate-selection-list,
 .execution-results,
 .execution-action-list,
@@ -973,5 +1049,10 @@ code {
   .guardian-graph-empty,
   .graph-inspector {
     min-height: 24rem;
+  }
+
+  .saved-run-form,
+  .saved-run-compare-row {
+    grid-template-columns: 1fr;
   }
 }

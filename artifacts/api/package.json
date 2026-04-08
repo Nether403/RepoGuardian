@@ -21,6 +21,7 @@
     "@repo-guardian/patches": "workspace:*",
     "@repo-guardian/prs": "workspace:*",
     "@repo-guardian/review": "workspace:*",
+    "@repo-guardian/runs": "workspace:*",
     "@repo-guardian/shared-types": "workspace:*",
     "cors": "^2.8.5",
     "express": "^5.1.0",
