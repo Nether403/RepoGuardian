@@ -753,7 +753,7 @@ describe("App", () => {
     expect(
       screen.getByRole("heading", { name: /PR write-back readiness/i })
     ).toBeInTheDocument();
-    expect(screen.getByText("openai/openai-node")).toBeInTheDocument();
+    expect(screen.getAllByText("openai/openai-node").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("openai/openai-node")).toBeInTheDocument();
     expect(screen.getByText(/Snapshot fetched/i)).toBeInTheDocument();
   }, 10000);
@@ -843,10 +843,10 @@ describe("App", () => {
     await submitRepository(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Node.js")).toBeInTheDocument();
+      expect(screen.getAllByText("Node.js").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByText("Python")).toBeInTheDocument();
+    expect(screen.getAllByText("Python").length).toBeGreaterThan(0);
     expect(screen.getAllByText("package.json").length).toBeGreaterThan(0);
     expect(screen.getAllByText("package-lock.json").length).toBeGreaterThan(0);
     expect(screen.queryByText("Dockerfile")).not.toBeInTheDocument();
@@ -873,7 +873,7 @@ describe("App", () => {
       screen.getAllByText(/Existing lockfile metadata for react@19.0.1 was found uniquely/i)
         .length
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/1 executable/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/1 executable/i).length).toBeGreaterThan(0);
   });
 
   it("selects candidates and previews a dry-run execution plan", async () => {
@@ -1341,7 +1341,7 @@ describe("App", () => {
     expect(
       await screen.findAllByText(/Repo Guardian could not recover unique lockfile metadata for react@19.0.1./i)
     ).toHaveLength(4);
-    expect(screen.getByText(/1 blocked/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/1 blocked/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Patchability: patch_candidate./i).length).toBeGreaterThan(0);
     expect(
       document.querySelector(
@@ -1358,5 +1358,92 @@ describe("App", () => {
         `a[href="#${buildAnchorId("issue-candidate", successPayload.issueCandidates[0]!.id)}"]`
       )
     ).not.toBeNull();
+  });
+
+  it("renders the Guardian Graph and inspects a high-severity finding", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findByRole("heading", { name: /Visual traceability map/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Guardian Graph summary")).toHaveTextContent(
+      "1 dependency findings"
+    );
+    expect(screen.getByLabelText("Guardian Graph summary")).toHaveTextContent(
+      "1 executable patch plans"
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /dependency-finding: react is affected by GHSA-test-1234/i
+      })
+    );
+
+    const inspector = screen.getByLabelText("Guardian Graph inspector");
+    expect(
+      within(inspector).getByText("react is affected by GHSA-test-1234")
+    ).toBeInTheDocument();
+    expect(within(inspector).getByText("Package: react")).toBeInTheDocument();
+    expect(within(inspector).getByText("Linked issues: 1")).toBeInTheDocument();
+    expect(within(inspector).getByText("Linked PRs: 1")).toBeInTheDocument();
+    expect(
+      within(inspector).getByText(
+        /Upgrade react and refresh dependency locks: executable - Eligible for approved deterministic npm dependency write-back./i
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(inspector).getByRole("link", { name: /Jump to report detail/i })
+    ).toHaveAttribute(
+      "href",
+      `#${buildAnchorId(
+        "finding",
+        "dependency:GHSA-test-1234:react:19.0.0:.:direct"
+      )}`
+    );
+  });
+
+  it("filters Guardian Graph nodes by write-back eligibility", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createMixedTraceabilityPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    expect(
+      await screen.findByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Graph write-back eligibility"), {
+      target: {
+        value: "blocked"
+      }
+    });
+
+    expect(
+      screen.queryByRole("button", {
+        name: /patch-plan: Upgrade react and refresh dependency locks/i
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
+      })
+    ).toBeInTheDocument();
   });
 });

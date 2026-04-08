@@ -700,6 +700,94 @@ export const AnalyzeRepoResponseSchema = z.object({
   fetchedAt: z.string().datetime()
 });
 
+export const SavedAnalysisRunSummarySchema = z.object({
+  id: z.string().min(1),
+  createdAt: z.string().datetime(),
+  label: z.string().min(1).nullable(),
+  repositoryFullName: z.string().min(3),
+  defaultBranch: z.string().min(1),
+  fetchedAt: z.string().datetime(),
+  totalFindings: z.number().int().nonnegative(),
+  highSeverityFindings: z.number().int().nonnegative(),
+  issueCandidates: z.number().int().nonnegative(),
+  prCandidates: z.number().int().nonnegative(),
+  executablePatchPlans: z.number().int().nonnegative(),
+  blockedPatchPlans: z.number().int().nonnegative()
+});
+
+export const SavedAnalysisRunSchema = z.object({
+  id: z.string().min(1),
+  createdAt: z.string().datetime(),
+  label: z.string().min(1).nullable(),
+  analysis: AnalyzeRepoResponseSchema
+});
+
+export const SaveAnalysisRunRequestSchema = z.object({
+  analysis: AnalyzeRepoResponseSchema,
+  label: z.string().trim().min(1).max(120).nullable().optional()
+});
+
+export const SaveAnalysisRunResponseSchema = z.object({
+  run: SavedAnalysisRunSchema,
+  summary: SavedAnalysisRunSummarySchema
+});
+
+export const ListAnalysisRunsResponseSchema = z.object({
+  runs: z.array(SavedAnalysisRunSummarySchema)
+});
+
+export const GetAnalysisRunResponseSchema = z.object({
+  run: SavedAnalysisRunSchema,
+  summary: SavedAnalysisRunSummarySchema
+});
+
+export const CompareAnalysisRunsRequestSchema = z.object({
+  baseRunId: z.string().min(1),
+  targetRunId: z.string().min(1)
+});
+
+export const CompareMetricDeltaSchema = z.object({
+  base: z.number().int().nonnegative(),
+  target: z.number().int().nonnegative(),
+  delta: z.number().int()
+});
+
+export const CompareEntitySetDeltaSchema = z.object({
+  added: z.array(z.string().min(1)),
+  removed: z.array(z.string().min(1)),
+  unchanged: z.array(z.string().min(1))
+});
+
+export const CompareAnalysisRunsResponseSchema = z.object({
+  baseRun: SavedAnalysisRunSummarySchema,
+  targetRun: SavedAnalysisRunSummarySchema,
+  findings: z.object({
+    total: CompareMetricDeltaSchema,
+    bySeverity: z.object({
+      base: FindingsBySeveritySchema,
+      target: FindingsBySeveritySchema
+    }),
+    newFindingIds: z.array(z.string().min(1)),
+    resolvedFindingIds: z.array(z.string().min(1))
+  }),
+  candidates: z.object({
+    issueCandidates: CompareMetricDeltaSchema,
+    prCandidates: CompareMetricDeltaSchema,
+    executablePatchPlans: CompareMetricDeltaSchema,
+    blockedPatchPlans: CompareMetricDeltaSchema
+  }),
+  repository: z.object({
+    sameRepository: z.boolean(),
+    baseRepositoryFullName: z.string().min(3),
+    targetRepositoryFullName: z.string().min(3)
+  }),
+  structure: z.object({
+    ecosystems: CompareEntitySetDeltaSchema,
+    manifests: CompareEntitySetDeltaSchema,
+    lockfiles: CompareEntitySetDeltaSchema
+  })
+});
+
 const coverageWarningCodes = new Set<z.infer<typeof AnalysisWarningCodeSchema>>([
   "TREE_TRUNCATED",
   "PAYLOAD_CAPPED",
@@ -911,3 +999,29 @@ export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
 export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;
+export type SavedAnalysisRunSummary = z.infer<
+  typeof SavedAnalysisRunSummarySchema
+>;
+export type SavedAnalysisRun = z.infer<typeof SavedAnalysisRunSchema>;
+export type SaveAnalysisRunRequest = z.infer<
+  typeof SaveAnalysisRunRequestSchema
+>;
+export type SaveAnalysisRunResponse = z.infer<
+  typeof SaveAnalysisRunResponseSchema
+>;
+export type ListAnalysisRunsResponse = z.infer<
+  typeof ListAnalysisRunsResponseSchema
+>;
+export type GetAnalysisRunResponse = z.infer<
+  typeof GetAnalysisRunResponseSchema
+>;
+export type CompareAnalysisRunsRequest = z.infer<
+  typeof CompareAnalysisRunsRequestSchema
+>;
+export type CompareMetricDelta = z.infer<typeof CompareMetricDeltaSchema>;
+export type CompareEntitySetDelta = z.infer<
+  typeof CompareEntitySetDeltaSchema
+>;
+export type CompareAnalysisRunsResponse = z.infer<
+  typeof CompareAnalysisRunsResponseSchema
+>;

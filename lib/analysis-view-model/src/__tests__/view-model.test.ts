@@ -9,6 +9,7 @@ import type {
 } from "@repo-guardian/shared-types";
 import {
   buildAnchorId,
+  buildGuardianGraph,
   buildTraceabilityMapSummary,
   buildTraceabilityViewModel,
   filterPatchPlans,
@@ -18,6 +19,7 @@ import {
   getPatchPlanAnchorId,
   getSeverityTone,
   getWriteBackEligibility,
+  selectGuardianGraphNode,
   summarizeWriteBackReadiness
 } from "../index.js";
 
@@ -414,5 +416,63 @@ describe("analysis view model", () => {
     expect(formatPatchability("patch_candidate")).toBe("patch candidate");
     expect(getSeverityTone("high")).toBe("warning");
     expect(getConfidenceTone("high")).toBe("active");
+  });
+
+  it("builds a deterministic guardian graph from analysis entities", () => {
+    const graph = buildGuardianGraph(analysis);
+
+    expect(graph.nodes.map((node) => node.id)).toContain(
+      "repository:openai/openai-node"
+    );
+    expect(graph.nodes.map((node) => node.id)).toContain(
+      "dependency-finding:dependency:react"
+    );
+    expect(graph.nodes.map((node) => node.id)).toContain(
+      "patch-plan:patch-plan:pr:dependency:react"
+    );
+    expect(graph.edges).toContainEqual(
+      expect.objectContaining({
+        source: "dependency-finding:dependency:react",
+        target: "issue-candidate:issue:dependency:react",
+        type: "grouped-into"
+      })
+    );
+    expect(graph.edges).toContainEqual(
+      expect.objectContaining({
+        source: "pr-candidate:pr:dependency:react",
+        target: "patch-plan:patch-plan:pr:dependency:react",
+        type: "eligible-for"
+      })
+    );
+    expect(graph.summary).toMatchObject({
+      blockedPatchPlans: 1,
+      codeFindingCount: 1,
+      dependencyFindingCount: 1,
+      executablePatchPlans: 1,
+      highSeverityFindingCount: 1
+    });
+  });
+
+  it("selects a graph node with connected remediation context", () => {
+    const graph = buildGuardianGraph(analysis);
+    const selection = selectGuardianGraphNode(
+      graph,
+      "dependency-finding:dependency:react"
+    );
+
+    expect(selection?.node.title).toBe("react advisory");
+    expect(selection?.connectedNodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining([
+        "issue-candidate:issue:dependency:react",
+        "pr-candidate:pr:dependency:react"
+      ])
+    );
+    expect(selection?.node.details).toEqual(
+      expect.arrayContaining([
+        "Linked issues: 1",
+        "Linked PRs: 1",
+        "Upgrade react: executable - Eligible for deterministic dependency write-back."
+      ])
+    );
   });
 });

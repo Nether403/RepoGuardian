@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` path.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` path.
 
 ## Current scope
 
@@ -26,6 +26,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - real branch creation, bounded root `package.json` plus `package-lock.json` patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
 - Vite + React UI for repository analysis, candidate selection, dry-run execution previews, approved execution submission, and structured action results
 - reusable analysis view-model helpers for traceability formatting, anchors, filters, summaries, and status tones
+- deterministic Guardian Graph view for visual traceability across repository signals, findings, candidates, patch plans, and write-back eligibility
 - shared typed schemas across API and web
 
 ## Commands
@@ -43,6 +44,6 @@ pnpm run build
 
 ## Next step
 
-The next step is to build the deterministic Guardian Graph view from existing analysis entities and the reusable analysis view-model layer, before adding saved runs, compare mode, or broader write-back slices.
+The next step is to add saved analysis runs and compare mode before broadening write-back slices.
 
 

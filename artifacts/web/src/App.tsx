@@ -7,6 +7,7 @@ import type {
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
+import { GuardianGraphPanel } from "./components/GuardianGraphPanel";
 import { IssueCandidatesPanel } from "./components/IssueCandidatesPanel";
 import { PageShell } from "./components/PageShell";
 import { Panel } from "./components/Panel";
@@ -274,6 +275,7 @@ function App() {
         <>
           <PartialAnalysisPanel isPartial={analysis.isPartial} />
           <RepositorySummaryPanel analysis={analysis} />
+          <GuardianGraphPanel analysis={analysis} />
           {writeBackReadinessSummary ? (
             <TraceabilityPanel
               candidateTypeFilter={candidateTypeFilter}

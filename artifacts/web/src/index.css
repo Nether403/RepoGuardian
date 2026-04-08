@@ -520,6 +520,145 @@ code {
   scroll-margin-top: 1.5rem;
 }
 
+.guardian-graph-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.guardian-graph-copy {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.guardian-graph-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.guardian-graph-stats span {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(140, 201, 255, 0.16);
+  background: rgba(140, 201, 255, 0.06);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  color: #dcecff;
+}
+
+.guardian-graph-workspace {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
+  align-items: stretch;
+}
+
+.guardian-graph-svg,
+.guardian-graph-empty,
+.graph-inspector {
+  min-height: 32rem;
+  border: 1px solid rgba(140, 201, 255, 0.14);
+  background:
+    radial-gradient(circle at 24% 20%, rgba(140, 201, 255, 0.12), transparent 26%),
+    radial-gradient(circle at 80% 84%, rgba(241, 197, 108, 0.1), transparent 22%),
+    rgba(4, 11, 19, 0.72);
+}
+
+.guardian-graph-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.guardian-graph-empty,
+.graph-inspector {
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.graph-inspector h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.03em;
+}
+
+.guardian-graph-edge {
+  stroke: rgba(140, 201, 255, 0.26);
+  stroke-width: 1.4;
+}
+
+.guardian-graph-edge-remediated-by,
+.guardian-graph-edge-eligible-for {
+  stroke: rgba(155, 217, 176, 0.34);
+}
+
+.guardian-graph-edge-caused-by {
+  stroke: rgba(241, 197, 108, 0.32);
+}
+
+.guardian-graph-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.guardian-graph-node circle {
+  fill: rgba(140, 201, 255, 0.72);
+  stroke: rgba(239, 247, 255, 0.72);
+  stroke-width: 1.3;
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease,
+    transform 160ms ease;
+}
+
+.guardian-graph-node text {
+  fill: #eff7ff;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: rgba(4, 11, 19, 0.86);
+  stroke-width: 3px;
+  text-anchor: middle;
+}
+
+.guardian-graph-node:hover circle,
+.guardian-graph-node:focus-visible circle,
+.guardian-graph-node-selected circle {
+  fill: #eff7ff;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.guardian-graph-node-repository circle {
+  fill: #eff7ff;
+  stroke: var(--accent);
+}
+
+.guardian-graph-node-dependency-finding circle,
+.guardian-graph-node-code-finding circle,
+.guardian-graph-node-severity-critical circle,
+.guardian-graph-node-severity-high circle {
+  fill: rgba(255, 141, 148, 0.84);
+}
+
+.guardian-graph-node-issue-candidate circle,
+.guardian-graph-node-pr-candidate circle {
+  fill: rgba(241, 197, 108, 0.8);
+}
+
+.guardian-graph-node-patch-plan circle,
+.guardian-graph-node-eligibility-executable circle {
+  fill: rgba(155, 217, 176, 0.86);
+}
+
+.guardian-graph-node-eligibility-blocked circle {
+  fill: rgba(241, 197, 108, 0.84);
+}
+
 .candidate-selection-list,
 .execution-results,
 .execution-action-list,
@@ -824,5 +963,15 @@ code {
   .readiness-card-header,
   .trace-card-header {
     flex-direction: column;
+  }
+
+  .guardian-graph-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .guardian-graph-svg,
+  .guardian-graph-empty,
+  .graph-inspector {
+    min-height: 24rem;
   }
 }
