@@ -586,7 +586,7 @@ describe("POST /api/analyze", () => {
           writeBackEligibility: {
             approvalRequired: true,
             details: [
-              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3.",
+              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 2 or 3.",
               "Patchability: patch_candidate.",
               "Validation status: ready.",
               "Affected package: react.",
@@ -594,7 +594,7 @@ describe("POST /api/analyze", () => {
             ],
             status: "blocked",
             summary:
-              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3."
+              "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 2 or 3."
           }
         },
         {
@@ -772,7 +772,7 @@ describe("POST /api/analyze", () => {
                 version: "19.0.0"
               }
             },
-            lockfileVersion: 3,
+            lockfileVersion: 2,
             packages: {
               "": {
                 dependencies: {
@@ -872,6 +872,9 @@ describe("POST /api/analyze", () => {
     });
     expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
       "The change scope is limited to repo-root package.json and package-lock.json."
+    );
+    expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
+      'package-lock.json uses supported lockfileVersion 2 and includes packages[""].'
     );
     expect(response.body.prPatchPlans[0].writeBackEligibility.details).toContain(
       "Existing lockfile metadata for react@19.0.1 was found uniquely and can be copied deterministically."

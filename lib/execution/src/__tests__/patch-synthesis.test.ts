@@ -292,6 +292,66 @@ describe("explainPRWriteBackEligibility", () => {
     expect(result.details).toContain(
       "Existing lockfile metadata for react@2.0.0 was found uniquely and can be copied deterministically."
     );
+    expect(result.details).toContain(
+      'package-lock.json uses supported lockfileVersion 3 and includes packages[""].'
+    );
+  });
+
+  it("marks a lockfileVersion 2 npm dependency candidate executable", () => {
+    const candidate = dependencyCandidate();
+    const patchPlan = dependencyPatchPlan();
+    const analysis = createAnalysisContext({
+      dependencyFindings: [dependencyFinding()],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "package-lock.json": JSON.stringify({
+          dependencies: {
+            react: {
+              version: "1.0.0"
+            }
+          },
+          lockfileVersion: 2,
+          packages: {
+            "": {
+              dependencies: {
+                react: "^1.0.0"
+              }
+            },
+            "node_modules/react": {
+              name: "react",
+              version: "1.0.0"
+            },
+            "node_modules/example/node_modules/react": {
+              integrity: "sha512-example",
+              name: "react",
+              resolved: "https://registry.npmjs.org/react/-/react-2.0.0.tgz",
+              version: "2.0.0"
+            }
+          }
+        }),
+        "package.json": JSON.stringify({
+          dependencies: {
+            react: "^1.0.0"
+          }
+        })
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic npm dependency write-back."
+    });
+    expect(result.details).toContain(
+      'package-lock.json uses supported lockfileVersion 2 and includes packages[""].'
+    );
   });
 
   it("blocks a dependency candidate with an unsupported manifest specifier", () => {

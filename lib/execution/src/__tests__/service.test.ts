@@ -660,6 +660,91 @@ describe("createExecutionPlanResult", () => {
     );
   });
 
+  it("creates a branch, commits a deterministic dependency patch, and opens a pull request for an approved npm dependency candidate with package-lock.json v2", async () => {
+    const fetchRepositoryFileText = vi
+      .fn()
+      .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
+      .mockResolvedValueOnce(createPackageLockContent({ lockfileVersion: 2 }));
+    const createBranchFromDefaultBranch = vi.fn().mockResolvedValue({
+      baseCommitSha: "base-sha",
+      branchName: "repo-guardian/dependency-branch-v2"
+    });
+    const commitFileChanges = vi.fn().mockResolvedValue({
+      branchName: "repo-guardian/dependency-branch-v2",
+      commitSha: "commit-sha-v2"
+    });
+    const openPullRequest = vi.fn().mockResolvedValue({
+      pullRequestNumber: 31,
+      pullRequestUrl: "https://github.com/openai/openai-node/pull/31"
+    });
+
+    const result = await createExecutionPlanResult(
+      {
+        analysis: dependencyAnalysisContext(),
+        approvalGranted: true,
+        mode: "execute_approved",
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+      },
+      {
+        readClient: {
+          fetchRepositoryFileText
+        },
+        writeClient: {
+          createIssue: vi.fn(),
+          createBranchFromDefaultBranch,
+          commitFileChanges,
+          openPullRequest
+        }
+      }
+    );
+
+    expect(result.status).toBe("completed");
+    expect(createBranchFromDefaultBranch).toHaveBeenCalledTimes(1);
+    expect(commitFileChanges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchName: "repo-guardian/dependency-branch-v2",
+        fileChanges: [
+          expect.objectContaining({
+            path: "package.json",
+            content: expect.stringContaining('"react": "^2.0.0"')
+          }),
+          expect.objectContaining({
+            path: "package-lock.json",
+            content: expect.stringContaining('"lockfileVersion": 2')
+          })
+        ]
+      })
+    );
+    expect(openPullRequest).toHaveBeenCalledTimes(1);
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "create_branch",
+          attempted: true,
+          branchName: "repo-guardian/dependency-branch-v2",
+          commitSha: "base-sha",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "commit_patch",
+          attempted: true,
+          branchName: "repo-guardian/dependency-branch-v2",
+          commitSha: "commit-sha-v2",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: true,
+          branchName: "repo-guardian/dependency-branch-v2",
+          pullRequestNumber: 31,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/31",
+          succeeded: true
+        })
+      ])
+    );
+  });
+
   it("blocks patch_plan_only PR execution", async () => {
     const writeClient = {
       createBranchFromDefaultBranch: vi.fn(),

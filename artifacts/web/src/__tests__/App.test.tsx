@@ -430,7 +430,7 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
           "The PR candidate is a direct npm dependency upgrade for react.",
           "The change scope is limited to repo-root package.json and package-lock.json.",
           "package.json uses a supported caret range (^19.0.0) specifier.",
-          "package-lock.json uses lockfileVersion 3 and includes packages[\"\"].",
+          "package-lock.json uses supported lockfileVersion 3 and includes packages[\"\"].",
           "Existing lockfile metadata for react@19.0.1 was found uniquely and can be copied deterministically."
         ],
         status: "executable",

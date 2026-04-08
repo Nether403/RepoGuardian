@@ -355,7 +355,7 @@ function createPackageJsonContent(specifier = "^1.0.0"): string {
   )}\n`;
 }
 
-function createPackageLockContent(): string {
+function createPackageLockContent(lockfileVersion = 3): string {
   return `${JSON.stringify(
     {
       dependencies: {
@@ -365,7 +365,7 @@ function createPackageLockContent(): string {
           version: "1.0.0"
         }
       },
-      lockfileVersion: 3,
+      lockfileVersion,
       name: "sample",
       packages: {
         "": {
@@ -604,6 +604,63 @@ describe("POST /api/execution/plan", () => {
           branchName: "repo-guardian/dependency-branch",
           pullRequestNumber: 24,
           pullRequestUrl: "https://github.com/openai/openai-node/pull/24",
+          succeeded: true
+        })
+      ])
+    );
+    expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
+  });
+
+  it("executes an approved dependency PR creation request for package-lock.json v2", async () => {
+    const app = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi
+          .fn()
+          .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
+          .mockResolvedValueOnce(createPackageLockContent(2))
+      },
+      writeClient: {
+        createIssue: vi.fn(),
+        createBranchFromDefaultBranch: vi.fn().mockResolvedValue({
+          baseCommitSha: "base-sha-v2",
+          branchName: "repo-guardian/dependency-branch-v2"
+        }),
+        commitFileChanges: vi.fn().mockResolvedValue({
+          branchName: "repo-guardian/dependency-branch-v2",
+          commitSha: "commit-sha-v2"
+        }),
+        openPullRequest: vi.fn().mockResolvedValue({
+          pullRequestNumber: 25,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/25"
+        })
+      }
+    });
+
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createDependencyAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("completed");
+    expect(response.body.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: "commit_patch",
+          attempted: true,
+          branchName: "repo-guardian/dependency-branch-v2",
+          commitSha: "commit-sha-v2",
+          succeeded: true
+        }),
+        expect.objectContaining({
+          actionType: "create_pr",
+          attempted: true,
+          branchName: "repo-guardian/dependency-branch-v2",
+          pullRequestNumber: 25,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/25",
           succeeded: true
         })
       ])

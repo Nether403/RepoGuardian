@@ -55,6 +55,7 @@ const supportedManifestSections = [
   "optionalDependencies",
   "peerDependencies"
 ] as const;
+const supportedPackageLockVersions = new Set([2, 3]);
 
 type JsonObject = Record<string, unknown>;
 type ManifestSection = (typeof supportedManifestSections)[number];
@@ -576,9 +577,12 @@ function prepareDeterministicDependencyUpdate(input: {
     input.remediationVersion
   );
 
-  if (packageLock.lockfileVersion !== 3) {
+  if (
+    typeof packageLock.lockfileVersion !== "number" ||
+    !supportedPackageLockVersions.has(packageLock.lockfileVersion)
+  ) {
     throw new Error(
-      "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 3."
+      "Deterministic dependency write-back currently supports only package-lock.json lockfileVersion 2 or 3."
     );
   }
 
@@ -697,7 +701,7 @@ export function explainPRWriteBackEligibility(input: {
           `The PR candidate is a direct npm dependency upgrade for ${support.packageName}.`,
           "The change scope is limited to repo-root package.json and package-lock.json.",
           `package.json uses a supported ${describeSpecifierStyle(prepared.currentManifestSpecifier)} specifier.`,
-          "package-lock.json uses lockfileVersion 3 and includes packages[\"\"].",
+          `package-lock.json uses supported lockfileVersion ${String(prepared.packageLock.lockfileVersion)} and includes packages[""].`,
           `Existing lockfile metadata for ${support.packageName}@${support.remediationVersion} was found uniquely and can be copied deterministically.`
         ],
         summary: "Eligible for approved deterministic npm dependency write-back."
