@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { DetectedLockfile, DetectedManifest } from "@repo-guardian/shared-types";
+import type {
+  DetectedLockfile,
+  DetectedManifest,
+  NormalizedDependency
+} from "@repo-guardian/shared-types";
 import { parseCargoLock } from "../cargo-lock.js";
 import { parseCargoToml } from "../cargo-toml.js";
 import { parseGemfile } from "../gemfile.js";
@@ -55,6 +59,24 @@ function createLockfile(
     default:
       throw new Error(`Unsupported lockfile kind in ecosystem test: ${kind}`);
   }
+}
+
+function createDirectDependencyDetailsByName(
+  dependencies: NormalizedDependency[]
+): Map<string, NormalizedDependency[]> {
+  const byName = new Map<string, NormalizedDependency[]>();
+
+  for (const dependency of dependencies) {
+    if (!dependency.isDirect) {
+      continue;
+    }
+
+    const matchingDependencies = byName.get(dependency.name) ?? [];
+    matchingDependencies.push(dependency);
+    byName.set(dependency.name, matchingDependencies);
+  }
+
+  return byName;
 }
 
 describe("extended ecosystem parsers", () => {
@@ -431,6 +453,260 @@ describe("extended ecosystem parsers", () => {
           isDirect: true,
           name: "rails",
           version: "7.1.5"
+        }),
+        expect.objectContaining({
+          dependencyType: "transitive",
+          isDirect: false,
+          name: "activesupport",
+          version: "7.1.5"
+        })
+      ])
+    );
+  });
+
+  it("hardens Gradle, Maven, and Bundler fidelity without inventing exact versions", () => {
+    const gradleBuildResult = parseGradleBuildFile(
+      createManifest("build.gradle", "services/api/build.gradle"),
+      [
+        "dependencies {",
+        "  implementation(",
+        '    group = "org.springframework",',
+        '    name = "spring-context",',
+        '    version = "6.1.15"',
+        "  )",
+        "  compileOnly(",
+        '    group = "org.projectlombok",',
+        '    name = "lombok",',
+        "    version = lombokVersion",
+        "  )",
+        '  implementation project(":shared")',
+        "}"
+      ].join("\n")
+    );
+    const gradleLockResult = parseGradleLockfile(
+      createLockfile("gradle.lockfile", "services/api/gradle.lockfile"),
+      [
+        "org.springframework:spring-context:6.1.15=compileClasspath",
+        "org.projectlombok:lombok:1.18.32=compileClasspath"
+      ].join("\n"),
+      {
+        directDependencyDetailsByName: createDirectDependencyDetailsByName(
+          gradleBuildResult.dependencies
+        ),
+        directDependencyNames: new Set(
+          gradleBuildResult.dependencies.map((dependency) => dependency.name)
+        ),
+        lockfilesByWorkspace: new Map()
+      }
+    );
+    const pomResult = parsePomXml(
+      createManifest("pom.xml", "services/api/pom.xml"),
+      [
+        "<project>",
+        "  <parent>",
+        "    <groupId>com.example</groupId>",
+        "    <artifactId>repo-guardian-parent</artifactId>",
+        "    <version>${revision}</version>",
+        "  </parent>",
+        "  <properties>",
+        "    <revision>1.2.3</revision>",
+        "    <logging.version>2.24.0</logging.version>",
+        "  </properties>",
+        "  <version>${revision}</version>",
+        "  <dependencies>",
+        "    <dependency>",
+        "      <groupId>com.example</groupId>",
+        "      <artifactId>repo-guardian-api</artifactId>",
+        "      <version>${project.version}</version>",
+        "    </dependency>",
+        "    <dependency>",
+        "      <groupId>org.springframework</groupId>",
+        "      <artifactId>spring-core</artifactId>",
+        "      <version>${project.parent.version}</version>",
+        "    </dependency>",
+        "    <dependency>",
+        "      <groupId>org.apache.logging.log4j</groupId>",
+        "      <artifactId>log4j-api</artifactId>",
+        "      <version>${logging.version}</version>",
+        "    </dependency>",
+        "    <dependency>",
+        "      <groupId>com.example</groupId>",
+        "      <artifactId>unresolved</artifactId>",
+        "      <version>${missing.version}</version>",
+        "    </dependency>",
+        "  </dependencies>",
+        "</project>"
+      ].join("\n")
+    );
+    const gemfileResult = parseGemfile(
+      createManifest("Gemfile", "services/web/Gemfile"),
+      [
+        'gem "rails", "~> 7.1.5"',
+        "group :development do",
+        '  source "https://rubygems.org" do',
+        '    gem "rubocop", "~> 1.72"',
+        "  end",
+        '  gem "rspec", "~> 3.13"',
+        "end",
+        "platforms :jruby do",
+        '  gem "jruby-openssl"',
+        "end"
+      ].join("\n")
+    );
+    const gemfileLockResult = parseGemfileLock(
+      createLockfile("Gemfile.lock", "services/web/Gemfile.lock"),
+      [
+        "GEM",
+        "  remote: https://rubygems.org/",
+        "  specs:",
+        "    activesupport (7.1.5)",
+        "    jruby-openssl (0.14.2)",
+        "    rails (7.1.5)",
+        "    rspec (3.13.0)",
+        "    rubocop (1.72.0)",
+        "",
+        "DEPENDENCIES",
+        "  jruby-openssl",
+        "  rails (~> 7.1.5)",
+        "  rspec (~> 3.13)",
+        "  rubocop (~> 1.72)"
+      ].join("\n"),
+      {
+        directDependencyDetailsByName: createDirectDependencyDetailsByName(
+          gemfileResult.dependencies
+        ),
+        directDependencyNames: new Set(),
+        lockfilesByWorkspace: new Map()
+      }
+    );
+
+    expect(gradleBuildResult.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dependencyType: "production",
+          name: "org.springframework:spring-context",
+          parseConfidence: "medium",
+          version: "6.1.15"
+        }),
+        expect.objectContaining({
+          dependencyType: "peer",
+          name: "org.projectlombok:lombok",
+          parseConfidence: "low",
+          version: "lombokVersion"
+        })
+      ])
+    );
+    expect(gradleBuildResult.warningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining('project(":shared")')
+        }),
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining('lombokVersion')
+        })
+      ])
+    );
+    expect(gradleLockResult.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dependencyType: "production",
+          isDirect: true,
+          name: "org.springframework:spring-context",
+          version: "6.1.15"
+        }),
+        expect.objectContaining({
+          dependencyType: "peer",
+          isDirect: true,
+          name: "org.projectlombok:lombok",
+          version: "1.18.32"
+        })
+      ])
+    );
+
+    expect(pomResult.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "com.example:repo-guardian-api",
+          parseConfidence: "medium",
+          version: "1.2.3"
+        }),
+        expect.objectContaining({
+          name: "org.springframework:spring-core",
+          parseConfidence: "medium",
+          version: "1.2.3"
+        }),
+        expect.objectContaining({
+          name: "org.apache.logging.log4j:log4j-api",
+          parseConfidence: "medium",
+          version: "2.24.0"
+        }),
+        expect.objectContaining({
+          name: "com.example:unresolved",
+          parseConfidence: "low",
+          version: "${missing.version}"
+        })
+      ])
+    );
+    expect(pomResult.warningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining("missing.version")
+        })
+      ])
+    );
+
+    expect(gemfileResult.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dependencyType: "production",
+          name: "rails",
+          version: "~> 7.1.5"
+        }),
+        expect.objectContaining({
+          dependencyType: "development",
+          name: "rubocop",
+          version: "~> 1.72"
+        }),
+        expect.objectContaining({
+          dependencyType: "development",
+          name: "rspec",
+          version: "~> 3.13"
+        }),
+        expect.objectContaining({
+          dependencyType: "production",
+          name: "jruby-openssl",
+          version: null
+        })
+      ])
+    );
+    expect(gemfileLockResult.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dependencyType: "production",
+          isDirect: true,
+          name: "rails",
+          version: "7.1.5"
+        }),
+        expect.objectContaining({
+          dependencyType: "development",
+          isDirect: true,
+          name: "rubocop",
+          version: "1.72.0"
+        }),
+        expect.objectContaining({
+          dependencyType: "development",
+          isDirect: true,
+          name: "rspec",
+          version: "3.13.0"
+        }),
+        expect.objectContaining({
+          dependencyType: "production",
+          isDirect: true,
+          name: "jruby-openssl",
+          version: "0.14.2"
         }),
         expect.objectContaining({
           dependencyType: "transitive",

@@ -12,6 +12,8 @@ import {
   normalizeWorkspacePath
 } from "./utils.js";
 
+const pomVersionPlaceholderPattern = /\$\{([^}]+)\}/gu;
+
 function stripXmlComments(content: string): string {
   return content.replace(/<!--[\s\S]*?-->/gu, "");
 }
@@ -46,17 +48,92 @@ function extractPomProperties(content: string): Map<string, string> {
   return properties;
 }
 
-function resolvePomVersion(
-  value: string | null,
-  properties: Map<string, string>
-): string | null {
-  if (!value) {
-    return null;
+function extractParentVersion(content: string): string | null {
+  const parentBlock = /<parent>([\s\S]*?)<\/parent>/u.exec(content)?.[1];
+  return parentBlock ? extractFirstTag(parentBlock, "version") : null;
+}
+
+function extractProjectVersion(content: string): string | null {
+  const strippedContent = [
+    "parent",
+    "properties",
+    "dependencies",
+    "dependencyManagement",
+    "build",
+    "profiles",
+    "repositories",
+    "pluginRepositories",
+    "reporting"
+  ].reduce((currentContent, tagName) => stripXmlSections(currentContent, tagName), content);
+
+  return extractFirstTag(strippedContent, "version");
+}
+
+function buildPomPropertyMap(content: string): Map<string, string> {
+  const properties = extractPomProperties(content);
+  const projectVersion = extractProjectVersion(content);
+  const parentVersion = extractParentVersion(content);
+
+  if (projectVersion) {
+    properties.set("project.version", projectVersion);
   }
 
-  return value.replace(/\$\{([^}]+)\}/gu, (_match, propertyName: string) => {
-    return properties.get(propertyName) ?? `\${${propertyName}}`;
-  });
+  if (parentVersion) {
+    properties.set("parent.version", parentVersion);
+    properties.set("project.parent.version", parentVersion);
+  }
+
+  return properties;
+}
+
+function resolvePomValue(
+  value: string | null,
+  properties: Map<string, string>,
+  seen = new Set<string>()
+): { unresolvedPlaceholders: string[]; value: string | null } {
+  if (!value) {
+    return {
+      unresolvedPlaceholders: [],
+      value: null
+    };
+  }
+
+  const unresolvedPlaceholders = new Set<string>();
+  const resolvedValue = value.replace(
+    pomVersionPlaceholderPattern,
+    (_match, propertyName: string) => {
+      if (seen.has(propertyName)) {
+        unresolvedPlaceholders.add(propertyName);
+        return `\${${propertyName}}`;
+      }
+
+      const propertyValue = properties.get(propertyName);
+
+      if (!propertyValue) {
+        unresolvedPlaceholders.add(propertyName);
+        return `\${${propertyName}}`;
+      }
+
+      const nestedResolution = resolvePomValue(
+        propertyValue,
+        properties,
+        new Set([...seen, propertyName])
+      );
+
+      for (const nestedPlaceholder of nestedResolution.unresolvedPlaceholders) {
+        unresolvedPlaceholders.add(nestedPlaceholder);
+      }
+
+      return nestedResolution.value ?? `\${${propertyName}}`;
+    }
+  );
+
+  return {
+    unresolvedPlaceholders: [...unresolvedPlaceholders].sort((left, right) =>
+      left.localeCompare(right)
+    ),
+    value: resolvedValue
+  };
 }
 
 function getPomDependencyType(scope: string | null, optional: boolean): DependencyType {
@@ -89,7 +166,7 @@ export function parsePomXml(
     ),
     "plugins"
   );
-  const properties = extractPomProperties(cleanedContent);
+  const properties = buildPomPropertyMap(cleanedContent);
 
   for (const dependencyMatch of cleanedContent.matchAll(/<dependency>([\s\S]*?)<\/dependency>/gu)) {
     const dependencyBlock = dependencyMatch[1];
@@ -100,7 +177,10 @@ export function parsePomXml(
 
     const groupId = extractFirstTag(dependencyBlock, "groupId");
     const artifactId = extractFirstTag(dependencyBlock, "artifactId");
-    const version = resolvePomVersion(extractFirstTag(dependencyBlock, "version"), properties);
+    const resolvedVersion = resolvePomValue(
+      extractFirstTag(dependencyBlock, "version"),
+      properties
+    );
     const scope = extractFirstTag(dependencyBlock, "scope");
     const typeValue = extractFirstTag(dependencyBlock, "type");
     const optional = extractFirstTag(dependencyBlock, "optional") === "true";
@@ -121,6 +201,17 @@ export function parsePomXml(
       continue;
     }
 
+    if (resolvedVersion.unresolvedPlaceholders.length > 0) {
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Parsed Maven dependency ${groupId}:${artifactId} in ${file.path} with unresolved version placeholder(s): ${resolvedVersion.unresolvedPlaceholders.join(", ")}.`,
+          path: file.path,
+          source: file.kind
+        })
+      );
+    }
+
     dependencies.push(
       createDependency({
         dependencyType: getPomDependencyType(scope, optional),
@@ -128,9 +219,12 @@ export function parsePomXml(
         isDirect: true,
         name: `${groupId}:${artifactId}`,
         packageManager: "maven",
-        parseConfidence: version ? "medium" : "low",
+        parseConfidence:
+          resolvedVersion.value && resolvedVersion.unresolvedPlaceholders.length === 0
+            ? "medium"
+            : "low",
         sourceFile: file.path,
-        version,
+        version: resolvedVersion.value,
         workspacePath
       })
     );

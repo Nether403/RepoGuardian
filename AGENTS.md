@@ -146,12 +146,12 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6A
+### Active milestone: Milestone 6B
 Allowed:
-- align `SPEC.md`, `README.md`, `AGENTS.md`, and `lib/api-spec/openapi.yaml` with the implemented route surface
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- expand deterministic dependency parsing and advisory coverage for supported ecosystems
-- add mixed-ecosystem API and web regression coverage
+- harden deterministic parser fidelity for Gradle, Maven, and Bundler inputs
+- keep advisory normalization honest when exact versions are unresolved
+- add parser, advisory, and mixed-ecosystem API/web regression coverage for the hardened cases
 - keep the current approval-gated GitHub write behavior working as-is
 
 Not allowed in this milestone unless explicitly requested:

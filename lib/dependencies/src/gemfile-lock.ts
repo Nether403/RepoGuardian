@@ -8,6 +8,7 @@ import {
   createDependency,
   createDependencyParseWarning,
   dedupeDependencies,
+  getPreferredDirectDependency,
   normalizeDependencyName,
   normalizeWorkspacePath
 } from "./utils.js";
@@ -96,10 +97,15 @@ export function parseGemfileLock(
     }
 
     const isDirect = directDependencyNames.has(normalizeDependencyName(name));
+    const directDependency = isDirect
+      ? getPreferredDirectDependency(context, name)
+      : null;
 
     dependencies.push(
       createDependency({
-        dependencyType: isDirect ? "production" : "transitive",
+        dependencyType: isDirect
+          ? directDependency?.dependencyType ?? "production"
+          : "transitive",
         ecosystem: "ruby",
         isDirect,
         name,
@@ -107,7 +113,9 @@ export function parseGemfileLock(
         parseConfidence: "high",
         sourceFile: file.path,
         version: version.trim(),
-        workspacePath: isDirect ? workspacePath : null
+        workspacePath: isDirect
+          ? directDependency?.workspacePath ?? workspacePath
+          : null
       })
     );
   }

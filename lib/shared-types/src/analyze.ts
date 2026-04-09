@@ -815,7 +815,8 @@ function createWarningDeduplicationKey(warning: z.infer<typeof AnalysisWarningSc
     warning.code,
     warning.stage,
     sortStrings(warning.paths).join("|"),
-    warning.source ?? ""
+    warning.source ?? "",
+    warning.message
   ].join("::");
 }
 

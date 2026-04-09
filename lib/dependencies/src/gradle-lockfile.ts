@@ -8,6 +8,7 @@ import {
   createDependency,
   createDependencyParseWarning,
   dedupeDependencies,
+  getPreferredDirectDependency,
   normalizeDependencyName,
   normalizeWorkspacePath
 } from "./utils.js";
@@ -56,11 +57,14 @@ export function parseGradleLockfile(
       .map((configuration) => configuration.trim())
       .filter(Boolean);
     const isDirect = context.directDependencyNames.has(normalizeDependencyName(name));
+    const directDependency = isDirect
+      ? getPreferredDirectDependency(context, name)
+      : null;
 
     dependencies.push(
       createDependency({
         dependencyType: isDirect
-          ? inferGradleLockDependencyType(configurations)
+          ? directDependency?.dependencyType ?? inferGradleLockDependencyType(configurations)
           : "transitive",
         ecosystem: "jvm",
         isDirect,
@@ -69,7 +73,9 @@ export function parseGradleLockfile(
         parseConfidence: "high",
         sourceFile: file.path,
         version,
-        workspacePath: isDirect ? workspacePath : null
+        workspacePath: isDirect
+          ? directDependency?.workspacePath ?? workspacePath
+          : null
       })
     );
   }
