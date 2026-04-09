@@ -415,7 +415,12 @@ Do not modify any sibling repo.
 - preserve the current write-back guardrails without broadening them
 
 ### Milestone 6B
-- expand bounded write-back slices only after contract alignment and analysis coverage are complete
+- harden parser fidelity before any broader write-back expansion
+- focus on Gradle DSL coverage, Maven property/version resolution, and nontrivial Bundler declarations
+- keep explicit warnings for unsupported or heuristic-heavy cases instead of guessed findings
+
+### Milestone 6C
+- expand bounded write-back slices only after contract alignment, coverage expansion, and parser hardening are complete
 - keep approval-gated deterministic execution constraints
 - avoid autonomous repository maintenance
 
