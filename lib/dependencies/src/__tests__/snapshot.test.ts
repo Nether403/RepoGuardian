@@ -23,7 +23,10 @@ function createLockfile(
   path: string
 ): DetectedLockfile {
   return {
-    ecosystem: kind === "package-lock.json" || kind === "pnpm-lock.yaml" ? "node" : "python",
+    ecosystem:
+      kind === "package-lock.json" || kind === "pnpm-lock.yaml" || kind === "yarn.lock"
+        ? "node"
+        : "python",
     kind,
     path
   };
