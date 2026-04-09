@@ -18,4 +18,5 @@ Guardrails:
 
 Follow-on milestone:
 
-- `Milestone 6B` expands bounded write-back slices after Milestone 6A lands
+- `Milestone 6B` hardens parser fidelity for Gradle, Maven, and Bundler before any broader write-back work
+- `Milestone 6C` is the first milestone that expands bounded write-back beyond the current guarded slices
