@@ -13,6 +13,8 @@ import { parseGemfile } from "./gemfile.js";
 import { parseGemfileLock } from "./gemfile-lock.js";
 import { parseGoMod } from "./go-mod.js";
 import { parseGoSum } from "./go-sum.js";
+import { parseGradleBuildFile } from "./gradle-build.js";
+import { parseGradleLockfile } from "./gradle-lockfile.js";
 import { parsePackageJson } from "./package-json.js";
 import { parsePackageLockJson } from "./package-lock.js";
 import { parsePipfile } from "./pipfile.js";
@@ -22,8 +24,6 @@ import { parsePoetryLock } from "./poetry-lock.js";
 import { parsePomXml } from "./pom-xml.js";
 import { parsePyprojectToml } from "./pyproject.js";
 import { parseRequirementsTxt } from "./requirements.js";
-import { parseGradleBuildFile } from "./gradle-build.js";
-import { parseGradleLockfile } from "./gradle-lockfile.js";
 import { parseYarnLock } from "./yarn-lock.js";
 import {
   buildLockfilesByWorkspace,
