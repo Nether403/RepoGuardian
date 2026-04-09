@@ -124,7 +124,7 @@ describe("JVM and Ruby parser expansion", () => {
     );
   });
 
-  it("warns when Maven properties cannot be resolved", () => {
+  it("preserves unresolved Maven properties as declaration strings", () => {
     const result = parsePomXml(
       createManifest("pom.xml", "pom.xml"),
       [
@@ -143,36 +143,24 @@ describe("JVM and Ruby parser expansion", () => {
     expect(result.dependencies).toEqual([
       expect.objectContaining({
         name: "org.springframework:spring-core",
-        parseConfidence: "low",
-        version: null
+        parseConfidence: "medium",
+        version: "${spring.version}"
       })
     ]);
-    expect(result.warningDetails).toEqual([
-      expect.objectContaining({
-        code: "FILE_PARSE_FAILED",
-        message:
-          'Skipped unresolved Maven property "spring.version" for org.springframework:spring-core in pom.xml.'
-      })
-    ]);
+    expect(result.warningDetails).toEqual([]);
   });
 
-  it("warns on unsupported Gradle dependency declarations", () => {
+  it("skips unsupported Gradle dependency declarations without package records", () => {
     const result = parseGradleBuildFile(
       createManifest("build.gradle", "build.gradle"),
       ['dependencies {', '  implementation libs.spring.boot', "}"].join("\n")
     );
 
     expect(result.dependencies).toEqual([]);
-    expect(result.warningDetails).toEqual([
-      expect.objectContaining({
-        code: "FILE_PARSE_FAILED",
-        message:
-          "Skipped unsupported Gradle dependency declaration on line 2 in build.gradle."
-      })
-    ]);
+    expect(result.warningDetails).toEqual([]);
   });
 
-  it("parses Gemfile and Gemfile.lock entries while warning on nontrivial Bundler declarations", () => {
+  it("parses Gemfile and Gemfile.lock entries including declaration-only Bundler sources", () => {
     const gemfileResult = parseGemfile(
       createManifest("Gemfile", "Gemfile"),
       [
@@ -221,13 +209,7 @@ describe("JVM and Ruby parser expansion", () => {
         })
       ])
     );
-    expect(gemfileResult.warningDetails).toEqual([
-      expect.objectContaining({
-        code: "FILE_PARSE_FAILED",
-        message:
-          'Skipped declaration-only Gemfile dependency "internal-gem" in Gemfile; no version was available for advisory lookup.'
-      })
-    ]);
+    expect(gemfileResult.warningDetails).toEqual([]);
     expect(gemfileLockResult.dependencies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
