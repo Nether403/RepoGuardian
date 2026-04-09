@@ -111,10 +111,18 @@ function normalizeProviderEcosystem(
   ecosystem: string | undefined
 ): EcosystemId | null {
   switch (ecosystem) {
+    case "Go":
+      return "go";
+    case "Maven":
+      return "jvm";
     case "npm":
       return "node";
     case "PyPI":
       return "python";
+    case "RubyGems":
+      return "ruby";
+    case "crates.io":
+      return "rust";
     default:
       return null;
   }

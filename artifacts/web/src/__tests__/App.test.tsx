@@ -475,6 +475,199 @@ const successPayload = AnalyzeRepoResponseSchema.parse({
   warnings: ["Manifest without lockfile: services/api/pyproject.toml"]
 });
 
+function createExpandedEcosystemPayload(): AnalyzeRepoResponse {
+  return AnalyzeRepoResponseSchema.parse({
+    ...successPayload,
+    dependencySnapshot: {
+      ...successPayload.dependencySnapshot,
+      dependencies: [
+        ...successPayload.dependencySnapshot.dependencies,
+        {
+          dependencyType: "production",
+          ecosystem: "go",
+          isDirect: true,
+          name: "github.com/gin-gonic/gin",
+          packageManager: "go-mod",
+          parseConfidence: "high",
+          sourceFile: "go.sum",
+          version: "v1.10.0",
+          workspacePath: "."
+        },
+        {
+          dependencyType: "production",
+          ecosystem: "rust",
+          isDirect: true,
+          name: "serde",
+          packageManager: "cargo",
+          parseConfidence: "high",
+          sourceFile: "Cargo.lock",
+          version: "1.0.215",
+          workspacePath: "."
+        },
+        {
+          dependencyType: "production",
+          ecosystem: "jvm",
+          isDirect: true,
+          name: "org.springframework:spring-context",
+          packageManager: "gradle",
+          parseConfidence: "high",
+          sourceFile: "gradle.lockfile",
+          version: "6.1.15",
+          workspacePath: "."
+        },
+        {
+          dependencyType: "production",
+          ecosystem: "ruby",
+          isDirect: true,
+          name: "rails",
+          packageManager: "bundler",
+          parseConfidence: "high",
+          sourceFile: "Gemfile.lock",
+          version: "7.1.5",
+          workspacePath: "."
+        }
+      ],
+      filesParsed: [
+        ...successPayload.dependencySnapshot.filesParsed,
+        {
+          dependencyCount: 1,
+          ecosystem: "go",
+          kind: "go.sum",
+          packageManager: "go-mod",
+          path: "go.sum"
+        },
+        {
+          dependencyCount: 1,
+          ecosystem: "rust",
+          kind: "Cargo.lock",
+          packageManager: "cargo",
+          path: "Cargo.lock"
+        },
+        {
+          dependencyCount: 1,
+          ecosystem: "jvm",
+          kind: "gradle.lockfile",
+          packageManager: "gradle",
+          path: "gradle.lockfile"
+        },
+        {
+          dependencyCount: 1,
+          ecosystem: "ruby",
+          kind: "Gemfile.lock",
+          packageManager: "bundler",
+          path: "Gemfile.lock"
+        }
+      ],
+      summary: {
+        ...successPayload.dependencySnapshot.summary,
+        byEcosystem: [
+          ...successPayload.dependencySnapshot.summary.byEcosystem,
+          {
+            directDependencies: 1,
+            ecosystem: "go",
+            totalDependencies: 1
+          },
+          {
+            directDependencies: 1,
+            ecosystem: "rust",
+            totalDependencies: 1
+          },
+          {
+            directDependencies: 1,
+            ecosystem: "jvm",
+            totalDependencies: 1
+          },
+          {
+            directDependencies: 1,
+            ecosystem: "ruby",
+            totalDependencies: 1
+          }
+        ],
+        directDependencies: successPayload.dependencySnapshot.summary.directDependencies + 4,
+        totalDependencies: successPayload.dependencySnapshot.summary.totalDependencies + 4
+      }
+    },
+    detectedFiles: {
+      ...successPayload.detectedFiles,
+      lockfiles: [
+        ...successPayload.detectedFiles.lockfiles,
+        {
+          kind: "go.sum",
+          path: "go.sum"
+        },
+        {
+          kind: "Cargo.lock",
+          path: "Cargo.lock"
+        },
+        {
+          kind: "gradle.lockfile",
+          path: "gradle.lockfile"
+        },
+        {
+          kind: "Gemfile.lock",
+          path: "Gemfile.lock"
+        }
+      ],
+      manifests: [
+        ...successPayload.detectedFiles.manifests,
+        {
+          kind: "go.mod",
+          path: "go.mod"
+        },
+        {
+          kind: "Cargo.toml",
+          path: "Cargo.toml"
+        },
+        {
+          kind: "build.gradle",
+          path: "build.gradle"
+        },
+        {
+          kind: "Gemfile",
+          path: "Gemfile"
+        }
+      ]
+    },
+    ecosystems: [
+      ...successPayload.ecosystems,
+      {
+        ecosystem: "go",
+        lockfiles: ["go.sum"],
+        manifests: ["go.mod"],
+        packageManagers: ["go-mod"]
+      },
+      {
+        ecosystem: "rust",
+        lockfiles: ["Cargo.lock"],
+        manifests: ["Cargo.toml"],
+        packageManagers: ["cargo"]
+      },
+      {
+        ecosystem: "jvm",
+        lockfiles: ["gradle.lockfile"],
+        manifests: ["build.gradle"],
+        packageManagers: ["gradle"]
+      },
+      {
+        ecosystem: "ruby",
+        lockfiles: ["Gemfile.lock"],
+        manifests: ["Gemfile"],
+        packageManagers: ["bundler"]
+      }
+    ],
+    treeSummary: {
+      ...successPayload.treeSummary,
+      samplePaths: [
+        ...successPayload.treeSummary.samplePaths,
+        "go.mod",
+        "Cargo.toml",
+        "build.gradle",
+        "Gemfile"
+      ]
+    }
+  });
+}
+
 function createMixedTraceabilityPayload(): AnalyzeRepoResponse {
   const workflowFindingId = successPayload.codeReviewFindings[0]!.id;
 
@@ -851,6 +1044,36 @@ describe("App", () => {
     expect(screen.getAllByText("package-lock.json").length).toBeGreaterThan(0);
     expect(screen.queryByText("Dockerfile")).not.toBeInTheDocument();
     expect(screen.getAllByText(".github/workflows/ci.yml").length).toBeGreaterThan(0);
+  });
+
+  it("renders additional ecosystem cards and file groups for expanded coverage", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        createJsonResponse(createExpandedEcosystemPayload())
+      )
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Go").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getAllByText("Rust").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Java / JVM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ruby").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("go.mod").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("go.sum").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cargo.toml").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cargo.lock").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("build.gradle").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("gradle.lockfile").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Gemfile").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Gemfile.lock").length).toBeGreaterThan(0);
   });
 
   it("renders executable dependency write-back readiness details", async () => {

@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice: public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` v2/v3 path.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`5B` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` v2/v3 path.
 
 ## Current scope
 
@@ -9,9 +9,9 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - recursive tree fetch for the default branch
 - manifest and lockfile detection
 - ecosystem inference and notable repository signals
-- dependency file fetches from GitHub for supported Node.js and Python formats
-- normalized dependency snapshot parsing for direct and lockfile-backed package records
-- OSV-backed advisory lookup behind a swappable provider interface
+- dependency file fetches from GitHub for supported Node.js, Python, Go, Rust, JVM, and Ruby formats
+- normalized dependency snapshot parsing for `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `requirements.txt`, `pyproject.toml`, `poetry.lock`, `Pipfile`, `Pipfile.lock`, `go.mod`, `go.sum`, `Cargo.toml`, `Cargo.lock`, `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle.lockfile`, `Gemfile`, and `Gemfile.lock`
+- OSV-backed advisory lookup behind a swappable provider interface, with explicit warnings when parsing or exact-version coverage is partial
 - structured dependency findings with severity, confidence, evidence, and remediation hints
 - targeted code-review file selection for workflows, config, security-sensitive files, and common entrypoints
 - deterministic code-review findings for secret-like literals, dangerous dynamic execution, unsafe shell execution, and workflow hardening risks
@@ -48,8 +48,10 @@ pnpm run test
 pnpm run build
 ```
 
-## Next step
+## Roadmap
 
-The next step is to expand bounded write-back slices while keeping the existing approval and deterministic patch-synthesis guardrails.
+The active milestone is `6A`: V1 contract alignment first. This phase keeps `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical route surface, aligns the docs and OpenAPI contract with the implemented alpha, and expands dependency-analysis coverage without broadening GitHub write-back.
+
+The follow-on milestone is `6B`: bounded write-back expansion after the contract and analysis surface are aligned. See `docs/milestone-6a.md` and `docs/roadmap.md`.
 
 

@@ -964,6 +964,243 @@ describe("POST /api/analyze", () => {
     expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
   });
 
+  it("analyzes a mixed-ecosystem repository with expanded dependency coverage", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          default_branch: "main",
+          description: "Mixed ecosystem repository",
+          forks_count: 3,
+          full_name: "openai/repo-guardian-sample",
+          html_url: "https://github.com/openai/repo-guardian-sample",
+          language: "TypeScript",
+          name: "repo-guardian-sample",
+          owner: {
+            login: "openai"
+          },
+          stargazers_count: 10
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          object: {
+            sha: "commit-sha",
+            type: "commit"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: {
+            sha: "tree-sha"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: [
+            { path: "Cargo.lock", type: "blob" },
+            { path: "Cargo.toml", type: "blob" },
+            { path: "Gemfile", type: "blob" },
+            { path: "Gemfile.lock", type: "blob" },
+            { path: "Pipfile", type: "blob" },
+            { path: "Pipfile.lock", type: "blob" },
+            { path: "build.gradle", type: "blob" },
+            { path: "go.mod", type: "blob" },
+            { path: "go.sum", type: "blob" },
+            { path: "gradle.lockfile", type: "blob" },
+            { path: "package.json", type: "blob" },
+            { path: "yarn.lock", type: "blob" }
+          ],
+          truncated: false
+        })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "dependencies {",
+            '  implementation "org.springframework:spring-context:6.1.15"',
+            "}"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "[[package]]",
+            'name = "serde"',
+            'version = "1.0.215"'
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "[dependencies]",
+            'serde = "1.0.215"'
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            'gem "rails", "~> 7.1.5"'
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "GEM",
+            "  remote: https://rubygems.org/",
+            "  specs:",
+            "    rails (7.1.5)",
+            "",
+            "DEPENDENCIES",
+            "  rails (~> 7.1.5)"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "module example.com/repo-guardian-sample",
+            "",
+            "require github.com/gin-gonic/gin v1.10.0"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse("github.com/gin-gonic/gin v1.10.0 h1:abc")
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          "org.springframework:spring-context:6.1.15=compileClasspath"
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            dependencies: {
+              react: "^19.0.0"
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "[packages]",
+            'requests = "==2.32.3"'
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          JSON.stringify({
+            default: {
+              requests: {
+                version: "==2.32.3"
+              }
+            }
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            '"react@^19.0.0":',
+            '  version "19.0.0"'
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          results: Array.from({ length: 6 }, () => ({
+            vulns: []
+          }))
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post("/api/analyze")
+      .send({ repoInput: "openai/repo-guardian-sample" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ecosystems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ecosystem: "node",
+          lockfiles: ["yarn.lock"],
+          manifests: ["package.json"],
+          packageManagers: ["yarn"]
+        }),
+        expect.objectContaining({
+          ecosystem: "python",
+          lockfiles: ["Pipfile.lock"],
+          manifests: ["Pipfile"],
+          packageManagers: ["pipenv"]
+        }),
+        expect.objectContaining({
+          ecosystem: "go",
+          lockfiles: ["go.sum"],
+          manifests: ["go.mod"],
+          packageManagers: ["go-mod"]
+        }),
+        expect.objectContaining({
+          ecosystem: "rust",
+          lockfiles: ["Cargo.lock"],
+          manifests: ["Cargo.toml"],
+          packageManagers: ["cargo"]
+        }),
+        expect.objectContaining({
+          ecosystem: "jvm",
+          lockfiles: ["gradle.lockfile"],
+          manifests: ["build.gradle"],
+          packageManagers: ["gradle"]
+        }),
+        expect.objectContaining({
+          ecosystem: "ruby",
+          lockfiles: ["Gemfile.lock"],
+          manifests: ["Gemfile"],
+          packageManagers: ["bundler"]
+        })
+      ])
+    );
+    expect(response.body.dependencySnapshot.filesParsed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "yarn.lock", packageManager: "yarn" }),
+        expect.objectContaining({ kind: "Pipfile.lock", packageManager: "pipenv" }),
+        expect.objectContaining({ kind: "go.sum", packageManager: "go-mod" }),
+        expect.objectContaining({ kind: "Cargo.lock", packageManager: "cargo" }),
+        expect.objectContaining({ kind: "gradle.lockfile", packageManager: "gradle" }),
+        expect.objectContaining({ kind: "Gemfile.lock", packageManager: "bundler" })
+      ])
+    );
+    expect(response.body.dependencySnapshot.summary.byEcosystem).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ecosystem: "node" }),
+        expect.objectContaining({ ecosystem: "python" }),
+        expect.objectContaining({ ecosystem: "go" }),
+        expect.objectContaining({ ecosystem: "rust" }),
+        expect.objectContaining({ ecosystem: "jvm" }),
+        expect.objectContaining({ ecosystem: "ruby" })
+      ])
+    );
+    expect(response.body.dependencyFindings).toEqual([]);
+    expect(response.body.codeReviewFindings).toEqual([]);
+    expect(response.body.issueCandidates).toEqual([]);
+    expect(response.body.prCandidates).toEqual([]);
+    expect(response.body.warnings).toEqual([
+      "Targeted review did not inspect any files from the 12-file repository snapshot; full-repo review was not performed."
+    ]);
+    expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(17);
+  });
+
   it("returns 400 for invalid repo input", async () => {
     const response = await request(app)
       .post("/api/analyze")

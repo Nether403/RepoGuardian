@@ -245,8 +245,7 @@ describe("createDependencySnapshot", () => {
     );
     expect(snapshot.parseWarnings).toEqual(
       expect.arrayContaining([
-        "Detected yarn.lock but parsing is not supported in Milestone 2A.",
-        "Lockfile without matching manifest: yarn.lock",
+        "Skipped yarn.lock: file content was not fetched.",
         "Manifest without lockfile: package.json",
         "Skipped services/api/poetry.lock: GitHub returned invalid file content"
       ])
@@ -254,12 +253,8 @@ describe("createDependencySnapshot", () => {
     expect(snapshot.parseWarningDetails).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: "UNSUPPORTED_FILE_KIND",
-          message: "Detected yarn.lock but parsing is not supported in Milestone 2A."
-        }),
-        expect.objectContaining({
-          code: "LOCKFILE_WITHOUT_MANIFEST",
-          message: "Lockfile without matching manifest: yarn.lock"
+          code: "FILE_FETCH_SKIPPED",
+          message: "Skipped yarn.lock: file content was not fetched."
         }),
         expect.objectContaining({
           code: "MANIFEST_WITHOUT_LOCKFILE",

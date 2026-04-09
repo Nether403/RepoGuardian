@@ -8,6 +8,11 @@ It accepts a GitHub repository URL or `owner/repo` slug, analyzes dependency and
 
 This product is not an autonomous maintainer. It is an engineering assistant with explicit user approval before write actions.
 
+Current implementation status:
+- post-`5B` alpha, not a finished V1
+- canonical routes are `/api/analyze`, `/api/execution/plan`, and `/api/runs*`
+- GitHub write-back is intentionally narrow and approval-gated
+
 ---
 
 ## 2. Product goal
@@ -32,7 +37,7 @@ A user pastes a GitHub repo and gets:
 5. structured code-review findings
 6. candidate Issues
 7. candidate PRs
-8. the ability to create only the selected candidates
+8. the ability to create only the selected supported candidates
 
 ---
 
@@ -47,8 +52,9 @@ A user pastes a GitHub repo and gets:
 - targeted code review
 - candidate Issue drafting
 - candidate PR drafting
-- selected Issue creation
-- selected PR creation
+- approval-gated execution planning
+- selected GitHub Issue creation
+- selected bounded GitHub PR creation for supported deterministic slices
 - execution logging
 - confidence and evidence for every finding
 - local saved analysis runs and compare mode for reopening prior reports without re-analyzing live
@@ -101,10 +107,8 @@ Detect and parse:
 Normalize dependencies and flag:
 - vulnerable direct dependencies
 - vulnerable transitive dependencies
-- outdated packages
-- risky version ranges
 - missing lockfiles
-- suspicious package patterns
+- unsupported or partially analyzed dependency coverage
 
 ### Stage C — Targeted code analysis
 Review:
@@ -245,16 +249,15 @@ Do not propose a PR when:
 
 ---
 
-## 11. GitHub write actions in V1
+## 11. GitHub write actions in the current alpha
 
-Supported:
-- create issue
-- create branch
-- update file(s)
-- commit patch
-- open pull request
+Supported in the current alpha:
+- create selected GitHub Issues from issue candidates
+- create branch, update file(s), commit a patch, and open a pull request for bounded workflow-hardening candidates
+- create branch, update repo-root `package.json` plus `package-lock.json` v2/v3, commit a patch, and open a pull request for bounded npm dependency-upgrade candidates when deterministic lock metadata already exists
 
 Not supported:
+- arbitrary PR-candidate write-back outside the bounded supported slices
 - auto-merge
 - force-push
 - amend history
@@ -275,45 +278,37 @@ Repo Guardian should be a pnpm workspace monorepo.
 - `artifacts/api` — API server
 - `lib/shared-types` — shared domain types and schemas
 - `lib/github` — GitHub read/write adapters
-- `lib/ecosystems` — manifest and lockfile detection/parsing
-- `lib/advisory` — vulnerability/advisory normalization
+- `lib/ecosystems` — manifest and lockfile detection plus ecosystem inference
+- `lib/dependencies` — dependency parsing and snapshot normalization
+- `lib/advisory` — advisory normalization and dependency findings
 - `lib/review` — targeted review logic
-- `lib/execution` — write-action execution and logs
+- `lib/issues` — candidate issue drafting
+- `lib/prs` — candidate PR drafting
+- `lib/patches` — patch planning and traceability
+- `lib/execution` — dry-run planning plus bounded write execution
 - `lib/runs` — local saved analysis run storage and compare logic
+- `lib/analysis-view-model` — reusable analysis UI formatting helpers
 - `lib/api-spec` — OpenAPI contract for API routes
 - `lib/api-client` — generated web API client functions
 
 ---
 
-## 13. API shape for early milestones
+## 13. API shape for the current alpha contract
 
-### `POST /api/analyze`
-Input:
-- `repoInput`
+Canonical routes:
+- `POST /api/analyze`
+- `POST /api/execution/plan`
+- `GET /api/runs`
+- `POST /api/runs`
+- `GET /api/runs/{runId}`
+- `POST /api/runs/compare`
 
-Output:
-- `analysisRunId` or direct payload in Milestone 1
-
-### `GET /api/analyze/:id`
-Output:
-- repository summary
-- detected ecosystems
-- manifests and lockfiles
-- findings
-- issue candidates
-- pr candidates
-- warnings
-- progress
-
-### `POST /api/issues/create`
-Input:
-- analysis run id
-- selected issue candidate ids
-
-### `POST /api/prs/create`
-Input:
-- analysis run id
-- selected pr candidate ids
+Contract rules:
+- `POST /api/analyze` returns the shared `AnalyzeRepoResponse` payload directly.
+- `AnalyzeRepoResponse` stays backward-compatible while dependency coverage expands.
+- dependency expansion flows through `dependencySnapshot`, findings, candidate generation, and warnings rather than new top-level response envelopes.
+- `POST /api/execution/plan` is the canonical route for both dry-run planning and explicitly approved execution.
+- the older split write routes such as `/api/issues/create` and `/api/prs/create` are not part of the canonical contract.
 
 ---
 
@@ -376,48 +371,75 @@ Do not modify any sibling repo.
 - ecosystem inference
 - basic UI and tests
 
-### Milestone 2
+### Milestone 2A
 - dependency parsing
 - advisory lookup interface
 - structured dependency findings
 
-### Milestone 3
+### Milestone 2B
+- broaden supported Node.js and Python dependency formats
+- normalize dependency snapshots for direct and lockfile-backed records
+
+### Milestone 3A
 - targeted code review
 - structured code findings
-- candidate issue generation
+- issue-candidate grouping foundations
 
-### Milestone 4
+### Milestone 3B
+- structured candidate issue drafting
+- finding-to-issue traceability
+
+### Milestone 4A
 - candidate PR generation
 - validation status
-- execution logging
+- linked patch-planning metadata
 
-### Milestone 5
-- create selected GitHub Issues
-- create selected GitHub PRs
-- polish UX
+### Milestone 4B
+- deterministic Guardian Graph reporting
+- reusable analysis view-model helpers
+
+### Milestone 5A
+- approval-gated dry-run execution planning
+- execution action results and UX polish
+
+### Milestone 5B
+- approved GitHub Issue creation
+- approved bounded workflow-hardening PR write-back
+- approved bounded root npm dependency-upgrade PR write-back
+
+### Milestone 6A
+- align `SPEC.md`, `README.md`, `AGENTS.md`, and OpenAPI with the implemented contract
+- keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` canonical
+- expand dependency parsing and advisory normalization coverage for Node.js, Python, Go, Rust, JVM, and Ruby formats
+- add mixed-ecosystem API and web regression coverage
+- preserve the current write-back guardrails without broadening them
+
+### Milestone 6B
+- expand bounded write-back slices only after contract alignment and analysis coverage are complete
+- keep approval-gated deterministic execution constraints
+- avoid autonomous repository maintenance
 
 ---
 
-## 17. Acceptance criteria for Milestone 1
+## 17. Acceptance criteria for Milestone 6A
 
-Milestone 1 is complete when:
-- a user can enter a public GitHub repo
-- the app fetches metadata and tree successfully
-- manifests and lockfiles are detected
-- ecosystems are inferred
-- results render in the UI
-- basic tests pass
-- lint and typecheck pass
+Milestone 6A is complete when:
+- `SPEC.md`, `README.md`, `AGENTS.md`, and `lib/api-spec/openapi.yaml` agree on the current alpha status and canonical routes
+- `POST /api/analyze`, `POST /api/execution/plan`, and `/api/runs*` remain stable and documented as the canonical contract
+- supported Node.js, Python, Go, Rust, JVM, and Ruby manifests and lockfiles parse into the normalized dependency snapshot
+- advisory normalization uses exact versions when available and surfaces explicit warnings when coverage is partial
+- mixed-ecosystem API and web regression coverage passes
+- lint, typecheck, test, and build pass
 
 ---
 
-## 18. Non-goals for Codex during Milestone 1
+## 18. Non-goals for Codex during Milestone 6A
 
 Codex should not:
 - add auth
 - add billing
 - add subscriptions
 - add background jobs
-- add vulnerability logic yet
-- add GitHub write-back yet
-- redesign the whole product beyond Milestone 1 needs
+- broaden GitHub write-back beyond the current bounded supported slices
+- redesign the whole product beyond contract alignment and analysis coverage needs
+- invent weak dependency findings when exact version evidence is unavailable

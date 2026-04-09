@@ -53,7 +53,8 @@ Prefer this structure:
 - `artifacts/api` — backend API
 - `lib/shared-types` — shared types and schemas
 - `lib/github` — GitHub adapters
-- `lib/ecosystems` — ecosystem detection and parsing
+- `lib/ecosystems` — ecosystem detection and repo signals
+- `lib/dependencies` — dependency parsing and normalization
 - `lib/advisory` — dependency/advisory logic
 - `lib/review` — code review logic
 - `lib/execution` — issue/PR execution logic
@@ -104,7 +105,7 @@ Keep provider-specific code behind clear module boundaries.
 - Draw light inspiration from `../Visuvoid`, not direct imitation.
 - Favor information clarity over decorative effects.
 - Build reusable panels, badges, and tables that will still work in later milestones.
-- Do not over-design Milestone 1.
+- Keep UI ambition proportional to the current milestone.
 
 ---
 
@@ -145,24 +146,22 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Milestone 1 only
+### Active milestone: Milestone 6A
 Allowed:
-- scaffold
-- repo input
-- metadata/tree fetch
-- manifest/lockfile detection
-- ecosystem inference
-- tests
-- basic UI
+- align `SPEC.md`, `README.md`, `AGENTS.md`, and `lib/api-spec/openapi.yaml` with the implemented route surface
+- keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
+- expand deterministic dependency parsing and advisory coverage for supported ecosystems
+- add mixed-ecosystem API and web regression coverage
+- keep the current approval-gated GitHub write behavior working as-is
 
-Not allowed:
-- vulnerability analysis
-- code review findings
-- issue drafting
-- PR drafting
-- GitHub write-back
+Not allowed in this milestone unless explicitly requested:
+- broaden GitHub write-back beyond the existing bounded Issue, workflow-hardening, and root npm dependency-upgrade slices
+- add autonomous or background execution
+- add auth, billing, subscriptions, or enterprise controls
+- change top-level API response shapes without a compatibility reason
+- hide unsupported or partial dependency coverage behind guessed findings
 
-If asked for Milestone 1 work, stay in Milestone 1.
+If asked for work in an earlier milestone, stay inside that explicitly requested milestone.
 
 ---
 

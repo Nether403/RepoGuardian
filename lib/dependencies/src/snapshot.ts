@@ -7,12 +7,24 @@ import {
   type ParsedDependencyFile,
   type SkippedDependencyFile
 } from "@repo-guardian/shared-types";
+import { parseCargoLock } from "./cargo-lock.js";
+import { parseCargoToml } from "./cargo-toml.js";
+import { parseGemfile } from "./gemfile.js";
+import { parseGemfileLock } from "./gemfile-lock.js";
+import { parseGoMod } from "./go-mod.js";
+import { parseGoSum } from "./go-sum.js";
 import { parsePackageJson } from "./package-json.js";
 import { parsePackageLockJson } from "./package-lock.js";
+import { parsePipfile } from "./pipfile.js";
+import { parsePipfileLock } from "./pipfile-lock.js";
 import { parsePnpmLockYaml } from "./pnpm-lock.js";
 import { parsePoetryLock } from "./poetry-lock.js";
+import { parsePomXml } from "./pom-xml.js";
 import { parsePyprojectToml } from "./pyproject.js";
 import { parseRequirementsTxt } from "./requirements.js";
+import { parseGradleBuildFile } from "./gradle-build.js";
+import { parseGradleLockfile } from "./gradle-lockfile.js";
+import { parseYarnLock } from "./yarn-lock.js";
 import {
   buildLockfilesByWorkspace,
   createDependencySummary,
@@ -51,20 +63,45 @@ function parseFile(
   context: ParseContext
 ): ParserResult {
   switch (file.kind) {
+    case "Cargo.toml":
+      return parseCargoToml(file, content);
+    case "Cargo.lock":
+      return parseCargoLock(file, content, context);
+    case "Gemfile":
+      return parseGemfile(file, content);
+    case "Gemfile.lock":
+      return parseGemfileLock(file, content, context);
+    case "Pipfile":
+      return parsePipfile(file, content);
+    case "Pipfile.lock":
+      return parsePipfileLock(file, content, context);
+    case "build.gradle":
+    case "build.gradle.kts":
+      return parseGradleBuildFile(file, content);
+    case "go.mod":
+      return parseGoMod(file, content);
+    case "go.sum":
+      return parseGoSum(file, content, context);
     case "package.json":
       return parsePackageJson(file, content, context);
     case "package-lock.json":
       return parsePackageLockJson(file, content, context);
     case "pnpm-lock.yaml":
       return parsePnpmLockYaml(file, content);
+    case "pom.xml":
+      return parsePomXml(file, content);
     case "requirements.txt":
       return parseRequirementsTxt(file, content);
     case "pyproject.toml":
       return parsePyprojectToml(file, content, context);
     case "poetry.lock":
       return parsePoetryLock(file, content, context);
+    case "gradle.lockfile":
+      return parseGradleLockfile(file, content, context);
+    case "yarn.lock":
+      return parseYarnLock(file, content, context);
     default:
-      throw new Error(`Detected ${file.kind} but parsing is not supported in Milestone 2A.`);
+      throw new Error("Detected an unsupported dependency file kind.");
   }
 }
 

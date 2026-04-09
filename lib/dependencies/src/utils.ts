@@ -25,12 +25,25 @@ import {
 
 export type SupportedManifestKind =
   | "package.json"
+  | "Pipfile"
+  | "Cargo.toml"
+  | "Gemfile"
+  | "build.gradle"
+  | "build.gradle.kts"
+  | "go.mod"
+  | "pom.xml"
   | "requirements.txt"
   | "pyproject.toml";
 
 export type SupportedLockfileKind =
+  | "Cargo.lock"
+  | "Gemfile.lock"
+  | "Pipfile.lock"
+  | "go.sum"
+  | "gradle.lockfile"
   | "package-lock.json"
   | "pnpm-lock.yaml"
+  | "yarn.lock"
   | "poetry.lock";
 
 export type SupportedDependencyFile =
@@ -213,14 +226,27 @@ export function createDependencyParseWarning(input: {
 }
 
 const supportedManifestKinds = new Set<SupportedManifestKind>([
+  "Cargo.toml",
+  "Gemfile",
+  "Pipfile",
+  "build.gradle",
+  "build.gradle.kts",
+  "go.mod",
   "package.json",
+  "pom.xml",
   "pyproject.toml",
   "requirements.txt"
 ]);
 
 const supportedLockfileKinds = new Set<SupportedLockfileKind>([
+  "Cargo.lock",
+  "Gemfile.lock",
+  "Pipfile.lock",
+  "go.sum",
+  "gradle.lockfile",
   "package-lock.json",
   "pnpm-lock.yaml",
+  "yarn.lock",
   "poetry.lock"
 ]);
 
@@ -255,7 +281,7 @@ export function createUnsupportedFileWarnings(
       continue;
     }
 
-    const reason = `Detected ${manifest.kind} but parsing is not supported in Milestone 2A.`;
+    const reason = `Detected ${manifest.kind} but parsing is not supported in the current analysis scope.`;
     filesSkipped.push(createSkippedFile(manifest, reason));
     warningDetails.push(
       createDependencyParseWarning({
@@ -272,7 +298,7 @@ export function createUnsupportedFileWarnings(
       continue;
     }
 
-    const reason = `Detected ${lockfile.kind} but parsing is not supported in Milestone 2A.`;
+    const reason = `Detected ${lockfile.kind} but parsing is not supported in the current analysis scope.`;
     filesSkipped.push(createSkippedFile(lockfile, reason));
     warningDetails.push(
       createDependencyParseWarning({
@@ -323,8 +349,14 @@ export function createLockfileWithoutManifestWarnings(
 }
 
 const lockfilePackageManagers: Record<SupportedLockfileKind, PackageManagerId> = {
+  "Cargo.lock": "cargo",
+  "Gemfile.lock": "bundler",
+  "Pipfile.lock": "pipenv",
+  "go.sum": "go-mod",
+  "gradle.lockfile": "gradle",
   "package-lock.json": "npm",
   "pnpm-lock.yaml": "pnpm",
+  "yarn.lock": "yarn",
   "poetry.lock": "poetry"
 };
 
