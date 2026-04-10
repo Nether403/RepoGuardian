@@ -70,8 +70,15 @@ function extractProjectVersion(content: string): string | null {
 }
 
 function buildPomPropertyMap(content: string): Map<string, string> {
+  const strippedContent = stripXmlSections(
+    stripXmlSections(
+      stripXmlSections(stripXmlComments(content), "dependencyManagement"),
+      "pluginManagement"
+    ),
+    "plugins"
+  );
   const properties = extractPomProperties(content);
-  const projectVersion = extractProjectVersion(content);
+  const projectVersion = extractProjectVersion(strippedContent);
   const parentVersion = extractParentVersion(content);
 
   if (projectVersion) {
@@ -152,6 +159,48 @@ function getPomDependencyType(scope: string | null, optional: boolean): Dependen
   return "production";
 }
 
+function buildManagedVersionMap(
+  content: string,
+  properties: Map<string, string>
+): Map<string, string> {
+  const managedVersions = new Map<string, string>();
+  const managementBlock = /<dependencyManagement>([\s\S]*?)<\/dependencyManagement>/u.exec(content)?.[1];
+
+  if (!managementBlock) {
+    return managedVersions;
+  }
+
+  for (const dependencyMatch of managementBlock.matchAll(/<dependency>([\s\S]*?)<\/dependency>/gu)) {
+    const block = dependencyMatch[1];
+
+    if (!block) {
+      continue;
+    }
+
+    const groupId = extractFirstTag(block, "groupId");
+    const artifactId = extractFirstTag(block, "artifactId");
+    const rawVersion = extractFirstTag(block, "version");
+    const typeValue = extractFirstTag(block, "type");
+    const scope = extractFirstTag(block, "scope");
+
+    if (!groupId || !artifactId || !rawVersion) {
+      continue;
+    }
+
+    if (scope === "import" && typeValue === "pom") {
+      continue;
+    }
+
+    const resolved = resolvePomValue(rawVersion, properties);
+
+    if (resolved.value && resolved.unresolvedPlaceholders.length === 0) {
+      managedVersions.set(`${groupId}:${artifactId}`, resolved.value);
+    }
+  }
+
+  return managedVersions;
+}
+
 export function parsePomXml(
   file: DetectedManifest,
   content: string
@@ -159,6 +208,8 @@ export function parsePomXml(
   const workspacePath = normalizeWorkspacePath(file.path);
   const warningDetails: AnalysisWarning[] = [];
   const dependencies: NormalizedDependency[] = [];
+  const properties = buildPomPropertyMap(content);
+  const managedVersions = buildManagedVersionMap(stripXmlComments(content), properties);
   const cleanedContent = stripXmlSections(
     stripXmlSections(
       stripXmlSections(stripXmlComments(content), "dependencyManagement"),
@@ -166,7 +217,6 @@ export function parsePomXml(
     ),
     "plugins"
   );
-  const properties = buildPomPropertyMap(cleanedContent);
 
   for (const dependencyMatch of cleanedContent.matchAll(/<dependency>([\s\S]*?)<\/dependency>/gu)) {
     const dependencyBlock = dependencyMatch[1];
@@ -177,10 +227,7 @@ export function parsePomXml(
 
     const groupId = extractFirstTag(dependencyBlock, "groupId");
     const artifactId = extractFirstTag(dependencyBlock, "artifactId");
-    const resolvedVersion = resolvePomValue(
-      extractFirstTag(dependencyBlock, "version"),
-      properties
-    );
+    const rawVersion = extractFirstTag(dependencyBlock, "version");
     const scope = extractFirstTag(dependencyBlock, "scope");
     const typeValue = extractFirstTag(dependencyBlock, "type");
     const optional = extractFirstTag(dependencyBlock, "optional") === "true";
@@ -201,11 +248,33 @@ export function parsePomXml(
       continue;
     }
 
+    const coordinateName = `${groupId}:${artifactId}`;
+    let resolvedVersion = resolvePomValue(rawVersion, properties);
+    let isManagedVersion = false;
+
+    if (!resolvedVersion.value) {
+      const managedVersion = managedVersions.get(coordinateName);
+
+      if (managedVersion) {
+        resolvedVersion = { unresolvedPlaceholders: [], value: managedVersion };
+        isManagedVersion = true;
+      } else {
+        warningDetails.push(
+          createDependencyParseWarning({
+            code: "FILE_PARSE_FAILED",
+            message: `Maven dependency ${coordinateName} in ${file.path} has no explicit version and no locally resolvable managed version.`,
+            path: file.path,
+            source: file.kind
+          })
+        );
+      }
+    }
+
     if (resolvedVersion.unresolvedPlaceholders.length > 0) {
       warningDetails.push(
         createDependencyParseWarning({
           code: "FILE_PARSE_FAILED",
-          message: `Parsed Maven dependency ${groupId}:${artifactId} in ${file.path} with unresolved version placeholder(s): ${resolvedVersion.unresolvedPlaceholders.join(", ")}.`,
+          message: `Parsed Maven dependency ${coordinateName} in ${file.path} with unresolved version placeholder(s): ${resolvedVersion.unresolvedPlaceholders.join(", ")}.`,
           path: file.path,
           source: file.kind
         })
@@ -217,11 +286,11 @@ export function parsePomXml(
         dependencyType: getPomDependencyType(scope, optional),
         ecosystem: "jvm",
         isDirect: true,
-        name: `${groupId}:${artifactId}`,
+        name: coordinateName,
         packageManager: "maven",
         parseConfidence:
           resolvedVersion.value && resolvedVersion.unresolvedPlaceholders.length === 0
-            ? "medium"
+            ? isManagedVersion ? "low" : "medium"
             : "low",
         sourceFile: file.path,
         version: resolvedVersion.value,

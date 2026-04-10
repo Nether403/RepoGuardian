@@ -76,6 +76,37 @@ function normalizeGradleStatementText(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
 }
 
+function stripTrailingClosure(text: string): string {
+  const trimmed = text.trim();
+
+  if (!trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  let braceDepth = 0;
+  let closureStart = -1;
+
+  for (let characterIndex = trimmed.length - 1; characterIndex >= 0; characterIndex -= 1) {
+    const character = trimmed[characterIndex];
+
+    if (character === "}") {
+      braceDepth += 1;
+
+      if (closureStart === -1) {
+        closureStart = characterIndex;
+      }
+    } else if (character === "{") {
+      braceDepth -= 1;
+
+      if (braceDepth === 0) {
+        return trimmed.slice(0, characterIndex).trim();
+      }
+    }
+  }
+
+  return trimmed;
+}
+
 function collectGradleDependencyStatements(content: string): GradleDependencyStatement[] {
   const statements: GradleDependencyStatement[] = [];
   const cleanedContent = content.replace(/\/\*[\s\S]*?\*\//gu, "");
@@ -98,7 +129,10 @@ function collectGradleDependencyStatements(content: string): GradleDependencySta
     const statementLines = [line];
     let parenthesisDepth =
       countOccurrences(line, "(") - countOccurrences(line, ")");
-    let shouldContinue = parenthesisDepth > 0 || /,\s*$/u.test(line);
+    let braceDepth =
+      countOccurrences(line, "{") - countOccurrences(line, "}");
+    let shouldContinue =
+      parenthesisDepth > 0 || braceDepth > 0 || /,\s*$/u.test(line);
 
     while (shouldContinue && lineIndex + 1 < lines.length) {
       lineIndex += 1;
@@ -112,8 +146,11 @@ function collectGradleDependencyStatements(content: string): GradleDependencySta
       parenthesisDepth +=
         countOccurrences(continuationLine, "(") -
         countOccurrences(continuationLine, ")");
+      braceDepth +=
+        countOccurrences(continuationLine, "{") -
+        countOccurrences(continuationLine, "}");
       shouldContinue =
-        parenthesisDepth > 0 || /,\s*$/u.test(continuationLine);
+        parenthesisDepth > 0 || braceDepth > 0 || /,\s*$/u.test(continuationLine);
     }
 
     statements.push({
@@ -127,9 +164,9 @@ function collectGradleDependencyStatements(content: string): GradleDependencySta
 }
 
 function isExplicitlyUnsupportedGradleReference(statement: string): boolean {
-  return /(?:project|fileTree|files|gradleApi|localGroovy)\s*\(/u.test(statement) ||
-    /(?:^|[^\w])libs\./u.test(statement) ||
-    /\{\s*$/u.test(statement);
+  const withoutClosure = stripTrailingClosure(statement);
+  return /(?:project|fileTree|files|gradleApi|localGroovy)\s*\(/u.test(withoutClosure) ||
+    /(?:^|[^\w])libs\./u.test(withoutClosure);
 }
 
 function extractNamedArgumentValue(
@@ -168,8 +205,9 @@ function parseNamedArgumentCoordinate(statement: string): ParsedCoordinate | nul
 }
 
 function parseStringNotationCoordinate(statement: string): ParsedCoordinate | null {
+  const withoutClosure = stripTrailingClosure(statement);
   const stringNotationMatch =
-    /^\w+\s*(?:\(\s*)?(?:platform\(\s*)?["']([^"']+)["']\s*\)?\s*\)?/u.exec(statement);
+    /^\w+\s*(?:\(\s*)?(?:platform\(\s*)?["']([^"']+)["']\s*\)?\s*\)?/u.exec(withoutClosure);
 
   if (!stringNotationMatch?.[1]) {
     return null;

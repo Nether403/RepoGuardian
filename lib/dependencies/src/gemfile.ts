@@ -116,7 +116,7 @@ export function parseGemfile(
       continue;
     }
 
-    const gemMatch = /^gem\s+["']([^"']+)["'](?:\s*,\s*["']([^"']+)["'])?(.*)$/u.exec(line);
+    const gemMatch = /^gem\s+["']([^"']+)["']((?:\s*,\s*["'][^"']+["'])*)(.*)$/u.exec(line);
 
     if (!gemMatch) {
       if (line.startsWith("gem ")) {
@@ -133,7 +133,13 @@ export function parseGemfile(
       continue;
     }
 
-    const [, name, version, remainder] = gemMatch;
+    const [, name, versionPart, remainder] = gemMatch;
+    const versionConstraints = [...(versionPart ?? "").matchAll(/["']([^"']+)["']/gu)]
+      .map((match) => match[1]?.trim())
+      .filter((value): value is string => Boolean(value));
+    const version = versionConstraints.length > 0
+      ? versionConstraints.join(", ")
+      : null;
     const inlineGroups = extractInlineGroups(remainder ?? "");
     const activeGroups = [...getActiveGemfileGroups(blockStack), ...inlineGroups];
     const dependencyType = activeGroups.some(isDevelopmentGroup)
@@ -161,7 +167,7 @@ export function parseGemfile(
         packageManager: "bundler",
         parseConfidence: version ? "medium" : "low",
         sourceFile: file.path,
-        version: version?.trim() || null,
+        version,
         workspacePath
       })
     );
