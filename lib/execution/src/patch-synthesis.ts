@@ -152,20 +152,31 @@ function evaluateDependencyExecutionSupport(input: {
     };
   }
 
-  if (!hasExactSupportedDependencyFiles(input.candidate.affectedPaths)) {
+  const isNpm = hasExactSupportedDependencyFiles(input.candidate.affectedPaths);
+  const isPython = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("requirements.txt") ?? false);
+  const isMaven = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("pom.xml") ?? false);
+
+  if (!isNpm && !isPython && !isMaven) {
     return {
       reason:
-        "Deterministic dependency write-back currently supports only repo-root npm package.json and package-lock.json targets.",
+        "Deterministic dependency write-back currently supports only repo-root npm (package.json/package-lock.json), Python (requirements.txt), or Maven (pom.xml) targets.",
       supported: false
     };
   }
 
   const plannedFiles = input.patchPlan.patchPlan?.filesPlanned.map((file) => file.path) ?? [];
 
-  if (!hasExactSupportedDependencyFiles(plannedFiles)) {
+  if (isNpm && !hasExactSupportedDependencyFiles(plannedFiles)) {
     return {
       reason:
         "The linked patch plan must target only repo-root package.json and package-lock.json for deterministic dependency write-back.",
+      supported: false
+    };
+  }
+
+  if ((isPython || isMaven) && (plannedFiles.length !== 1 || plannedFiles[0] !== input.candidate.affectedPaths[0])) {
+    return {
+      reason: `The linked patch plan must target exactly the identified ${isPython ? "requirements.txt" : "pom.xml"} for deterministic dependency write-back.`,
       supported: false
     };
   }
@@ -808,46 +819,97 @@ export function explainPRWriteBackEligibility(input: {
 
     const packageJsonContent = input.fileContentsByPath?.["package.json"];
     const packageLockContent = input.fileContentsByPath?.["package-lock.json"];
+    const requirementsTxtContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("requirements.txt")
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
+    const pomXmlContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("pom.xml")
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
 
-    if (!packageJsonContent || !packageLockContent) {
-      return createBlockedWriteBackEligibility({
-        patchPlan: input.patchPlan,
-        reason:
-          "Analysis did not fetch the package.json and package-lock.json content needed to verify deterministic dependency write-back."
-      });
+    if (input.candidate.affectedPaths.includes("package.json")) {
+      if (!packageJsonContent || !packageLockContent) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason:
+            "Analysis did not fetch the package.json and package-lock.json content needed to verify deterministic dependency write-back."
+        });
+      }
+
+      try {
+        const prepared = prepareDeterministicDependencyUpdate({
+          packageJsonContent,
+          packageLockContent,
+          packageName: support.packageName,
+          remediationVersion: support.remediationVersion
+        });
+
+        return createExecutableWriteBackEligibility({
+          details: [
+            `The PR candidate is a direct npm dependency upgrade for ${support.packageName}.`,
+            "The change scope is limited to repo-root package.json and package-lock.json.",
+            `package.json uses a supported ${describeSpecifierStyle(prepared.currentManifestSpecifier)} specifier.`,
+            `package-lock.json uses supported lockfileVersion ${String(prepared.packageLock.lockfileVersion)} and includes packages[""].`,
+            `Existing lockfile metadata for ${support.packageName}@${support.remediationVersion} was found uniquely and can be copied deterministically.`
+          ],
+          summary: "Eligible for approved deterministic npm dependency write-back."
+        });
+      } catch (error) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "Repo Guardian could not verify deterministic dependency write-back eligibility.",
+          extraDetails: [
+            `Affected package: ${support.packageName}.`,
+            "The dependency write-back slice remains limited to a direct npm upgrade for repo-root package.json and package-lock.json."
+          ]
+        });
+      }
     }
 
-    try {
-      const prepared = prepareDeterministicDependencyUpdate({
-        packageJsonContent,
-        packageLockContent,
-        packageName: support.packageName,
-        remediationVersion: support.remediationVersion
-      });
+    if (requirementsTxtContent) {
+      const match = detectPythonRequirementMatch(requirementsTxtContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic exact-version requirement for ${support.packageName} in requirements.txt.`
+        });
+      }
 
       return createExecutableWriteBackEligibility({
         details: [
-          `The PR candidate is a direct npm dependency upgrade for ${support.packageName}.`,
-          "The change scope is limited to repo-root package.json and package-lock.json.",
-          `package.json uses a supported ${describeSpecifierStyle(prepared.currentManifestSpecifier)} specifier.`,
-          `package-lock.json uses supported lockfileVersion ${String(prepared.packageLock.lockfileVersion)} and includes packages[""].`,
-          `Existing lockfile metadata for ${support.packageName}@${support.remediationVersion} was found uniquely and can be copied deterministically.`
+          `The PR candidate is a direct Python dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to the repo requirements.txt file.",
+          `Matched deterministic requirement pattern: ${match.line.trim()}.`
         ],
-        summary: "Eligible for approved deterministic npm dependency write-back."
-      });
-    } catch (error) {
-      return createBlockedWriteBackEligibility({
-        patchPlan: input.patchPlan,
-        reason:
-          error instanceof Error
-            ? error.message
-            : "Repo Guardian could not verify deterministic dependency write-back eligibility.",
-        extraDetails: [
-          `Affected package: ${support.packageName}.`,
-          "The dependency write-back slice remains limited to a direct npm upgrade for repo-root package.json and package-lock.json."
-        ]
+        summary: "Eligible for approved deterministic Python dependency write-back."
       });
     }
+
+    if (pomXmlContent) {
+      const match = detectMavenDependencyMatch(pomXmlContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic explicit-version dependency for ${support.packageName} in pom.xml.`
+        });
+      }
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct Maven dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to the repo pom.xml file.",
+          "Target identifies an explicit <version> tag within the dependency block."
+        ],
+        summary: "Eligible for approved deterministic Maven dependency write-back."
+      });
+    }
+
+    return createBlockedWriteBackEligibility({
+      patchPlan: input.patchPlan,
+      reason: "Repo Guardian could not determine the specific dependency write-back path for the selected candidate."
+    });
   }
 
   const support = evaluatePRExecutionSupport(input);
@@ -1136,8 +1198,153 @@ export async function synthesizePRCandidatePatch(input: {
     });
   }
 
+  const packagePath = input.candidate.affectedPaths[0];
+
+  if (packagePath?.endsWith("requirements.txt")) {
+    return synthesizePythonPatch({
+      ...input,
+      support
+    });
+  }
+
+  if (packagePath?.endsWith("pom.xml")) {
+    return synthesizeMavenPatch({
+      ...input,
+      support
+    });
+  }
+
   return synthesizeDependencyPatch({
     ...input,
     support
   });
+}
+
+function detectPythonRequirementMatch(content: string, packageName: string) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Match pkg==version, allowing for extras [extra] and avoiding matches that are just comments
+    const regex = new RegExp(`^${packageName}(?:\\[[^\\]]+\\])?==[a-zA-Z0-9.-]+(?:\\s*#.*)?$`, "i");
+    if (regex.test(trimmed)) {
+      return { line };
+    }
+  }
+  return null;
+}
+
+function detectMavenDependencyMatch(content: string, packageName: string) {
+  // Simple check for <groupId>...<artifactId>...<version>... sequence
+  // We expect a literal version tag (not a property)
+  const [groupId, artifactId] = packageName.includes(":") ? packageName.split(":") : [null, packageName];
+
+  if (!groupId) return null;
+
+  // This is a very targeted regex to find the version tag within a dependency block
+  // It's not fully XML-aware but follows our "deterministic/bounded" rule.
+  const escapedGroupId = groupId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedArtifactId = artifactId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const dependencyRegex = new RegExp(
+    `<dependency>\\s*(?:<!--.*?-->\\s*)*` +
+    `<groupId>${escapedGroupId}</groupId>\\s*(?:<!--.*?-->\\s*)*` +
+    `<artifactId>${escapedArtifactId}</artifactId>\\s*(?:<!--.*?-->\\s*)*` +
+    `<version>([a-zA-Z0-9.-]+)</version>`,
+    "ms"
+  );
+
+  const match = dependencyRegex.exec(content);
+  if (match && match[1]) {
+    return { fullMatch: match[0], version: match[1] };
+  }
+  return null;
+}
+
+async function synthesizePythonPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const lines = originalContent.split(/\r?\n/);
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const regex = new RegExp(`^${input.support.packageName}(?:\\[[^\\]]+\\])?==[a-zA-Z0-9.-]+`, "i");
+    if (regex.test(trimmed)) {
+      // Find where '==' is and replace what's after it
+      const parts = line.split("==");
+      if (parts.length >= 2) {
+        const remaining = parts.slice(1).join("==");
+        // We only want to replace the version part, potentially keeping trailing comments
+        const versionMatch = remaining.match(/^[a-zA-Z0-9.-]+/);
+        if (versionMatch) {
+          return parts[0] + "==" + input.support.remediationVersion + remaining.slice(versionMatch[0].length);
+        }
+      }
+    }
+    return line;
+  });
+
+  const updatedContent = updatedLines.join(detectNewline(originalContent));
+
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Python requirements edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+async function synthesizeMavenPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const match = detectMavenDependencyMatch(originalContent, input.support.packageName);
+  if (!match) {
+    throw new Error("Repo Guardian could not find a target for Maven patch synthesis.");
+  }
+
+  const updatedDependencyBlock = match.fullMatch.replace(
+    `<version>${match.version}</version>`,
+    `<version>${input.support.remediationVersion}</version>`
+  );
+
+  const updatedContent = originalContent.replace(match.fullMatch, updatedDependencyBlock);
+
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Maven pom.xml edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
 }
