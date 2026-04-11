@@ -179,6 +179,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -857,6 +858,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -944,6 +946,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -1127,6 +1130,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/repo-guardian-sample" });
 
     expect(response.status).toBe(200);
@@ -1336,6 +1340,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/repo-guardian-hardening-sample" });
 
     expect(response.status).toBe(200);
@@ -1390,6 +1395,7 @@ describe("POST /api/analyze", () => {
   it("returns 400 for invalid repo input", async () => {
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "not a repo" });
 
     expect(response.status).toBe(400);
@@ -1416,6 +1422,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/missing-repo" });
 
     expect(response.status).toBe(404);
@@ -1447,6 +1454,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(429);
@@ -1469,6 +1477,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(502);
@@ -1536,6 +1545,7 @@ describe("POST /api/analyze", () => {
 
     const response = await request(app)
       .post("/api/analyze")
+      .set("Authorization", "Bearer test-secret-key")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(200);

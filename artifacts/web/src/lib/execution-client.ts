@@ -1,70 +1,82 @@
 import {
-  ExecutionRequestSchema,
+  ExecutionPlanRequestSchema,
+  ExecutionExecuteRequestSchema,
   ExecutionResultSchema,
-  type AnalyzeRepoResponse,
-  type ExecutionMode,
+  type ExecutionPlanResponse,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
 import {
   createExecutionPlan,
+  executeExecutionPlan,
   RepoGuardianApiError
 } from "@repo-guardian/api-client";
 
-export class ExecutionPlanClientError extends Error {
+export class ExecutionClientError extends Error {
   readonly details: unknown;
   readonly status: number;
 
   constructor(message: string, status: number, details: unknown, options?: ErrorOptions) {
     super(message, options);
-    this.name = "ExecutionPlanClientError";
+    this.name = "ExecutionClientError";
     this.status = status;
     this.details = details;
   }
 }
 
 export async function requestExecutionPlan(input: {
-  analysis: AnalyzeRepoResponse;
-  approvalGranted: boolean;
-  mode: ExecutionMode;
+  analysisRunId: string;
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
-}): Promise<ExecutionResult> {
-  let requestBody: ReturnType<typeof ExecutionRequestSchema.parse>;
+}): Promise<ExecutionPlanResponse> {
+  let requestBody: ReturnType<typeof ExecutionPlanRequestSchema.parse>;
 
   try {
-    requestBody = ExecutionRequestSchema.parse(input);
+    requestBody = ExecutionPlanRequestSchema.parse(input);
   } catch (error) {
-    throw new ExecutionPlanClientError(
-      "Execution request could not be validated",
+    throw new ExecutionClientError(
+      "Execution plan request could not be validated",
       400,
       null,
-      {
-        cause: error
-      }
+      { cause: error }
     );
   }
 
   try {
-    return ExecutionResultSchema.parse(await createExecutionPlan(requestBody));
+    return await createExecutionPlan(requestBody);
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
-      throw new ExecutionPlanClientError(
-        error.message,
-        error.status,
-        error.details,
-        {
-          cause: error
-        }
-      );
+      throw new ExecutionClientError(error.message, error.status, error.details, { cause: error });
     }
+    throw new ExecutionClientError("Repo Guardian could not reach the execution plan API", 0, null, { cause: error });
+  }
+}
 
-    throw new ExecutionPlanClientError(
-      "Repo Guardian could not reach the execution API",
-      0,
+export async function requestExecutionExecute(input: {
+  planId: string;
+  planHash: string;
+  approvalToken: string;
+  confirm: true;
+  confirmationText: string;
+}): Promise<ExecutionResult> {
+  let requestBody: ReturnType<typeof ExecutionExecuteRequestSchema.parse>;
+
+  try {
+    requestBody = ExecutionExecuteRequestSchema.parse(input);
+  } catch (error) {
+    throw new ExecutionClientError(
+      "Execution execute request could not be validated",
+      400,
       null,
-      {
-        cause: error
-      }
+      { cause: error }
     );
+  }
+
+  try {
+    return ExecutionResultSchema.parse(await executeExecutionPlan(requestBody));
+  } catch (error) {
+    if (error instanceof RepoGuardianApiError) {
+      throw new ExecutionClientError(error.message, error.status, error.details, { cause: error });
+    }
+    throw new ExecutionClientError("Repo Guardian could not reach the execute API", 0, null, { cause: error });
   }
 }

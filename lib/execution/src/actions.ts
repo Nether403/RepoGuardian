@@ -1,7 +1,6 @@
 import type {
   ExecutionActionPlan,
   ExecutionPlanningContext,
-  ExecutionRequest,
   PRCandidate,
   PRPatchPlan
 } from "@repo-guardian/shared-types";
@@ -10,7 +9,7 @@ import { evaluatePRExecutionSupport } from "./patch-synthesis.js";
 
 type ActionBuildContext = {
   approvalGranted: boolean;
-  mode: ExecutionRequest["mode"];
+  mode: "dry_run" | "execute_approved";
 };
 
 function createAction(
@@ -412,7 +411,7 @@ function buildEmptySelectionAction(context: ActionBuildContext): ExecutionAction
 function buildPlannedActions(input: {
   analysis: ExecutionPlanningContext;
   approvalGranted: boolean;
-  mode: ExecutionRequest["mode"];
+  mode: "dry_run" | "execute_approved";
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
 }): ExecutionActionPlan[] {
