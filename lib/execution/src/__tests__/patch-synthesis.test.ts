@@ -761,4 +761,112 @@ describe("explainPRWriteBackEligibility", () => {
       "Repo Guardian could not find a deterministic explicit-version dependency for com.google.guava:guava in pom.xml."
     );
   });
+
+  it("marks a deterministic Go go.mod candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:github.com/pkg/errors:1",
+      packageName: "github.com/pkg/errors",
+      paths: ["go.mod"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["github.com/pkg/errors"],
+      affectedPaths: ["go.mod"],
+      id: "pr:dependency-upgrade:pkg-errors",
+      relatedFindingIds: ["dependency:github.com/pkg/errors:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["github.com/pkg/errors"],
+      affectedPaths: ["go.mod"],
+      id: "patch-plan:pr:dependency-upgrade:pkg-errors",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "go.mod",
+            reason: "Update go.mod."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "go.mod": "module myapp\n\ngo 1.20\n\nrequire (\n\tgithub.com/pkg/errors v0.8.1\n)\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Go dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Go dependency upgrade for github.com/pkg/errors."
+    );
+  });
+
+  it("marks a deterministic Rust Cargo.toml candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:serde:1",
+      packageName: "serde",
+      paths: ["Cargo.toml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["serde"],
+      affectedPaths: ["Cargo.toml"],
+      id: "pr:dependency-upgrade:serde",
+      relatedFindingIds: ["dependency:serde:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["serde"],
+      affectedPaths: ["Cargo.toml"],
+      id: "patch-plan:pr:dependency-upgrade:serde",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Cargo.toml",
+            reason: "Update Cargo.toml."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Cargo.toml": "[package]\nname = \"myapp\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1.0.100\"\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Rust dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Rust dependency upgrade for serde."
+    );
+  });
 });

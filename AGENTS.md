@@ -146,20 +146,18 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6B
+### Active milestone: Milestone 6D
 Allowed:
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- harden deterministic parser fidelity for Gradle, Maven, and Bundler inputs
-- keep advisory normalization honest when exact versions are unresolved
-- add parser, advisory, and mixed-ecosystem API/web regression coverage for the hardened cases
+- expand deterministic patch PR generation to cover Go (`go.mod`) and Rust (`Cargo.toml`) cases
+- avoid solving complex secondary lockfiles (`go.sum`, `Cargo.lock`) locally for these targets
 - keep the current approval-gated GitHub write behavior working as-is
 
 Not allowed in this milestone unless explicitly requested:
-- broaden GitHub write-back beyond the existing bounded Issue, workflow-hardening, and root npm dependency-upgrade slices
+- broaden GitHub write-back beyond the existing bounded slices (now including Go/Rust)
 - add autonomous or background execution
 - add auth, billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason
-- hide unsupported or partial dependency coverage behind guessed findings
 
 If asked for work in an earlier milestone, stay inside that explicitly requested milestone.
 

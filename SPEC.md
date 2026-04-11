@@ -424,21 +424,24 @@ Do not modify any sibling repo.
 - keep approval-gated deterministic execution constraints
 - avoid autonomous repository maintenance
 
+### Milestone 6D
+- expand bounded write-back slices to include deterministic patch generation for Go (`go.mod`) and Rust (`Cargo.toml`)
+- harden PR execution pipelines for existing deterministic targets
+- keep approval-gated PR execution constraints
+- do not attempt complex resolution of lockfiles (`go.sum`, `Cargo.lock`) locally, instead relying on targeted string replacements
+
 ---
 
-## 17. Acceptance criteria for Milestone 6A
+## 17. Acceptance criteria for Milestone 6D
 
-Milestone 6A is complete when:
-- `SPEC.md`, `README.md`, `AGENTS.md`, and `lib/api-spec/openapi.yaml` agree on the current alpha status and canonical routes
-- `POST /api/analyze`, `POST /api/execution/plan`, and `/api/runs*` remain stable and documented as the canonical contract
-- supported Node.js, Python, Go, Rust, JVM, and Ruby manifests and lockfiles parse into the normalized dependency snapshot
-- advisory normalization uses exact versions when available and surfaces explicit warnings when coverage is partial
-- mixed-ecosystem API and web regression coverage passes
+Milestone 6D is complete when:
+- deterministic GitHub write-back accurately processes `go.mod` and `Cargo.toml` targets
+- existing API routes safely gate these updates the same way they do for npm, Maven, and Python
 - lint, typecheck, test, and build pass
 
 ---
 
-## 18. Non-goals for Codex during Milestone 6A
+## 18. Non-goals for Codex during Milestone 6D
 
 Codex should not:
 - add auth
