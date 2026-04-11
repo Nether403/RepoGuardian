@@ -1031,4 +1031,164 @@ describe("explainPRWriteBackEligibility", () => {
       "The PR candidate is a direct Docker base image upgrade for node."
     );
   });
+
+  it("marks a deterministic Gradle build build.gradle candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:guava:1",
+      packageName: "com.google.guava:guava",
+      paths: ["build.gradle"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "build.gradle",
+            reason: "Update build.gradle."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "build.gradle": "dependencies {\n  implementation 'com.google.guava:guava:31.0.1-jre'\n}\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Gradle dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Gradle dependency upgrade for com.google.guava:guava."
+    );
+  });
+
+  it("blocks a Gradle build.gradle candidate if the version is variable-driven", () => {
+    const finding = dependencyFinding({
+      id: "dependency:guava:1",
+      packageName: "com.google.guava:guava",
+      paths: ["build.gradle"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "build.gradle",
+            reason: "Update build.gradle."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "build.gradle": "dependencies {\n  implementation 'com.google.guava:guava:$guavaVersion'\n}\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "blocked",
+      summary: "Repo Guardian blocked updating com.google.guava:guava because its version is centrally managed by a variable ($guavaVersion)."
+    });
+  });
+
+  it("marks a Yarn package.json candidate executable while ignoring yarn.lock payload", () => {
+    const finding = dependencyFinding({
+      id: "dependency:react:1",
+      packageName: "react",
+      paths: ["package.json", "yarn.lock"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["react"],
+      affectedPaths: ["package.json", "yarn.lock"],
+      id: "pr:dependency-upgrade:react",
+      relatedFindingIds: ["dependency:react:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["react"],
+      affectedPaths: ["package.json", "yarn.lock"],
+      id: "patch-plan:pr:dependency-upgrade:react",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "package.json",
+            reason: "Update package.json."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "package.json": JSON.stringify({ dependencies: { react: "^1.0.0" } }),
+        "yarn.lock": "some lock content"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Yarn dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The change scope is limited to package.json; yarn.lock will be naturally regenerated by CI actions."
+    );
+  });
 });
