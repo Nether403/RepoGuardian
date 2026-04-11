@@ -430,18 +430,23 @@ Do not modify any sibling repo.
 - keep approval-gated PR execution constraints
 - do not attempt complex resolution of lockfiles (`go.sum`, `Cargo.lock`) locally, instead relying on targeted string replacements
 
+### Milestone 6E
+- expand bounded write-back slices to include deterministic patch generation for Ruby (`Gemfile`), Python (`pyproject.toml`), and Infra (`Dockerfile`)
+- do not attempt complex lockfile resolution for these ecosystems locally
+- keep approval-gated PR execution constraints
+
 ---
 
-## 17. Acceptance criteria for Milestone 6D
+## 17. Acceptance criteria for Milestone 6E
 
-Milestone 6D is complete when:
-- deterministic GitHub write-back accurately processes `go.mod` and `Cargo.toml` targets
-- existing API routes safely gate these updates the same way they do for npm, Maven, and Python
+Milestone 6E is complete when:
+- deterministic GitHub write-back accurately processes `Gemfile`, `pyproject.toml`, and `Dockerfile` targets
+- existing API routes safely gate these updates the same way they do for other ecosystems
 - lint, typecheck, test, and build pass
 
 ---
 
-## 18. Non-goals for Codex during Milestone 6D
+## 18. Non-goals for Codex during Milestone 6E
 
 Codex should not:
 - add auth

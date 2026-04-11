@@ -157,11 +157,14 @@ function evaluateDependencyExecutionSupport(input: {
   const isMaven = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("pom.xml") ?? false);
   const isGo = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("go.mod") ?? false);
   const isRust = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("Cargo.toml") ?? false);
+  const isRuby = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("Gemfile") ?? false);
+  const isPyProject = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("pyproject.toml") ?? false);
+  const isDocker = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("Dockerfile") ?? false);
 
-  if (!isNpm && !isPython && !isMaven && !isGo && !isRust) {
+  if (!isNpm && !isPython && !isMaven && !isGo && !isRust && !isRuby && !isPyProject && !isDocker) {
     return {
       reason:
-        "Deterministic dependency write-back currently supports only repo-root npm (package.json/package-lock.json), Python (requirements.txt), Maven (pom.xml), Go (go.mod), or Rust (Cargo.toml) targets.",
+        "Deterministic dependency write-back currently supports only repo-root npm, Python (requirements.txt / pyproject.toml), Maven (pom.xml), Go (go.mod), Rust (Cargo.toml), Ruby (Gemfile), or Infra (Dockerfile) targets.",
       supported: false
     };
   }
@@ -176,8 +179,8 @@ function evaluateDependencyExecutionSupport(input: {
     };
   }
 
-  if ((isPython || isMaven || isGo || isRust) && (plannedFiles.length !== 1 || plannedFiles[0] !== input.candidate.affectedPaths[0])) {
-    const targetName = isPython ? "requirements.txt" : isMaven ? "pom.xml" : isGo ? "go.mod" : "Cargo.toml";
+  if ((isPython || isMaven || isGo || isRust || isRuby || isPyProject || isDocker) && (plannedFiles.length !== 1 || plannedFiles[0] !== input.candidate.affectedPaths[0])) {
+    const targetName = isPython ? "requirements.txt" : isMaven ? "pom.xml" : isGo ? "go.mod" : isRust ? "Cargo.toml" : isRuby ? "Gemfile" : isPyProject ? "pyproject.toml" : "Dockerfile";
     return {
       reason: `The linked patch plan must target exactly the identified ${targetName} for deterministic dependency write-back.`,
       supported: false
@@ -834,6 +837,15 @@ export function explainPRWriteBackEligibility(input: {
     const cargoTomlContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("Cargo.toml")
       ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
       : undefined;
+    const gemfileContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("Gemfile")
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
+    const pyprojectContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("pyproject.toml")
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
+    const dockerfileContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("Dockerfile")
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
 
     if (input.candidate.affectedPaths.includes("package.json")) {
       if (!packageJsonContent || !packageLockContent) {
@@ -950,6 +962,60 @@ export function explainPRWriteBackEligibility(input: {
           `Matched deterministic requirement pattern: ${match.line.trim()}.`
         ],
         summary: "Eligible for approved deterministic Rust dependency write-back."
+      });
+    }
+
+    if (gemfileContent) {
+      const match = detectRubyRequirementMatch(gemfileContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic explicit-version dependency for ${support.packageName} in Gemfile.`
+        });
+      }
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct Ruby dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to the repo Gemfile file."
+        ],
+        summary: "Eligible for approved deterministic Ruby dependency write-back."
+      });
+    }
+
+    if (pyprojectContent) {
+      const match = detectPyProjectRequirementMatch(pyprojectContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic explicit-version dependency for ${support.packageName} in pyproject.toml.`
+        });
+      }
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct Python dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to the repo pyproject.toml file."
+        ],
+        summary: "Eligible for approved deterministic Python dependency write-back."
+      });
+    }
+
+    if (dockerfileContent) {
+      const match = detectDockerImageMatch(dockerfileContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic explicit base image tag for ${support.packageName} in Dockerfile.`
+        });
+      }
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct Docker base image upgrade for ${support.packageName}.`,
+          "The change scope is limited to the repo Dockerfile."
+        ],
+        summary: "Eligible for approved deterministic Infra dependency write-back."
       });
     }
 
@@ -1275,6 +1341,27 @@ export async function synthesizePRCandidatePatch(input: {
     });
   }
 
+  if (packagePath?.endsWith("Gemfile")) {
+    return synthesizeRubyPatch({
+      ...input,
+      support
+    });
+  }
+
+  if (packagePath?.endsWith("pyproject.toml")) {
+    return synthesizePyProjectPatch({
+      ...input,
+      support
+    });
+  }
+
+  if (packagePath?.endsWith("Dockerfile")) {
+    return synthesizeDockerPatch({
+      ...input,
+      support
+    });
+  }
+
   return synthesizeDependencyPatch({
     ...input,
     support
@@ -1529,6 +1616,180 @@ async function synthesizeRustPatch(input: {
 
   if (updatedContent === originalContent) {
     throw new Error("Repo Guardian could not synthesize a concrete Rust Cargo.toml edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+function detectRubyRequirementMatch(content: string, packageName: string) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`^gem\\s+['"]${escapedPackageName}['"]\\s*,\\s*['"]([^'"]+)['"]`, "i");
+    if (regex.test(trimmed)) {
+      return { line };
+    }
+  }
+  return null;
+}
+
+async function synthesizeRubyPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const lines = originalContent.split(/\r?\n/);
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const escapedPackageName = input.support.packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(^gem\\s+['"]${escapedPackageName}['"]\\s*,\\s*['"])([^'"]+)(['"])`, "i");
+    const match = regex.exec(trimmed);
+    if (match && match[1] && match[2] && match[3]) {
+      const versionStr = match[1].slice(-1) + match[2] + match[3].slice(0, 1);
+      const versionIdx = line.indexOf(versionStr);
+      if (versionIdx !== -1) {
+        return line.slice(0, versionIdx) + match[1].slice(-1) + input.support.remediationVersion + match[3].slice(0, 1) + line.slice(versionIdx + versionStr.length);
+      }
+    }
+    return line;
+  });
+
+  const updatedContent = updatedLines.join(detectNewline(originalContent));
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Ruby Gemfile edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+function detectPyProjectRequirementMatch(content: string, packageName: string) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regexString = new RegExp(`^"?${escapedPackageName}"?\\s*([=~<>!]+)\\s*"?([^"\\s]+)"?`, "i");
+    if (regexString.test(trimmed)) {
+      return { line };
+    }
+  }
+  return null;
+}
+
+async function synthesizePyProjectPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const lines = originalContent.split(/\r?\n/);
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const escapedPackageName = input.support.packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(^"?${escapedPackageName}"?\\s*[=~<>!]+\\s*"?)([^"\\s]+)("?)`, "i");
+    const match = regex.exec(trimmed);
+    if (match && match[1] && match[2]) {
+      const versionStart = line.indexOf(match[2], line.indexOf(escapedPackageName));
+      if (versionStart !== -1) {
+        return line.slice(0, versionStart) + input.support.remediationVersion + line.slice(versionStart + match[2].length);
+      }
+    }
+    return line;
+  });
+
+  const updatedContent = updatedLines.join(detectNewline(originalContent));
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Python pyproject.toml edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+function detectDockerImageMatch(content: string, packageName: string) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`^FROM\\s+(?:--platform=[^\\s]+\\s+)?${escapedPackageName}:([^\\s]+)`, "i");
+    if (regex.test(trimmed)) {
+      return { line };
+    }
+  }
+  return null;
+}
+
+async function synthesizeDockerPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const lines = originalContent.split(/\r?\n/);
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const escapedPackageName = input.support.packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(^FROM\\s+(?:--platform=[^\\s]+\\s+)?${escapedPackageName}:)([^\\s@]+)(?:@sha256:[a-f0-9]+)?(.*)`, "i");
+    const match = regex.exec(trimmed);
+    if (match && match[1] && match[2]) {
+      const versionStart = line.indexOf(match[2], line.indexOf(input.support.packageName));
+      if (versionStart !== -1) {
+        // Drop sha256 reference upon upgrade since it will change, user can pin it later if they want.
+        const tail = match[3] ?? "";
+        return line.slice(0, versionStart) + input.support.remediationVersion + tail;
+      }
+    }
+    return line;
+  });
+
+  const updatedContent = updatedLines.join(detectNewline(originalContent));
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Infra Dockerfile edit.");
   }
 
   return {

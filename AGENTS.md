@@ -146,15 +146,15 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6D
+### Active milestone: Milestone 6E
 Allowed:
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- expand deterministic patch PR generation to cover Go (`go.mod`) and Rust (`Cargo.toml`) cases
-- avoid solving complex secondary lockfiles (`go.sum`, `Cargo.lock`) locally for these targets
+- expand deterministic patch PR generation to cover Ruby (`Gemfile`), modern Python (`pyproject.toml`), and Infra (`Dockerfile`)
+- avoid solving lockfiles locally for these targets
 - keep the current approval-gated GitHub write behavior working as-is
 
 Not allowed in this milestone unless explicitly requested:
-- broaden GitHub write-back beyond the existing bounded slices (now including Go/Rust)
+- broaden GitHub write-back beyond the existing bounded slices (now including the new 6E targets)
 - add autonomous or background execution
 - add auth, billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason

@@ -869,4 +869,166 @@ describe("explainPRWriteBackEligibility", () => {
       "The PR candidate is a direct Rust dependency upgrade for serde."
     );
   });
+
+  it("marks a deterministic Ruby Gemfile candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:rails:1",
+      packageName: "rails",
+      paths: ["Gemfile"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["rails"],
+      affectedPaths: ["Gemfile"],
+      id: "pr:dependency-upgrade:rails",
+      relatedFindingIds: ["dependency:rails:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["rails"],
+      affectedPaths: ["Gemfile"],
+      id: "patch-plan:pr:dependency-upgrade:rails",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Gemfile",
+            reason: "Update Gemfile."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Gemfile": "source 'https://rubygems.org'\n\ngem 'rails', '6.0.3'\ngem 'puma', '~> 4.1'\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Ruby dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Ruby dependency upgrade for rails."
+    );
+  });
+
+  it("marks a deterministic Python pyproject.toml candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:requests:1",
+      packageName: "requests",
+      paths: ["pyproject.toml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["requests"],
+      affectedPaths: ["pyproject.toml"],
+      id: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["requests"],
+      affectedPaths: ["pyproject.toml"],
+      id: "patch-plan:pr:dependency-upgrade:requests",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "pyproject.toml",
+            reason: "Update pyproject.toml."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "pyproject.toml": "[tool.poetry.dependencies]\npython = \"^3.8\"\nrequests = \"^2.25.1\"\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Python dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Python dependency upgrade for requests."
+    );
+  });
+
+  it("marks a deterministic Infra Dockerfile candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:node:1",
+      packageName: "node",
+      paths: ["Dockerfile"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["node"],
+      affectedPaths: ["Dockerfile"],
+      id: "pr:dependency-upgrade:node",
+      relatedFindingIds: ["dependency:node:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["node"],
+      affectedPaths: ["Dockerfile"],
+      id: "patch-plan:pr:dependency-upgrade:node",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Dockerfile",
+            reason: "Update Dockerfile."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Dockerfile": "FROM node:14-alpine\nWORKDIR /app\nCOPY . .\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Infra dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Docker base image upgrade for node."
+    );
+  });
 });
