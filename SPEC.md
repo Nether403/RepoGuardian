@@ -435,18 +435,25 @@ Do not modify any sibling repo.
 - do not attempt complex lockfile resolution for these ecosystems locally
 - keep approval-gated PR execution constraints
 
+### Milestone 6F
+- expand bounded write-back slices to include deterministic patch generation for Gradle (`build.gradle`, `build.gradle.kts`) and Yarn (`package.json` manifest only, `yarn.lock` left for CI)
+- block Gradle DSL variable interpolations; only patch explicit hardcoded version strings
+- keep approval-gated PR execution constraints
+
 ---
 
-## 17. Acceptance criteria for Milestone 6E
+## 17. Acceptance criteria for Milestone 6F
 
-Milestone 6E is complete when:
-- deterministic GitHub write-back accurately processes `Gemfile`, `pyproject.toml`, and `Dockerfile` targets
+Milestone 6F is complete when:
+- deterministic GitHub write-back accurately processes `build.gradle`, `build.gradle.kts`, and Yarn `package.json` targets
+- Gradle DSL variable interpolations (e.g. `version: $myVersion`) are explicitly blocked with a clear reason
+- Yarn write-back updates `package.json` only; `yarn.lock` regeneration is delegated to the user's CI pipeline
 - existing API routes safely gate these updates the same way they do for other ecosystems
 - lint, typecheck, test, and build pass
 
 ---
 
-## 18. Non-goals for Codex during Milestone 6E
+## 18. Non-goals for Codex during Milestone 6F
 
 Codex should not:
 - add auth
@@ -456,3 +463,5 @@ Codex should not:
 - broaden GitHub write-back beyond the current bounded supported slices
 - redesign the whole product beyond contract alignment and analysis coverage needs
 - invent weak dependency findings when exact version evidence is unavailable
+- attempt to parse or rewrite `yarn.lock` files (v1 classic or Berry v2+)
+- attempt to resolve Gradle DSL variable interpolations locally

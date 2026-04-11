@@ -146,15 +146,15 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6E
+### Active milestone: Milestone 6F
 Allowed:
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- expand deterministic patch PR generation to cover Ruby (`Gemfile`), modern Python (`pyproject.toml`), and Infra (`Dockerfile`)
-- avoid solving lockfiles locally for these targets
+- expand deterministic patch PR generation to cover Gradle (`build.gradle`, `build.gradle.kts`) and Yarn (`package.json` manifest, skip `yarn.lock`)
+- block Gradle DSL variable interpolations and only patch explicit hardcoded version strings
 - keep the current approval-gated GitHub write behavior working as-is
 
 Not allowed in this milestone unless explicitly requested:
-- broaden GitHub write-back beyond the existing bounded slices (now including the new 6E targets)
+- broaden GitHub write-back beyond the existing bounded slices (now including the new 6F targets)
 - add autonomous or background execution
 - add auth, billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason

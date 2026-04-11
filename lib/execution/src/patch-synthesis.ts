@@ -160,11 +160,13 @@ function evaluateDependencyExecutionSupport(input: {
   const isRuby = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("Gemfile") ?? false);
   const isPyProject = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("pyproject.toml") ?? false);
   const isDocker = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("Dockerfile") ?? false);
+  const isGradle = input.candidate.affectedPaths.length === 1 && (input.candidate.affectedPaths[0]?.endsWith("build.gradle") || input.candidate.affectedPaths[0]?.endsWith("build.gradle.kts") || false);
+  const isYarn = input.candidate.affectedPaths.length === 2 && input.candidate.affectedPaths.includes("package.json") && input.candidate.affectedPaths.includes("yarn.lock");
 
-  if (!isNpm && !isPython && !isMaven && !isGo && !isRust && !isRuby && !isPyProject && !isDocker) {
+  if (!isNpm && !isPython && !isMaven && !isGo && !isRust && !isRuby && !isPyProject && !isDocker && !isGradle && !isYarn) {
     return {
       reason:
-        "Deterministic dependency write-back currently supports only repo-root npm, Python (requirements.txt / pyproject.toml), Maven (pom.xml), Go (go.mod), Rust (Cargo.toml), Ruby (Gemfile), or Infra (Dockerfile) targets.",
+        "Deterministic dependency write-back currently supports only repo-root npm, Yarn (package.json/yarn.lock), Python (requirements.txt / pyproject.toml), Maven (pom.xml), Gradle (build.gradle/kts), Go (go.mod), Rust (Cargo.toml), Ruby (Gemfile), or Infra (Dockerfile) targets.",
       supported: false
     };
   }
@@ -179,8 +181,16 @@ function evaluateDependencyExecutionSupport(input: {
     };
   }
 
-  if ((isPython || isMaven || isGo || isRust || isRuby || isPyProject || isDocker) && (plannedFiles.length !== 1 || plannedFiles[0] !== input.candidate.affectedPaths[0])) {
-    const targetName = isPython ? "requirements.txt" : isMaven ? "pom.xml" : isGo ? "go.mod" : isRust ? "Cargo.toml" : isRuby ? "Gemfile" : isPyProject ? "pyproject.toml" : "Dockerfile";
+  if (isYarn && (!plannedFiles.includes("package.json") || plannedFiles.length > 2)) {
+    return {
+      reason:
+        "The linked patch plan must target package.json for deterministic Yarn dependency write-back.",
+      supported: false
+    };
+  }
+
+  if ((isPython || isMaven || isGo || isRust || isRuby || isPyProject || isDocker || isGradle) && (plannedFiles.length !== 1 || plannedFiles[0] !== input.candidate.affectedPaths[0])) {
+    const targetName = isPython ? "requirements.txt" : isMaven ? "pom.xml" : isGo ? "go.mod" : isRust ? "Cargo.toml" : isRuby ? "Gemfile" : isPyProject ? "pyproject.toml" : isGradle ? "build.gradle target" : "Dockerfile";
     return {
       reason: `The linked patch plan must target exactly the identified ${targetName} for deterministic dependency write-back.`,
       supported: false
@@ -846,8 +856,11 @@ export function explainPRWriteBackEligibility(input: {
     const dockerfileContent = support.packageName && input.candidate.affectedPaths[0]?.endsWith("Dockerfile")
       ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
       : undefined;
+    const gradleContent = support.packageName && (input.candidate.affectedPaths[0]?.endsWith("build.gradle") || input.candidate.affectedPaths[0]?.endsWith("build.gradle.kts") || false)
+      ? input.fileContentsByPath?.[input.candidate.affectedPaths[0]]
+      : undefined;
 
-    if (input.candidate.affectedPaths.includes("package.json")) {
+    if (input.candidate.affectedPaths.includes("package-lock.json") && input.candidate.affectedPaths.includes("package.json")) {
       if (!packageJsonContent || !packageLockContent) {
         return createBlockedWriteBackEligibility({
           patchPlan: input.patchPlan,
@@ -1017,6 +1030,75 @@ export function explainPRWriteBackEligibility(input: {
         ],
         summary: "Eligible for approved deterministic Infra dependency write-back."
       });
+    }
+
+    if (gradleContent) {
+      const match = detectGradleRequirementMatch(gradleContent, support.packageName);
+      if (!match) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian could not find a deterministic explicit-version dependency for ${support.packageName} in Gradle target.`
+        });
+      }
+      
+      if (match.isVariable) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: `Repo Guardian blocked updating ${support.packageName} because its version is centrally managed by a variable (${match.version}).`
+        });
+      }
+
+      return createExecutableWriteBackEligibility({
+        details: [
+          `The PR candidate is a direct Gradle dependency upgrade for ${support.packageName}.`,
+          "The change scope is limited to the isolated repo Gradle build target."
+        ],
+        summary: "Eligible for approved deterministic Gradle dependency write-back."
+      });
+    }
+
+    if (input.candidate.affectedPaths.includes("yarn.lock") && input.candidate.affectedPaths.includes("package.json")) {
+      if (!packageJsonContent) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason: "Analysis did not fetch the package.json content needed to verify deterministic Yarn dependency write-back."
+        });
+      }
+
+      try {
+        const packageJsonPath = "package.json";
+        const packageJson = parseJsonDocument(packageJsonContent, packageJsonPath);
+        const packageJsonSection = findManifestSectionForPackage(packageJson, support.packageName);
+        const packageJsonDependencies = getDependencySectionRecord(packageJson, packageJsonSection, packageJsonPath);
+        const currentManifestSpecifier = packageJsonDependencies[support.packageName];
+
+        if (typeof currentManifestSpecifier !== "string") {
+          throw new Error(`Repo Guardian expected ${packageJsonPath} to declare ${support.packageName} as a string dependency specifier.`);
+        }
+
+        updateDependencySpec(currentManifestSpecifier, support.remediationVersion); // Test throw validity
+
+        return createExecutableWriteBackEligibility({
+          details: [
+            `The PR candidate is a direct Yarn dependency upgrade for ${support.packageName}.`,
+            "The change scope is limited to package.json; yarn.lock will be naturally regenerated by CI actions.",
+            `package.json uses a supported ${describeSpecifierStyle(currentManifestSpecifier)} specifier.`
+          ],
+          summary: "Eligible for approved deterministic Yarn dependency write-back."
+        });
+      } catch (error) {
+        return createBlockedWriteBackEligibility({
+          patchPlan: input.patchPlan,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "Repo Guardian could not verify deterministic Yarn dependency write-back eligibility.",
+          extraDetails: [
+            `Affected package: ${support.packageName}.`,
+            "The dependency write-back slice remains limited to package.json string updating in Yarn."
+          ]
+        });
+      }
     }
 
     return createBlockedWriteBackEligibility({
@@ -1357,6 +1439,20 @@ export async function synthesizePRCandidatePatch(input: {
 
   if (packagePath?.endsWith("Dockerfile")) {
     return synthesizeDockerPatch({
+      ...input,
+      support
+    });
+  }
+
+  if (packagePath?.endsWith("build.gradle") || packagePath?.endsWith("build.gradle.kts")) {
+    return synthesizeGradlePatch({
+      ...input,
+      support
+    });
+  }
+
+  if (input.candidate.affectedPaths.includes("yarn.lock") && input.candidate.affectedPaths.includes("package.json")) {
+    return synthesizeYarnPatch({
       ...input,
       support
     });
@@ -1796,6 +1892,121 @@ async function synthesizeDockerPatch(input: {
     branchName: createBranchName(input.candidate),
     commitMessage: `chore(deps): ${input.candidate.title}`,
     fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+function detectGradleRequirementMatch(content: string, packageName: string) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Gradle deps: implementation 'com.google.guava:guava:31.0.1-jre' or implementation("com.google.guava:guava:31.0.1-jre")
+    const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`['"]${escapedPackageName}:([^'"]+)['"]`, "i");
+    const match = regex.exec(trimmed);
+    if (match && match[1]) {
+      const version = match[1];
+      if (version.startsWith("$")) {
+        return { isVariable: true, line, version };
+      }
+      return { isVariable: false, line, version };
+    }
+  }
+  return null;
+}
+
+async function synthesizeGradlePatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const path = input.candidate.affectedPaths[0]!;
+  const repository = input.analysis.repository;
+  const originalContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const lines = originalContent.split(/\r?\n/);
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const escapedPackageName = input.support.packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(['"]${escapedPackageName}:)([^'"]+)(['"])`, "i");
+    const match = regex.exec(trimmed);
+    if (match && match[1] && match[2] && match[3]) {
+      if (!match[2].startsWith("$")) {
+        const versionStr = match[1].slice(-1) + match[2] + match[3].slice(0, 1);
+        const versionIdx = line.indexOf(versionStr);
+        if (versionIdx !== -1) {
+          return line.slice(0, versionIdx) + match[1].slice(-1) + input.support.remediationVersion + match[3].slice(0, 1) + line.slice(versionIdx + versionStr.length);
+        }
+      }
+    }
+    return line;
+  });
+
+  const updatedContent = updatedLines.join(detectNewline(originalContent));
+  if (updatedContent === originalContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete Gradle build script edit.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [{ content: updatedContent, path }],
+    pullRequestBody: buildPullRequestBody(input)
+  };
+}
+
+async function synthesizeYarnPatch(input: {
+  analysis: ExecutionPlanningContext;
+  candidate: PRCandidate;
+  patchPlan: PRPatchPlan;
+  readClient: ExecutionReadClient;
+  support: Extract<PRExecutionSupport, { executionKind: "dependency"; supported: true }>;
+}): Promise<SynthesizedPRPatch> {
+  const packageJsonPath = "package.json";
+  const repository = input.analysis.repository;
+  const packageJsonContent = await input.readClient.fetchRepositoryFileText({
+    owner: repository.owner,
+    path: packageJsonPath,
+    ref: repository.defaultBranch,
+    repo: repository.repo
+  });
+
+  const parsed = parseJsonDocument(packageJsonContent, packageJsonPath);
+  const newline = detectNewline(packageJsonContent);
+  const indentation = detectJsonIndentation(packageJsonContent);
+  const section = findManifestSectionForPackage(parsed, input.support.packageName);
+  const dependencies = getDependencySectionRecord(parsed, section, packageJsonPath);
+  
+  const currentSpecifier = dependencies[input.support.packageName];
+  if (typeof currentSpecifier !== "string") {
+    throw new Error(`Repo Guardian expected ${packageJsonPath} to declare ${input.support.packageName} as a string dependency specifier.`);
+  }
+
+  const nextSpecifier = updateDependencySpec(currentSpecifier, input.support.remediationVersion);
+  dependencies[input.support.packageName] = nextSpecifier;
+
+  const updatedContent = stringifyJsonDocument(parsed, indentation, newline);
+  
+  if (updatedContent === packageJsonContent) {
+    throw new Error("Repo Guardian could not synthesize a concrete dependency update for the selected Yarn PR candidate.");
+  }
+
+  return {
+    branchName: createBranchName(input.candidate),
+    commitMessage: `chore(deps): ${input.candidate.title}`,
+    fileChanges: [
+      {
+        content: updatedContent,
+        path: packageJsonPath
+      }
+    ],
     pullRequestBody: buildPullRequestBody(input)
   };
 }
