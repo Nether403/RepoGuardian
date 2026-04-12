@@ -52,6 +52,8 @@ pnpm run build
 
 The active milestone is `6A`: V1 contract alignment first. This phase keeps `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical route surface, aligns the docs and OpenAPI contract with the implemented alpha, and expands dependency-analysis coverage without broadening GitHub write-back.
 
-The follow-on milestone is `6B`: bounded write-back expansion after the contract and analysis surface are aligned. See `docs/milestone-6a.md` and `docs/roadmap.md`.
+The follow-on milestone is `6B`: parser hardening, with emphasis on Gradle DSL fidelity, Maven property/version resolution, and nontrivial Bundler declarations before any broader cross-ecosystem write-back.
+
+`6C` is the first milestone that should expand bounded write-back beyond the current guarded slices.
 
 
