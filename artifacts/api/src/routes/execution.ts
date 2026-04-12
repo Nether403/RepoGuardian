@@ -14,6 +14,7 @@ import {
   type AnalysisRunRepository,
   type ClaimedExecutionPlan,
   type ExecutionPlanRepository,
+  type TrackedPullRequestRepository,
   isPersistenceError
 } from "@repo-guardian/persistence";
 import {
@@ -26,7 +27,8 @@ import {
 import { env } from "../lib/env.js";
 import {
   getAnalysisRunRepository,
-  getExecutionPlanRepository
+  getExecutionPlanRepository,
+  getTrackedPullRequestRepository
 } from "../lib/persistence.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -46,6 +48,11 @@ type PlanRepositoryLike = Pick<
   | "recordActionCompleted"
   | "recordActionStarted"
   | "savePlan"
+>;
+
+type TrackedPullRequestRepositoryLike = Pick<
+  TrackedPullRequestRepository,
+  "upsertOpenedPullRequest"
 >;
 
 function hashActions(actions: unknown[]): string {
@@ -138,6 +145,38 @@ function getSingleParam(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
+async function persistOpenedPullRequests(input: {
+  executionId: string;
+  planId: string;
+  planRepository: PlanRepositoryLike;
+  trackedPullRequestRepository: TrackedPullRequestRepositoryLike;
+}): Promise<void> {
+  const detail = await input.planRepository.getPlanDetail(input.planId);
+
+  for (const action of detail.actions) {
+    if (
+      action.actionType !== "create_pr" ||
+      !action.succeeded ||
+      !action.branchName ||
+      !action.pullRequestNumber ||
+      !action.pullRequestUrl
+    ) {
+      continue;
+    }
+
+    await input.trackedPullRequestRepository.upsertOpenedPullRequest({
+      branchName: action.branchName,
+      executionId: input.executionId,
+      owner: detail.repository.owner,
+      planId: input.planId,
+      pullRequestNumber: action.pullRequestNumber,
+      pullRequestUrl: action.pullRequestUrl,
+      repo: detail.repository.repo,
+      title: action.title
+    });
+  }
+}
+
 function createLifecycleCallbacks(input: {
   actorUserId: string | null;
   claimedPlan: ClaimedExecutionPlan;
@@ -170,11 +209,14 @@ export function createExecutionRouter(
   stores: {
     planRepository?: PlanRepositoryLike;
     runRepository?: RunRepositoryLike;
+    trackedPullRequestRepository?: TrackedPullRequestRepositoryLike;
   } = {}
 ): ExpressRouter {
   const executionRouter: ExpressRouter = Router();
   const runRepository = stores.runRepository ?? getAnalysisRunRepository();
   const planRepository = stores.planRepository ?? getExecutionPlanRepository();
+  const trackedPullRequestRepository =
+    stores.trackedPullRequestRepository ?? getTrackedPullRequestRepository();
 
   executionRouter.post("/execution/plan", requireAuth, async (request, response, next) => {
     const parsedRequest = ExecutionPlanRequestSchema.safeParse(request.body);
@@ -336,6 +378,12 @@ export function createExecutionRouter(
           planId: claimedPlan.planId,
           repositoryFullName: claimedPlan.repositoryFullName,
           result
+        });
+        await persistOpenedPullRequests({
+          executionId: claimedPlan.executionId,
+          planId: claimedPlan.planId,
+          planRepository,
+          trackedPullRequestRepository
         });
         response.json(result);
       } catch (error) {

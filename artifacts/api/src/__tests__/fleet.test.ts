@@ -3,6 +3,161 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createFleetRouter } from "../routes/fleet.js";
 
+function createAnalysisJob(overrides: Record<string, unknown> = {}) {
+  return {
+    attemptCount: 0,
+    completedAt: null,
+    errorMessage: null,
+    failedAt: null,
+    jobId: "job_one",
+    jobKind: "analyze_repository",
+    label: "Async",
+    maxAttempts: 1,
+    planId: null,
+    queuedAt: "2026-04-12T10:00:00.000Z",
+    repoInput: "openai/openai-node",
+    repositoryFullName: "openai/openai-node",
+    requestedByUserId: "usr_authenticated",
+    runId: null,
+    scheduledSweepId: null,
+    startedAt: null,
+    status: "queued",
+    trackedRepositoryId: null,
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  };
+}
+
+function createSweepSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    cadence: "weekly",
+    createdAt: "2026-04-12T10:00:00.000Z",
+    isActive: true,
+    label: "Weekly sweep",
+    lastTriggeredAt: null,
+    nextRunAt: "2026-04-19T10:00:00.000Z",
+    scheduleId: "sweep_one",
+    selectionStrategy: "all_executable_prs",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  };
+}
+
+function createAnalysisJobProcessor(overrides: Record<string, unknown> = {}) {
+  const job = createAnalysisJob();
+  const schedule = createSweepSchedule();
+
+  return {
+    cancelJob: vi.fn().mockResolvedValue({
+      ...job,
+      completedAt: "2026-04-12T10:02:00.000Z",
+      status: "cancelled"
+    }),
+    createSweepSchedule: vi.fn().mockResolvedValue(schedule),
+    enqueueAdHoc: vi.fn().mockResolvedValue(job),
+    enqueueExecutionPlanJob: vi.fn().mockResolvedValue({
+      ...job,
+      jobId: "job_plan",
+      jobKind: "generate_execution_plan"
+    }),
+    enqueueTrackedRepositoryAnalysis: vi.fn().mockResolvedValue({
+      ...job,
+      trackedRepositoryId: "tracked_one"
+    }),
+    getFleetStatus: vi.fn().mockResolvedValue({
+      generatedAt: "2026-04-12T10:05:00.000Z",
+      recentJobs: [job],
+      summary: {
+        blockedPatchPlans: 1,
+        executablePatchPlans: 2,
+        failedJobs: 0,
+        mergedPullRequests: 0,
+        openPullRequests: 1,
+        stalePatchPlans: 0,
+        staleRepositories: 0,
+        trackedRepositories: 1
+      },
+      trackedPullRequests: [
+        {
+          branchName: "repo-guardian/test-branch",
+          closedAt: null,
+          createdAt: "2026-04-12T10:04:00.000Z",
+          executionId: "exec_one",
+          lifecycleStatus: "open",
+          mergedAt: null,
+          owner: "openai",
+          planId: "plan_one",
+          pullRequestNumber: 19,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+          repo: "openai-node",
+          repositoryFullName: "openai/openai-node",
+          title: "Harden workflow",
+          trackedPullRequestId: "tpr_one",
+          updatedAt: "2026-04-12T10:04:00.000Z"
+        }
+      ],
+      trackedRepositories: [
+        {
+          latestAnalysisJob: job,
+          latestPlanId: "plan_one",
+          latestPlanStatus: "planned",
+          latestRun: {
+            blockedPatchPlans: 1,
+            createdAt: "2026-04-12T10:03:00.000Z",
+            defaultBranch: "main",
+            executablePatchPlans: 2,
+            fetchedAt: "2026-04-12T10:03:00.000Z",
+            highSeverityFindings: 0,
+            id: "run_one",
+            issueCandidates: 0,
+            label: "Weekly review",
+            prCandidates: 2,
+            repositoryFullName: "openai/openai-node",
+            totalFindings: 1
+          },
+          patchPlanCounts: {
+            blocked: 1,
+            executable: 2,
+            stale: 0
+          },
+          stale: false,
+          trackedRepository: {
+            canonicalUrl: "https://github.com/openai/openai-node",
+            createdAt: "2026-04-12T10:00:00.000Z",
+            fullName: "openai/openai-node",
+            id: "tracked_one",
+            isActive: true,
+            label: "Weekly review",
+            lastQueuedAt: "2026-04-12T10:00:00.000Z",
+            owner: "openai",
+            repo: "openai-node",
+            updatedAt: "2026-04-12T10:00:00.000Z"
+          }
+        }
+      ]
+    }),
+    getJob: vi.fn().mockResolvedValue(job),
+    listJobs: vi.fn().mockResolvedValue([job]),
+    listSweepSchedules: vi.fn().mockResolvedValue([schedule]),
+    retryJob: vi.fn().mockResolvedValue({
+      ...job,
+      status: "queued"
+    }),
+    triggerSweepSchedule: vi.fn().mockResolvedValue({
+      job: {
+        ...job,
+        jobId: "job_sweep",
+        jobKind: "run_scheduled_sweep",
+        repoInput: "[scheduled-sweep]",
+        repositoryFullName: "[scheduled-sweep]",
+        scheduledSweepId: "sweep_one"
+      },
+      schedule
+    }),
+    ...overrides
+  };
+}
+
 function createTestApp(input: Parameters<typeof createFleetRouter>[0]) {
   const app = express();
   app.use(express.json());
@@ -30,11 +185,7 @@ describe("fleet routes", () => {
       updatedAt: "2026-04-12T10:00:00.000Z"
     };
     const app = createTestApp({
-      analysisJobProcessor: {
-        enqueueAdHoc: vi.fn(),
-        enqueueTrackedRepositoryAnalysis: vi.fn(),
-        getJob: vi.fn()
-      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
       trackedRepositoryStore: {
         createRepository: vi.fn().mockResolvedValue(trackedRepository),
         listRepositories: vi.fn().mockResolvedValue([trackedRepository])
@@ -63,33 +214,15 @@ describe("fleet routes", () => {
   });
 
   it("enqueues and reads analysis jobs", async () => {
-    const job = {
-      attemptCount: 0,
-      completedAt: null,
-      errorMessage: null,
-      failedAt: null,
-      jobId: "job_one",
-      jobKind: "analyze_repository",
-      label: "Async",
-      maxAttempts: 1,
-      queuedAt: "2026-04-12T10:00:00.000Z",
-      repoInput: "openai/openai-node",
-      repositoryFullName: "openai/openai-node",
-      requestedByUserId: "usr_authenticated",
-      runId: null,
-      startedAt: null,
-      status: "queued",
-      trackedRepositoryId: null,
-      updatedAt: "2026-04-12T10:00:00.000Z"
-    };
-    const analysisJobProcessor = {
+    const job = createAnalysisJob();
+    const analysisJobProcessor = createAnalysisJobProcessor({
       enqueueAdHoc: vi.fn().mockResolvedValue(job),
       enqueueTrackedRepositoryAnalysis: vi.fn().mockResolvedValue({
         ...job,
         trackedRepositoryId: "tracked_one"
       }),
       getJob: vi.fn().mockResolvedValue(job)
-    };
+    });
     const app = createTestApp({
       analysisJobProcessor,
       trackedRepositoryStore: {
@@ -130,5 +263,146 @@ describe("fleet routes", () => {
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
     expect(getResponse.status).toBe(200);
     expect(getResponse.body).toEqual({ job });
+  });
+
+  it("lists, retries, and cancels jobs, and enqueues async plan generation", async () => {
+    const listJob = createAnalysisJob({
+      errorMessage: "rate limited",
+      failedAt: "2026-04-12T10:01:00.000Z",
+      jobId: "job_failed",
+      status: "failed"
+    });
+    const analysisJobProcessor = createAnalysisJobProcessor({
+      cancelJob: vi.fn().mockResolvedValue({
+        ...listJob,
+        completedAt: "2026-04-12T10:02:00.000Z",
+        errorMessage: null,
+        failedAt: null,
+        status: "cancelled"
+      }),
+      enqueueExecutionPlanJob: vi.fn().mockResolvedValue(
+        createAnalysisJob({
+          jobId: "job_plan",
+          jobKind: "generate_execution_plan",
+          planId: null
+        })
+      ),
+      listJobs: vi.fn().mockResolvedValue([listJob]),
+      retryJob: vi.fn().mockResolvedValue({
+        ...listJob,
+        errorMessage: null,
+        failedAt: null,
+        status: "queued"
+      })
+    });
+    const app = createTestApp({
+      analysisJobProcessor,
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        listRepositories: vi.fn().mockResolvedValue([])
+      }
+    });
+
+    const listResponse = await request(app)
+      .get("/analyze/jobs?status=failed")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body).toEqual({ jobs: [listJob] });
+    expect(analysisJobProcessor.listJobs).toHaveBeenCalledWith("failed");
+
+    const retryResponse = await request(app)
+      .post("/analyze/jobs/job_failed/retry")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(retryResponse.status).toBe(200);
+    expect(analysisJobProcessor.retryJob).toHaveBeenCalledWith("job_failed");
+
+    const cancelResponse = await request(app)
+      .post("/analyze/jobs/job_failed/cancel")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(cancelResponse.status).toBe(200);
+    expect(analysisJobProcessor.cancelJob).toHaveBeenCalledWith("job_failed");
+
+    const planResponse = await request(app)
+      .post("/execution/plan/jobs")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: "run_one",
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"],
+        selectionStrategy: "provided_candidates"
+      });
+    expect(planResponse.status).toBe(202);
+    expect(analysisJobProcessor.enqueueExecutionPlanJob).toHaveBeenCalledWith({
+      analysisRunId: "run_one",
+      requestedByUserId: "usr_authenticated",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"],
+      selectionStrategy: "provided_candidates"
+    });
+  });
+
+  it("returns fleet status and manages sweep schedules", async () => {
+    const schedule = createSweepSchedule();
+    const sweepJob = createAnalysisJob({
+      jobId: "job_sweep",
+      jobKind: "run_scheduled_sweep",
+      repoInput: "[scheduled-sweep]",
+      repositoryFullName: "[scheduled-sweep]",
+      scheduledSweepId: schedule.scheduleId
+    });
+    const analysisJobProcessor = createAnalysisJobProcessor({
+      createSweepSchedule: vi.fn().mockResolvedValue(schedule),
+      listSweepSchedules: vi.fn().mockResolvedValue([schedule]),
+      triggerSweepSchedule: vi.fn().mockResolvedValue({
+        job: sweepJob,
+        schedule
+      })
+    });
+    const app = createTestApp({
+      analysisJobProcessor,
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        listRepositories: vi.fn().mockResolvedValue([])
+      }
+    });
+
+    const fleetStatusResponse = await request(app)
+      .get("/fleet/status")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(fleetStatusResponse.status).toBe(200);
+    expect(fleetStatusResponse.body.summary.trackedRepositories).toBe(1);
+
+    const listSchedulesResponse = await request(app)
+      .get("/sweep-schedules")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(listSchedulesResponse.status).toBe(200);
+    expect(listSchedulesResponse.body).toEqual({
+      schedules: [schedule]
+    });
+
+    const createScheduleResponse = await request(app)
+      .post("/sweep-schedules")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        cadence: "weekly",
+        label: "Weekly sweep",
+        selectionStrategy: "all_executable_prs"
+      });
+    expect(createScheduleResponse.status).toBe(201);
+    expect(createScheduleResponse.body).toEqual({
+      schedule
+    });
+
+    const triggerResponse = await request(app)
+      .post("/sweep-schedules/sweep_one/trigger")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    expect(triggerResponse.status).toBe(200);
+    expect(triggerResponse.body).toEqual({
+      job: sweepJob,
+      schedule
+    });
+    expect(analysisJobProcessor.triggerSweepSchedule).toHaveBeenCalledWith({
+      requestedByUserId: "usr_authenticated",
+      scheduleId: "sweep_one"
+    });
   });
 });

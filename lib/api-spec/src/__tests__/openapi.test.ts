@@ -23,18 +23,26 @@ describe("Repo Guardian OpenAPI contract", () => {
 
     expect(getOperationIds(spec)).toEqual([
       "analyzeRepository",
+      "cancelAnalysisJob",
       "compareAnalysisRuns",
       "createExecutionPlan",
+      "createSweepSchedule",
       "createTrackedRepository",
       "enqueueAnalysisJob",
+      "enqueueExecutionPlanJob",
       "executeExecutionPlan",
       "getAnalysisJob",
       "getAnalysisRun",
       "getExecutionPlan",
+      "getFleetStatus",
+      "listAnalysisJobs",
       "listAnalysisRuns",
       "listExecutionPlanEvents",
+      "listSweepSchedules",
       "listTrackedRepositories",
-      "saveAnalysisRun"
+      "retryAnalysisJob",
+      "saveAnalysisRun",
+      "triggerSweepSchedule"
     ]);
   });
 });

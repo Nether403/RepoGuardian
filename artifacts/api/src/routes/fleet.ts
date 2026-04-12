@@ -2,10 +2,16 @@ import { type Router as ExpressRouter, Router } from "express";
 import { normalizeRepoInput } from "@repo-guardian/github";
 import { isPersistenceError, type TrackedRepositoryRepository } from "@repo-guardian/persistence";
 import {
+  AnalysisJobStatusSchema,
+  CreateSweepScheduleRequestSchema,
   CreateTrackedRepositoryRequestSchema,
-  EnqueueAnalysisJobRequestSchema
+  EnqueueAnalysisJobRequestSchema,
+  EnqueueExecutionPlanJobRequestSchema
 } from "@repo-guardian/shared-types";
-import { getAnalysisJobProcessor } from "../lib/analysis-job-processor.js";
+import {
+  type AnalysisJobProcessor,
+  getAnalysisJobProcessor
+} from "../lib/analysis-job-processor.js";
 import { env } from "../lib/env.js";
 import { getTrackedRepositoryRepository } from "../lib/persistence.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -17,8 +23,18 @@ type TrackedRepositoryStore = Pick<
 >;
 
 type AnalysisJobProcessorLike = Pick<
-  ReturnType<typeof getAnalysisJobProcessor>,
-  "enqueueAdHoc" | "enqueueTrackedRepositoryAnalysis" | "getJob"
+  AnalysisJobProcessor,
+  | "cancelJob"
+  | "createSweepSchedule"
+  | "enqueueAdHoc"
+  | "enqueueExecutionPlanJob"
+  | "enqueueTrackedRepositoryAnalysis"
+  | "getFleetStatus"
+  | "getJob"
+  | "listJobs"
+  | "listSweepSchedules"
+  | "retryJob"
+  | "triggerSweepSchedule"
 >;
 
 function mapPersistenceError(error: unknown): number | null {
@@ -141,6 +157,200 @@ export function createFleetRouter(input: {
       if (status) {
         response.status(status).json({
           error: error instanceof Error ? error.message : "Analysis job request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/analyze/jobs", async (request, response, next) => {
+    const rawStatus =
+      typeof request.query.status === "string"
+        ? request.query.status
+        : Array.isArray(request.query.status) && typeof request.query.status[0] === "string"
+          ? request.query.status[0]
+          : undefined;
+    const parsedStatus = AnalysisJobStatusSchema.safeParse(
+      rawStatus
+    );
+
+    if (rawStatus && !parsedStatus.success) {
+      response.status(400).json({
+        error: parsedStatus.error.issues[0]?.message ?? "Invalid query string"
+      });
+      return;
+    }
+
+    try {
+      response.json({
+        jobs: await input.analysisJobProcessor.listJobs(parsedStatus.data)
+      });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Analysis job request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.post("/analyze/jobs/:jobId/cancel", async (request, response, next) => {
+    try {
+      response.json({
+        job: await input.analysisJobProcessor.cancelJob(getSingleParam(request.params.jobId))
+      });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Analysis job request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.post("/analyze/jobs/:jobId/retry", async (request, response, next) => {
+    try {
+      response.json({
+        job: await input.analysisJobProcessor.retryJob(getSingleParam(request.params.jobId))
+      });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Analysis job request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.post("/execution/plan/jobs", async (request, response, next) => {
+    const parsedRequest = EnqueueExecutionPlanJobRequestSchema.safeParse(request.body);
+
+    if (!parsedRequest.success) {
+      response.status(400).json({
+        error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
+      });
+      return;
+    }
+
+    try {
+      const job = await input.analysisJobProcessor.enqueueExecutionPlanJob({
+        analysisRunId: parsedRequest.data.analysisRunId,
+        requestedByUserId: "usr_authenticated",
+        selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
+        selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds,
+        selectionStrategy: parsedRequest.data.selectionStrategy
+      });
+
+      response.status(202).json({ job });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Execution plan job request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/fleet/status", async (_request, response, next) => {
+    try {
+      response.json(await input.analysisJobProcessor.getFleetStatus());
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Fleet status request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/sweep-schedules", async (_request, response, next) => {
+    try {
+      response.json({
+        schedules: await input.analysisJobProcessor.listSweepSchedules()
+      });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Sweep schedule request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.post("/sweep-schedules", async (request, response, next) => {
+    const parsedRequest = CreateSweepScheduleRequestSchema.safeParse(request.body);
+
+    if (!parsedRequest.success) {
+      response.status(400).json({
+        error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
+      });
+      return;
+    }
+
+    try {
+      response.status(201).json({
+        schedule: await input.analysisJobProcessor.createSweepSchedule(parsedRequest.data)
+      });
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Sweep schedule request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.post("/sweep-schedules/:scheduleId/trigger", async (request, response, next) => {
+    try {
+      response.json(
+        await input.analysisJobProcessor.triggerSweepSchedule({
+          requestedByUserId: "usr_authenticated",
+          scheduleId: getSingleParam(request.params.scheduleId)
+        })
+      );
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Sweep schedule request failed"
         });
         return;
       }

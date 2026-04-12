@@ -274,7 +274,8 @@ describeIf("Postgres persistence integration", () => {
       await expect(runMigrations(migrationClient)).resolves.toEqual([
         "0001_execution_backbone.sql",
         "0002_execution_plan_action_order_unique.sql",
-        "0003_analysis_queue_foundation.sql"
+        "0003_analysis_queue_foundation.sql",
+        "0004_scheduling_and_pr_lifecycle.sql"
       ]);
       await expect(runMigrations(migrationClient)).resolves.toEqual([]);
     } finally {
@@ -317,6 +318,7 @@ describeIf("Postgres persistence integration", () => {
     });
 
     const job = await analysisJobRepository.enqueueJob({
+      jobKind: "analyze_repository",
       label: trackedRepository.label,
       repoInput: trackedRepository.fullName,
       repositoryFullName: trackedRepository.fullName,

@@ -197,7 +197,8 @@ describeIf("database scripts", () => {
     expect(first).toEqual([
       "0001_execution_backbone.sql",
       "0002_execution_plan_action_order_unique.sql",
-      "0003_analysis_queue_foundation.sql"
+      "0003_analysis_queue_foundation.sql",
+      "0004_scheduling_and_pr_lifecycle.sql"
     ]);
 
     await resetPersistenceCaches();

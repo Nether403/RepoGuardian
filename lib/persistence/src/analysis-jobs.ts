@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
-import { AnalysisJobSchema, type AnalysisJob } from "@repo-guardian/shared-types";
+import {
+  AnalysisJobSchema,
+  type AnalysisJob,
+  type AnalysisJobKind
+} from "@repo-guardian/shared-types";
 import type { PostgresClient, PostgresSession } from "./client.js";
 import { PersistenceError } from "./errors.js";
 
@@ -11,13 +15,16 @@ type AnalysisJobRow = QueryResultRow & {
   failed_at: Date | string | null;
   job_id: string;
   job_kind: string;
+  job_payload: unknown;
   label: string | null;
   max_attempts: number;
+  plan_id: string | null;
   queued_at: Date | string;
   repo_input: string;
   repository_full_name: string;
   requested_by_user_id: string | null;
   run_id: string | null;
+  scheduled_sweep_id: string | null;
   started_at: Date | string | null;
   status: string;
   tracked_repository_id: string | null;
@@ -42,11 +49,13 @@ function parseAnalysisJob(row: AnalysisJobRow): AnalysisJob {
     jobKind: row.job_kind,
     label: row.label,
     maxAttempts: row.max_attempts,
+    planId: row.plan_id,
     queuedAt: toIsoString(row.queued_at),
     repoInput: row.repo_input,
     repositoryFullName: row.repository_full_name,
     requestedByUserId: row.requested_by_user_id,
     runId: row.run_id,
+    scheduledSweepId: row.scheduled_sweep_id,
     startedAt: toIsoString(row.started_at),
     status: row.status,
     trackedRepositoryId: row.tracked_repository_id,
@@ -72,17 +81,20 @@ async function getJobRow(
       repo_input,
       repository_full_name,
       tracked_repository_id,
+      scheduled_sweep_id,
       requested_by_user_id,
       label,
       attempt_count,
       max_attempts,
       run_id,
+      plan_id,
       error_message,
       queued_at,
       started_at,
       completed_at,
       failed_at,
-      updated_at
+      updated_at,
+      job_payload
     FROM analysis_jobs
     WHERE job_id = $1`,
     [jobId]
@@ -95,6 +107,19 @@ async function getJobRow(
   return result.rows[0]!;
 }
 
+export type StoredAnalysisJob = {
+  jobKind: AnalysisJobKind;
+  label?: string | null;
+  maxAttempts?: number;
+  payload?: Record<string, unknown>;
+  planId?: string | null;
+  repoInput: string;
+  repositoryFullName: string;
+  requestedByUserId: string | null;
+  scheduledSweepId?: string | null;
+  trackedRepositoryId?: string | null;
+};
+
 export class AnalysisJobRepository {
   private readonly client: PostgresClient;
 
@@ -102,14 +127,7 @@ export class AnalysisJobRepository {
     this.client = client;
   }
 
-  async enqueueJob(input: {
-    label?: string | null;
-    maxAttempts?: number;
-    repoInput: string;
-    repositoryFullName: string;
-    requestedByUserId: string | null;
-    trackedRepositoryId?: string | null;
-  }): Promise<AnalysisJob> {
+  async enqueueJob(input: StoredAnalysisJob): Promise<AnalysisJob> {
     const now = new Date().toISOString();
     const jobId = `job_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
@@ -122,35 +140,41 @@ export class AnalysisJobRepository {
           repo_input,
           repository_full_name,
           tracked_repository_id,
+          scheduled_sweep_id,
           requested_by_user_id,
           label,
           attempt_count,
           max_attempts,
           run_id,
+          plan_id,
           error_message,
           queued_at,
           started_at,
           completed_at,
           failed_at,
-          updated_at
+          updated_at,
+          job_payload
         ) VALUES (
           $1,
-          'analyze_repository',
-          'queued',
           $2,
+          'queued',
           $3,
           $4,
           $5,
           $6,
-          0,
           $7,
-          NULL,
-          NULL,
           $8,
+          0,
+          $9,
+          NULL,
+          $10,
+          NULL,
+          $11,
           NULL,
           NULL,
           NULL,
-          $8
+          $11,
+          $12::jsonb
         )
         RETURNING
           job_id,
@@ -159,26 +183,33 @@ export class AnalysisJobRepository {
           repo_input,
           repository_full_name,
           tracked_repository_id,
+          scheduled_sweep_id,
           requested_by_user_id,
           label,
           attempt_count,
           max_attempts,
           run_id,
+          plan_id,
           error_message,
           queued_at,
           started_at,
           completed_at,
           failed_at,
-          updated_at`,
+          updated_at,
+          job_payload`,
         [
           jobId,
+          input.jobKind,
           input.repoInput,
           input.repositoryFullName,
           input.trackedRepositoryId ?? null,
+          input.scheduledSweepId ?? null,
           input.requestedByUserId,
           input.label?.trim() ? input.label.trim() : null,
           input.maxAttempts ?? 1,
-          now
+          input.planId ?? null,
+          now,
+          JSON.stringify(input.payload ?? {})
         ]
       );
 
@@ -206,6 +237,61 @@ export class AnalysisJobRepository {
     return parseAnalysisJob(await getJobRow(this.client, jobId));
   }
 
+  async getJobPayload(jobId: string): Promise<Record<string, unknown>> {
+    assertValidJobId(jobId);
+    const row = await getJobRow(this.client, jobId);
+
+    return row.job_payload && typeof row.job_payload === "object"
+      ? (row.job_payload as Record<string, unknown>)
+      : {};
+  }
+
+  async listJobs(options: {
+    limit?: number;
+    status?: AnalysisJob["status"];
+  } = {}): Promise<AnalysisJob[]> {
+    const values: unknown[] = [];
+    const filters: string[] = [];
+
+    if (options.status) {
+      values.push(options.status);
+      filters.push(`status = $${values.length}`);
+    }
+
+    values.push(options.limit ?? 50);
+
+    const result = await this.client.query<AnalysisJobRow>(
+      `SELECT
+        job_id,
+        job_kind,
+        status,
+        repo_input,
+        repository_full_name,
+        tracked_repository_id,
+        scheduled_sweep_id,
+        requested_by_user_id,
+        label,
+        attempt_count,
+        max_attempts,
+        run_id,
+        plan_id,
+        error_message,
+        queued_at,
+        started_at,
+        completed_at,
+        failed_at,
+        updated_at,
+        job_payload
+      FROM analysis_jobs
+      ${filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : ""}
+      ORDER BY queued_at DESC, job_id DESC
+      LIMIT $${values.length}`,
+      values
+    );
+
+    return result.rows.map(parseAnalysisJob);
+  }
+
   async claimNextQueuedJob(): Promise<AnalysisJob | null> {
     return this.client.transaction(async (session) => {
       const claimed = await session.query<AnalysisJobRow>(
@@ -231,30 +317,38 @@ export class AnalysisJobRepository {
           repo_input,
           repository_full_name,
           tracked_repository_id,
+          scheduled_sweep_id,
           requested_by_user_id,
           label,
           attempt_count,
           max_attempts,
           run_id,
+          plan_id,
           error_message,
           queued_at,
           started_at,
           completed_at,
           failed_at,
-          updated_at`
+          updated_at,
+          job_payload`
       );
 
       return claimed.rows[0] ? parseAnalysisJob(claimed.rows[0]) : null;
     });
   }
 
-  async completeJob(input: { jobId: string; runId: string }): Promise<AnalysisJob> {
+  async completeJob(input: {
+    jobId: string;
+    planId?: string | null;
+    runId?: string | null;
+  }): Promise<AnalysisJob> {
     assertValidJobId(input.jobId);
     const result = await this.client.query<AnalysisJobRow>(
       `UPDATE analysis_jobs
       SET
         status = 'completed',
-        run_id = $2,
+        run_id = COALESCE($2, run_id),
+        plan_id = COALESCE($3, plan_id),
         error_message = NULL,
         completed_at = NOW(),
         failed_at = NULL,
@@ -267,18 +361,21 @@ export class AnalysisJobRepository {
         repo_input,
         repository_full_name,
         tracked_repository_id,
+        scheduled_sweep_id,
         requested_by_user_id,
         label,
         attempt_count,
         max_attempts,
         run_id,
+        plan_id,
         error_message,
         queued_at,
         started_at,
         completed_at,
         failed_at,
-        updated_at`,
-      [input.jobId, input.runId]
+        updated_at,
+        job_payload`,
+      [input.jobId, input.runId ?? null, input.planId ?? null]
     );
 
     if (result.rows.length === 0) {
@@ -306,22 +403,116 @@ export class AnalysisJobRepository {
         repo_input,
         repository_full_name,
         tracked_repository_id,
+        scheduled_sweep_id,
         requested_by_user_id,
         label,
         attempt_count,
         max_attempts,
         run_id,
+        plan_id,
         error_message,
         queued_at,
         started_at,
         completed_at,
         failed_at,
-        updated_at`,
+        updated_at,
+        job_payload`,
       [input.jobId, input.errorMessage]
     );
 
     if (result.rows.length === 0) {
       throw new PersistenceError("not_found", "Analysis job was not found.");
+    }
+
+    return parseAnalysisJob(result.rows[0]!);
+  }
+
+  async cancelJob(jobId: string): Promise<AnalysisJob> {
+    assertValidJobId(jobId);
+    const result = await this.client.query<AnalysisJobRow>(
+      `UPDATE analysis_jobs
+      SET
+        status = 'cancelled',
+        completed_at = NOW(),
+        failed_at = NULL,
+        error_message = NULL,
+        updated_at = NOW()
+      WHERE job_id = $1 AND status = 'queued'
+      RETURNING
+        job_id,
+        job_kind,
+        status,
+        repo_input,
+        repository_full_name,
+        tracked_repository_id,
+        scheduled_sweep_id,
+        requested_by_user_id,
+        label,
+        attempt_count,
+        max_attempts,
+        run_id,
+        plan_id,
+        error_message,
+        queued_at,
+        started_at,
+        completed_at,
+        failed_at,
+        updated_at,
+        job_payload`,
+      [jobId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new PersistenceError(
+        "conflict",
+        "Only queued analysis jobs can be cancelled."
+      );
+    }
+
+    return parseAnalysisJob(result.rows[0]!);
+  }
+
+  async retryJob(jobId: string): Promise<AnalysisJob> {
+    assertValidJobId(jobId);
+    const result = await this.client.query<AnalysisJobRow>(
+      `UPDATE analysis_jobs
+      SET
+        status = 'queued',
+        error_message = NULL,
+        started_at = NULL,
+        completed_at = NULL,
+        failed_at = NULL,
+        updated_at = NOW()
+      WHERE job_id = $1 AND status IN ('failed', 'cancelled')
+      RETURNING
+        job_id,
+        job_kind,
+        status,
+        repo_input,
+        repository_full_name,
+        tracked_repository_id,
+        scheduled_sweep_id,
+        requested_by_user_id,
+        label,
+        attempt_count,
+        max_attempts,
+        run_id,
+        plan_id,
+        error_message,
+        queued_at,
+        started_at,
+        completed_at,
+        failed_at,
+        updated_at,
+        job_payload`,
+      [jobId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new PersistenceError(
+        "conflict",
+        "Only failed or cancelled analysis jobs can be retried."
+      );
     }
 
     return parseAnalysisJob(result.rows[0]!);

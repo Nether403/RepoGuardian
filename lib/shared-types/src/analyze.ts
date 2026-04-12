@@ -874,7 +874,11 @@ export const ListTrackedRepositoriesResponseSchema = z.object({
   repositories: z.array(TrackedRepositorySchema)
 });
 
-export const AnalysisJobKindSchema = z.enum(["analyze_repository"]);
+export const AnalysisJobKindSchema = z.enum([
+  "analyze_repository",
+  "generate_execution_plan",
+  "run_scheduled_sweep"
+]);
 
 export const AnalysisJobStatusSchema = z.enum([
   "queued",
@@ -891,11 +895,13 @@ export const AnalysisJobSchema = z.object({
   repoInput: z.string().min(1),
   repositoryFullName: z.string().min(3),
   trackedRepositoryId: z.string().min(1).nullable(),
+  scheduledSweepId: z.string().min(1).nullable(),
   requestedByUserId: z.string().min(1).nullable(),
   label: z.string().min(1).max(120).nullable(),
   attemptCount: z.number().int().nonnegative(),
   maxAttempts: z.number().int().positive(),
   runId: z.string().min(1).nullable(),
+  planId: z.string().min(1).nullable(),
   errorMessage: z.string().min(1).nullable(),
   queuedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
@@ -921,6 +927,139 @@ export const EnqueueAnalysisJobResponseSchema = z.object({
 
 export const GetAnalysisJobResponseSchema = z.object({
   job: AnalysisJobSchema
+});
+
+export const ListAnalysisJobsResponseSchema = z.object({
+  jobs: z.array(AnalysisJobSchema)
+});
+
+export const RetryAnalysisJobResponseSchema = z.object({
+  job: AnalysisJobSchema
+});
+
+export const CancelAnalysisJobResponseSchema = z.object({
+  job: AnalysisJobSchema
+});
+
+export const AsyncPlanSelectionStrategySchema = z.enum([
+  "provided_candidates",
+  "all_executable_prs"
+]);
+
+export const EnqueueExecutionPlanJobRequestSchema = z
+  .object({
+    analysisRunId: z.string().min(1),
+    selectionStrategy: AsyncPlanSelectionStrategySchema.default("all_executable_prs"),
+    selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
+    selectedPRCandidateIds: z.array(z.string().min(1)).default([])
+  })
+  .superRefine((value, context) => {
+    if (
+      value.selectionStrategy === "provided_candidates" &&
+      value.selectedIssueCandidateIds.length === 0 &&
+      value.selectedPRCandidateIds.length === 0
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "At least one selected candidate id is required when using provided_candidates.",
+        path: ["selectedPRCandidateIds"]
+      });
+    }
+  });
+
+export const EnqueueExecutionPlanJobResponseSchema = z.object({
+  job: AnalysisJobSchema
+});
+
+export const SweepCadenceSchema = z.enum(["weekly"]);
+
+export const SweepSelectionStrategySchema = z.enum(["all_executable_prs"]);
+
+export const SweepScheduleSchema = z.object({
+  scheduleId: z.string().min(1),
+  cadence: SweepCadenceSchema,
+  label: z.string().min(1).max(120),
+  selectionStrategy: SweepSelectionStrategySchema,
+  isActive: z.boolean(),
+  lastTriggeredAt: z.string().datetime().nullable(),
+  nextRunAt: z.string().datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const CreateSweepScheduleRequestSchema = z.object({
+  cadence: SweepCadenceSchema.default("weekly"),
+  label: z.string().trim().min(1).max(120),
+  selectionStrategy: SweepSelectionStrategySchema.default("all_executable_prs")
+});
+
+export const CreateSweepScheduleResponseSchema = z.object({
+  schedule: SweepScheduleSchema
+});
+
+export const ListSweepSchedulesResponseSchema = z.object({
+  schedules: z.array(SweepScheduleSchema)
+});
+
+export const TriggerSweepScheduleResponseSchema = z.object({
+  job: AnalysisJobSchema,
+  schedule: SweepScheduleSchema
+});
+
+export const TrackedPullRequestLifecycleStatusSchema = z.enum([
+  "open",
+  "closed",
+  "merged"
+]);
+
+export const TrackedPullRequestSchema = z.object({
+  trackedPullRequestId: z.string().min(1),
+  repositoryFullName: z.string().min(3),
+  owner: z.string().min(1),
+  repo: z.string().min(1),
+  pullRequestNumber: z.number().int().positive(),
+  pullRequestUrl: z.string().url(),
+  branchName: z.string().min(1),
+  title: z.string().min(1),
+  planId: z.string().min(1).nullable(),
+  executionId: z.string().min(1).nullable(),
+  lifecycleStatus: TrackedPullRequestLifecycleStatusSchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  closedAt: z.string().datetime().nullable(),
+  mergedAt: z.string().datetime().nullable()
+});
+
+export const FleetTrackedRepositoryStatusSchema = z.object({
+  trackedRepository: TrackedRepositorySchema,
+  latestAnalysisJob: AnalysisJobSchema.nullable(),
+  latestRun: SavedAnalysisRunSummarySchema.nullable(),
+  latestPlanId: z.string().min(1).nullable(),
+  latestPlanStatus: ExecutionPlanLifecycleStatusSchema.nullable(),
+  patchPlanCounts: z.object({
+    blocked: z.number().int().nonnegative(),
+    executable: z.number().int().nonnegative(),
+    stale: z.number().int().nonnegative()
+  }),
+  stale: z.boolean()
+});
+
+export const FleetStatusResponseSchema = z.object({
+  generatedAt: z.string().datetime(),
+  summary: z.object({
+    blockedPatchPlans: z.number().int().nonnegative(),
+    executablePatchPlans: z.number().int().nonnegative(),
+    failedJobs: z.number().int().nonnegative(),
+    mergedPullRequests: z.number().int().nonnegative(),
+    openPullRequests: z.number().int().nonnegative(),
+    stalePatchPlans: z.number().int().nonnegative(),
+    staleRepositories: z.number().int().nonnegative(),
+    trackedRepositories: z.number().int().nonnegative()
+  }),
+  trackedRepositories: z.array(FleetTrackedRepositoryStatusSchema),
+  recentJobs: z.array(AnalysisJobSchema),
+  trackedPullRequests: z.array(TrackedPullRequestSchema)
 });
 
 export const CompareAnalysisRunsRequestSchema = z.object({
@@ -1243,6 +1382,43 @@ export type EnqueueAnalysisJobResponse = z.infer<
   typeof EnqueueAnalysisJobResponseSchema
 >;
 export type GetAnalysisJobResponse = z.infer<typeof GetAnalysisJobResponseSchema>;
+export type ListAnalysisJobsResponse = z.infer<typeof ListAnalysisJobsResponseSchema>;
+export type RetryAnalysisJobResponse = z.infer<typeof RetryAnalysisJobResponseSchema>;
+export type CancelAnalysisJobResponse = z.infer<
+  typeof CancelAnalysisJobResponseSchema
+>;
+export type AsyncPlanSelectionStrategy = z.infer<
+  typeof AsyncPlanSelectionStrategySchema
+>;
+export type EnqueueExecutionPlanJobRequest = z.infer<
+  typeof EnqueueExecutionPlanJobRequestSchema
+>;
+export type EnqueueExecutionPlanJobResponse = z.infer<
+  typeof EnqueueExecutionPlanJobResponseSchema
+>;
+export type SweepCadence = z.infer<typeof SweepCadenceSchema>;
+export type SweepSelectionStrategy = z.infer<typeof SweepSelectionStrategySchema>;
+export type SweepSchedule = z.infer<typeof SweepScheduleSchema>;
+export type CreateSweepScheduleRequest = z.infer<
+  typeof CreateSweepScheduleRequestSchema
+>;
+export type CreateSweepScheduleResponse = z.infer<
+  typeof CreateSweepScheduleResponseSchema
+>;
+export type ListSweepSchedulesResponse = z.infer<
+  typeof ListSweepSchedulesResponseSchema
+>;
+export type TriggerSweepScheduleResponse = z.infer<
+  typeof TriggerSweepScheduleResponseSchema
+>;
+export type TrackedPullRequestLifecycleStatus = z.infer<
+  typeof TrackedPullRequestLifecycleStatusSchema
+>;
+export type TrackedPullRequest = z.infer<typeof TrackedPullRequestSchema>;
+export type FleetTrackedRepositoryStatus = z.infer<
+  typeof FleetTrackedRepositoryStatusSchema
+>;
+export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type CompareAnalysisRunsRequest = z.infer<
   typeof CompareAnalysisRunsRequestSchema
 >;

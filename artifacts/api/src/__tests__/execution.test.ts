@@ -492,6 +492,25 @@ function createTestApp(
   const runs = new Map<string, SavedAnalysisRun>();
   const plans = new Map<string, StoredPlanState>();
   let executionCounter = 0;
+  const trackedPullRequestRepository = {
+    upsertOpenedPullRequest: vi.fn().mockImplementation(async (input) => ({
+      branchName: input.branchName,
+      closedAt: null,
+      createdAt: new Date().toISOString(),
+      executionId: input.executionId,
+      lifecycleStatus: "open" as const,
+      mergedAt: null,
+      owner: input.owner,
+      planId: input.planId,
+      pullRequestNumber: input.pullRequestNumber,
+      pullRequestUrl: input.pullRequestUrl,
+      repo: input.repo,
+      repositoryFullName: `${input.owner}/${input.repo}`,
+      title: input.title,
+      trackedPullRequestId: "tpr_test",
+      updatedAt: new Date().toISOString()
+    }))
+  };
 
   app.use(express.json());
   app.use(
@@ -810,7 +829,8 @@ function createTestApp(
             summary: createAnalysisRunSummary(run)
           };
         }
-      }
+      },
+      trackedPullRequestRepository
     })
   );
 

@@ -3,7 +3,7 @@ import {
   type RepositoryIntakeSnapshot,
   type NormalizedRepoInput
 } from "@repo-guardian/shared-types";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { GitHubReadError } from "./errors.js";
 import {
   createTreePayload,
@@ -34,6 +34,20 @@ type RepositoryFileRequest = {
   ref: string;
   repo: string;
 };
+
+type PullRequestRequest = {
+  owner: string;
+  pullRequestNumber: number;
+  repo: string;
+};
+
+const pullRequestLifecycleSchema = z.object({
+  closed_at: z.string().datetime().nullable(),
+  merged: z.boolean(),
+  merged_at: z.string().datetime().nullable(),
+  title: z.string().min(1),
+  updated_at: z.string().datetime()
+});
 
 function encodeRepositoryPath(path: string): string {
   return path
@@ -140,6 +154,27 @@ export class GitHubReadClient {
         }
       );
     }
+  }
+
+  async fetchPullRequestLifecycle(request: PullRequestRequest): Promise<{
+    closedAt: string | null;
+    merged: boolean;
+    mergedAt: string | null;
+    title: string;
+    updatedAt: string;
+  }> {
+    const payload = await this.fetchJson(
+      `/repos/${request.owner}/${request.repo}/pulls/${request.pullRequestNumber}`
+    );
+    const pullRequest = pullRequestLifecycleSchema.parse(payload);
+
+    return {
+      closedAt: pullRequest.closed_at,
+      merged: pullRequest.merged,
+      mergedAt: pullRequest.merged_at,
+      title: pullRequest.title,
+      updatedAt: pullRequest.updated_at
+    };
   }
 
   private async fetchJson(path: string, options: FetchJsonOptions = {}): Promise<unknown> {

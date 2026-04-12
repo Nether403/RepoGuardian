@@ -34,6 +34,31 @@ paths:
         "502":
           $ref: "#/components/responses/ErrorResponse"
   /api/analyze/jobs:
+    get:
+      operationId: listAnalysisJobs
+      summary: List asynchronous analysis jobs with optional status filtering
+      x-repo-guardian-response-type: ListAnalysisJobsResponse
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - running
+              - completed
+              - failed
+              - cancelled
+      responses:
+        "200":
+          description: Analysis jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAnalysisJobsResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
     post:
       operationId: enqueueAnalysisJob
       summary: Enqueue an asynchronous repository analysis job
@@ -55,6 +80,8 @@ paths:
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
           $ref: "#/components/responses/ErrorResponse"
   /api/analyze/jobs/{jobId}:
     get:
@@ -79,6 +106,56 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/analyze/jobs/{jobId}/cancel:
+    post:
+      operationId: cancelAnalysisJob
+      summary: Cancel a queued asynchronous analysis job
+      x-repo-guardian-response-type: CancelAnalysisJobResponse
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Cancelled analysis job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelAnalysisJobResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/analyze/jobs/{jobId}/retry:
+    post:
+      operationId: retryAnalysisJob
+      summary: Retry a failed or cancelled asynchronous analysis job
+      x-repo-guardian-response-type: RetryAnalysisJobResponse
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Requeued analysis job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetryAnalysisJobResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
   /api/execution/plan:
     post:
       operationId: createExecutionPlan
@@ -101,6 +178,31 @@ paths:
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/execution/plan/jobs:
+    post:
+      operationId: enqueueExecutionPlanJob
+      summary: Enqueue asynchronous execution-plan generation for a saved analysis run
+      x-repo-guardian-request-type: EnqueueExecutionPlanJobRequest
+      x-repo-guardian-response-type: EnqueueExecutionPlanJobResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnqueueExecutionPlanJobRequest"
+      responses:
+        "202":
+          description: Execution plan job accepted for background processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueExecutionPlanJobResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
           $ref: "#/components/responses/ErrorResponse"
   /api/execution/execute:
     post:
@@ -289,6 +391,75 @@ paths:
                 $ref: "#/components/schemas/CreateTrackedRepositoryResponse"
         "400":
           $ref: "#/components/responses/ErrorResponse"
+  /api/fleet/status:
+    get:
+      operationId: getFleetStatus
+      summary: Read fleet-wide tracked repository, job, plan, and PR lifecycle status
+      x-repo-guardian-response-type: FleetStatusResponse
+      responses:
+        "200":
+          description: Fleet status snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetStatusResponse"
+  /api/sweep-schedules:
+    get:
+      operationId: listSweepSchedules
+      summary: List configured tracked-repository sweep schedules
+      x-repo-guardian-response-type: ListSweepSchedulesResponse
+      responses:
+        "200":
+          description: Sweep schedules.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSweepSchedulesResponse"
+    post:
+      operationId: createSweepSchedule
+      summary: Create a recurring tracked-repository sweep schedule
+      x-repo-guardian-request-type: CreateSweepScheduleRequest
+      x-repo-guardian-response-type: CreateSweepScheduleResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSweepScheduleRequest"
+      responses:
+        "201":
+          description: Created sweep schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSweepScheduleResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/sweep-schedules/{scheduleId}/trigger:
+    post:
+      operationId: triggerSweepSchedule
+      summary: Trigger a sweep schedule immediately
+      x-repo-guardian-response-type: TriggerSweepScheduleResponse
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Triggered sweep schedule and queued sweep job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerSweepScheduleResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
 components:
   responses:
     ErrorResponse:
@@ -352,10 +523,30 @@ components:
       type: object
       description: Runtime schema is owned by GetAnalysisJobResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: GetAnalysisJobResponseSchema
+    ListAnalysisJobsResponse:
+      type: object
+      description: Runtime schema is owned by ListAnalysisJobsResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListAnalysisJobsResponseSchema
+    RetryAnalysisJobResponse:
+      type: object
+      description: Runtime schema is owned by RetryAnalysisJobResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RetryAnalysisJobResponseSchema
+    CancelAnalysisJobResponse:
+      type: object
+      description: Runtime schema is owned by CancelAnalysisJobResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CancelAnalysisJobResponseSchema
     ExecutionPlanRequest:
       type: object
       description: Runtime schema is owned by ExecutionPlanRequestSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionPlanRequestSchema
+    EnqueueExecutionPlanJobRequest:
+      type: object
+      description: Runtime schema is owned by EnqueueExecutionPlanJobRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: EnqueueExecutionPlanJobRequestSchema
+    EnqueueExecutionPlanJobResponse:
+      type: object
+      description: Runtime schema is owned by EnqueueExecutionPlanJobResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: EnqueueExecutionPlanJobResponseSchema
     ExecutionPlanResponse:
       type: object
       description: Runtime schema is owned by ExecutionPlanResponseSchema in @repo-guardian/shared-types.
@@ -400,3 +591,35 @@ components:
       type: object
       description: Runtime schema is owned by CompareAnalysisRunsResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: CompareAnalysisRunsResponseSchema
+    SweepSchedule:
+      type: object
+      description: Runtime schema is owned by SweepScheduleSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: SweepScheduleSchema
+    CreateSweepScheduleRequest:
+      type: object
+      description: Runtime schema is owned by CreateSweepScheduleRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateSweepScheduleRequestSchema
+    CreateSweepScheduleResponse:
+      type: object
+      description: Runtime schema is owned by CreateSweepScheduleResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateSweepScheduleResponseSchema
+    ListSweepSchedulesResponse:
+      type: object
+      description: Runtime schema is owned by ListSweepSchedulesResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListSweepSchedulesResponseSchema
+    TriggerSweepScheduleResponse:
+      type: object
+      description: Runtime schema is owned by TriggerSweepScheduleResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: TriggerSweepScheduleResponseSchema
+    TrackedPullRequest:
+      type: object
+      description: Runtime schema is owned by TrackedPullRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: TrackedPullRequestSchema
+    FleetTrackedRepositoryStatus:
+      type: object
+      description: Runtime schema is owned by FleetTrackedRepositoryStatusSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: FleetTrackedRepositoryStatusSchema
+    FleetStatusResponse:
+      type: object
+      description: Runtime schema is owned by FleetStatusResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: FleetStatusResponseSchema

@@ -133,10 +133,23 @@ describe("AnalysisJobProcessor", () => {
       completeJob: vi.fn().mockResolvedValue(undefined),
       enqueueJob: vi.fn().mockResolvedValue(queuedJob),
       failJob: vi.fn().mockResolvedValue(undefined),
-      getJob: vi.fn()
+      getJob: vi.fn(),
+      getJobPayload: vi.fn().mockResolvedValue({
+        enqueuePlanAfterRun: false
+      }),
+      listJobs: vi.fn(),
+      retryJob: vi.fn(),
+      cancelJob: vi.fn()
     };
     const analyzeRepository = vi.fn().mockResolvedValue(createAnalysis());
+    const executionPlanRepository = {
+      savePlan: vi.fn()
+    };
+    const fleetStatusRepository = {
+      getFleetStatus: vi.fn()
+    };
     const runRepository = {
+      getRun: vi.fn(),
       saveRun: vi.fn().mockResolvedValue({
         run: {
           analysis: createAnalysis(),
@@ -160,17 +173,35 @@ describe("AnalysisJobProcessor", () => {
         }
       })
     };
+    const sweepScheduleRepository = {
+      claimDueSchedules: vi.fn().mockResolvedValue([]),
+      createSchedule: vi.fn(),
+      getSchedule: vi.fn(),
+      listSchedules: vi.fn(),
+      markTriggered: vi.fn()
+    };
+    const trackedPullRequestRepository = {
+      listOpenTrackedPullRequests: vi.fn().mockResolvedValue([]),
+      listTrackedPullRequests: vi.fn(),
+      updateLifecycle: vi.fn()
+    };
     const trackedRepositoryRepository = {
-      getRepository: vi.fn()
+      getRepository: vi.fn(),
+      listRepositories: vi.fn().mockResolvedValue([])
     };
     const processor = new AnalysisJobProcessor({
       analysisJobRepository,
       analyzeRepository,
+      executionPlanRepository,
+      fleetStatusRepository,
       readClient: {
+        fetchPullRequestLifecycle: vi.fn(),
         fetchRepositoryFileText: vi.fn(),
         fetchRepositoryIntake: vi.fn()
       } as unknown as GitHubReadClient,
       runRepository,
+      sweepScheduleRepository,
+      trackedPullRequestRepository,
       trackedRepositoryRepository
     });
 
@@ -182,7 +213,11 @@ describe("AnalysisJobProcessor", () => {
 
     expect(response).toEqual(queuedJob);
     expect(analysisJobRepository.enqueueJob).toHaveBeenCalledWith({
+      jobKind: "analyze_repository",
       label: "Async",
+      payload: {
+        enqueuePlanAfterRun: false
+      },
       repoInput: "openai/openai-node",
       repositoryFullName: "openai/openai-node",
       requestedByUserId: "usr_authenticated"

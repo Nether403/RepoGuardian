@@ -174,4 +174,31 @@ describe("GitHubReadClient", () => {
     expect(content).toContain('"react"');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("fetches pull request lifecycle state", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      createJsonResponse({
+        closed_at: null,
+        merged: false,
+        merged_at: null,
+        title: "Harden workflow permissions",
+        updated_at: "2026-04-12T10:00:00.000Z"
+      })
+    );
+    const client = new GitHubReadClient({ fetchImpl: fetchMock });
+
+    const lifecycle = await client.fetchPullRequestLifecycle({
+      owner: "openai",
+      pullRequestNumber: 19,
+      repo: "openai-node"
+    });
+
+    expect(lifecycle).toEqual({
+      closedAt: null,
+      merged: false,
+      mergedAt: null,
+      title: "Harden workflow permissions",
+      updatedAt: "2026-04-12T10:00:00.000Z"
+    });
+  });
 });
