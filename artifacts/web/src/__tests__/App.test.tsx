@@ -1246,7 +1246,7 @@ describe("App", () => {
 
   it("selects candidates and previews a dry-run execution plan", async () => {
     const user = userEvent.setup();
-    let executionRequestBody: any = null;
+    let executionRequestBody: unknown = null;
     const fetchMock = mockAuthenticatedFetch(async (url, init) => {
       if (url === "/api/analyze") return createJsonResponse(successPayload);
       if (url === "/api/execution/plan") {
@@ -1284,7 +1284,7 @@ describe("App", () => {
 
   it("requires explicit approval before submitting approved execution", async () => {
     const user = userEvent.setup();
-    let executionRequestBody: any = null;
+    let executionRequestBody: unknown = null;
     const fetchMock = mockAuthenticatedFetch(async (url, init) => {
       if (url === "/api/analyze") return createJsonResponse(successPayload);
       if (url === "/api/execution/plan") {
@@ -1345,7 +1345,7 @@ describe("App", () => {
 
   it("shows execution API errors without fabricating results", async () => {
     const user = userEvent.setup();
-    const fetchMock = mockAuthenticatedFetch(async (url, init) => {
+    const fetchMock = mockAuthenticatedFetch(async (url, _init) => {
       if (url === "/api/analyze") {
         return createJsonResponse(successPayload);
       }

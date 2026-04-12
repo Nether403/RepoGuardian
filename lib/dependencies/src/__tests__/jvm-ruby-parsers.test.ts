@@ -143,11 +143,17 @@ describe("JVM and Ruby parser expansion", () => {
     expect(result.dependencies).toEqual([
       expect.objectContaining({
         name: "org.springframework:spring-core",
-        parseConfidence: "medium",
+        parseConfidence: "low",
         version: "${spring.version}"
       })
     ]);
-    expect(result.warningDetails).toEqual([]);
+    expect(result.warningDetails).toEqual([
+      expect.objectContaining({
+        code: "FILE_PARSE_FAILED",
+        source: "pom.xml",
+        severity: "warning",
+      })
+    ]);
   });
 
   it("skips unsupported Gradle dependency declarations without package records", () => {
@@ -157,7 +163,13 @@ describe("JVM and Ruby parser expansion", () => {
     );
 
     expect(result.dependencies).toEqual([]);
-    expect(result.warningDetails).toEqual([]);
+    expect(result.warningDetails).toEqual([
+      expect.objectContaining({
+        code: "FILE_PARSE_FAILED",
+        source: "build.gradle",
+        severity: "warning",
+      })
+    ]);
   });
 
   it("parses Gemfile and Gemfile.lock entries including declaration-only Bundler sources", () => {

@@ -42,7 +42,6 @@ import {
   analyzeRepository
 } from "./lib/api-client";
 import {
-  ExecutionClientError,
   requestExecutionPlan,
   requestExecutionExecute
 } from "./lib/execution-client";
@@ -315,7 +314,9 @@ function App() {
       setApprovalGranted(false);
     } catch (error) {
       setExecutionErrorMessage(
-        (error as any)?.message || "Repo Guardian could not complete the execution plan request."
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not complete the execution plan request."
       );
     } finally {
       setIsExecutionPlanLoading(false);
@@ -345,7 +346,9 @@ function App() {
       setExecutionResult(result);
     } catch (error) {
       setExecutionErrorMessage(
-        (error as any)?.message || "Repo Guardian could not execute the approved plan."
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not execute the approved plan."
       );
     } finally {
       setIsExecutionExecuteLoading(false);
