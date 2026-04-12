@@ -14,6 +14,7 @@ import {
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   RetryAnalysisJobResponseSchema,
+  type RepositoryActivityKind,
   TrackedRepositoryHistoryResponseSchema,
   TriggerSweepScheduleResponseSchema,
   type AnalysisJob,
@@ -146,7 +147,7 @@ export async function enqueueTrackedRepositoryAnalysis(
 
 export async function listAnalysisJobs(): Promise<AnalysisJob[]> {
   try {
-    const response = await requestListAnalysisJobs(getApiOptions());
+    const response = await requestListAnalysisJobs({}, getApiOptions());
     return ListAnalysisJobsResponseSchema.parse(response).jobs;
   } catch (error) {
     throw toFleetClientError(error, "Repo Guardian could not load analysis jobs");
@@ -258,11 +259,21 @@ export async function triggerSweepSchedule(scheduleId: string): Promise<{
 }
 
 export async function getTrackedRepositoryHistory(
-  trackedRepositoryId: string
+  trackedRepositoryId: string,
+  options?: {
+    activityKinds?: RepositoryActivityKind[];
+    activityPage?: number;
+    activityPageSize?: number;
+  }
 ): Promise<TrackedRepositoryHistoryResponse> {
   try {
     const response = await requestGetTrackedRepositoryHistory(
       trackedRepositoryId,
+      {
+        activityKinds: options?.activityKinds,
+        activityPage: options?.activityPage,
+        activityPageSize: options?.activityPageSize
+      },
       getApiOptions()
     );
     return TrackedRepositoryHistoryResponseSchema.parse(response);

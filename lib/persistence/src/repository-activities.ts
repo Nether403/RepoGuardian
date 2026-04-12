@@ -67,16 +67,29 @@ export class RepositoryActivityRepository {
   }
 
   async listActivitiesByRepositoryFullName(input: {
+    kinds?: RepositoryActivityKind[];
     limit?: number;
+    offset?: number;
     repositoryFullName: string;
   }): Promise<{
+    appliedKinds: RepositoryActivityKind[];
     availableKinds: RepositoryActivityKind[];
     events: RepositoryActivityEvent[];
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    page: number;
+    pageSize: number;
+    totalPages: number;
     totalEvents: number;
   }> {
-    const limit = input.limit ?? 40;
-    const result = await this.client.query<RepositoryActivityRow>(
-      `WITH repository_events AS (
+    const pageSize = input.limit ?? 40;
+    const offset = Math.max(0, input.offset ?? 0);
+    const page = Math.floor(offset / pageSize) + 1;
+    const appliedKinds = (input.kinds ?? []).filter((kind, index, kinds) =>
+      repositoryActivityKinds.includes(kind) && kinds.indexOf(kind) === index
+    );
+    const kinds = appliedKinds.length > 0 ? appliedKinds : null;
+    const queryText = `WITH repository_events AS (
         SELECT
           CONCAT('run:', runs.run_id) AS activity_id,
           'analysis_run' AS kind,
@@ -206,15 +219,72 @@ export class RepositoryActivityRepository {
         action_id,
         pull_request_url
       FROM repository_events
+      WHERE $2::TEXT[] IS NULL OR kind = ANY($2::TEXT[])
       ORDER BY occurred_at DESC, activity_id DESC
-      LIMIT $2`,
-      [input.repositoryFullName, limit]
-    );
+      LIMIT $3
+      OFFSET $4`;
+    const countQueryText = `WITH repository_events AS (
+        SELECT
+          'analysis_run' AS kind
+        FROM analysis_runs AS runs
+        WHERE runs.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          'analysis_job' AS kind
+        FROM analysis_jobs AS jobs
+        WHERE jobs.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          'execution_plan' AS kind
+        FROM execution_plans AS plans
+        WHERE plans.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          'execution_event' AS kind
+        FROM execution_audit_events AS audit
+        WHERE audit.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          'tracked_pull_request' AS kind
+        FROM tracked_pull_requests AS prs
+        WHERE prs.repository_full_name = $1
+      )
+      SELECT COUNT(*)::INT AS total_events
+      FROM repository_events
+      WHERE $2::TEXT[] IS NULL OR kind = ANY($2::TEXT[])`;
+    const [result, countResult] = await Promise.all([
+      this.client.query<RepositoryActivityRow>(queryText, [
+        input.repositoryFullName,
+        kinds,
+        pageSize,
+        offset
+      ]),
+      this.client.query<{ total_events: number }>(countQueryText, [
+        input.repositoryFullName,
+        kinds
+      ])
+    ]);
+    const totalEvents = countResult.rows[0]?.total_events ?? 0;
+    const totalPages = totalEvents === 0 ? 0 : Math.ceil(totalEvents / pageSize);
 
     return {
+      appliedKinds,
       availableKinds: repositoryActivityKinds,
       events: result.rows.map(parseRepositoryActivity),
-      totalEvents: result.rows.length
+      hasNextPage: offset + result.rows.length < totalEvents,
+      hasPreviousPage: offset > 0,
+      page,
+      pageSize,
+      totalEvents,
+      totalPages
     };
   }
 }

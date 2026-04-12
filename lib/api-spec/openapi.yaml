@@ -403,6 +403,28 @@ paths:
           schema:
             type: string
             minLength: 1
+        - name: activityKinds
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  $ref: "#/components/schemas/RepositoryActivityKind"
+        - name: activityPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: activityPageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
       responses:
         "200":
           description: Tracked repository history.

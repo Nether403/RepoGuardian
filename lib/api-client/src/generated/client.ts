@@ -87,14 +87,42 @@ function createRequestHeaders(input: {
   return headers;
 }
 
+function buildQueryString(
+  query: Record<string, string | number | boolean | readonly (string | number | boolean)[]> | undefined
+): string {
+  if (!query) {
+    return "";
+  }
+
+  const searchParams = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(query)) {
+    if (rawValue === undefined) {
+      continue;
+    }
+
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+
+    for (const value of values) {
+      searchParams.append(key, String(value));
+    }
+  }
+
+  const serialized = searchParams.toString();
+  return serialized.length > 0 ? `?${serialized}` : "";
+}
+
 async function requestJson<TResponse>(input: {
   body?: unknown;
   method: string;
   options: RepoGuardianApiRequestOptions;
   path: string;
+  query?: Record<string, string | number | boolean | readonly (string | number | boolean)[]>;
 }): Promise<TResponse> {
   const fetchImpl = input.options.fetchImpl ?? fetch;
-  const response = await fetchImpl(`${input.options.baseUrl ?? ""}${input.path}`, {
+  const response = await fetchImpl(
+    `${input.options.baseUrl ?? ""}${input.path}${buildQueryString(input.query)}`,
+    {
     body: input.body === undefined ? undefined : JSON.stringify(input.body),
     headers: createRequestHeaders({
       body: input.body,
@@ -102,7 +130,8 @@ async function requestJson<TResponse>(input: {
     }),
     method: input.method,
     signal: input.options.signal
-  });
+    }
+  );
   const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
@@ -125,10 +154,11 @@ export async function analyzeRepository(requestBody: AnalyzeRepoRequest, options
   });
 }
 
-export async function listAnalysisJobs(options: RepoGuardianApiRequestOptions = {}): Promise<ListAnalysisJobsResponse> {
+export async function listAnalysisJobs(query: { "status"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<ListAnalysisJobsResponse> {
   return requestJson<ListAnalysisJobsResponse>({
     method: "GET",
     path: `/api/analyze/jobs`,
+    query,
     options
   });
 }
@@ -293,10 +323,11 @@ export async function createTrackedRepository(requestBody: CreateTrackedReposito
   });
 }
 
-export async function getTrackedRepositoryHistory(trackedRepositoryId: string, options: RepoGuardianApiRequestOptions = {}): Promise<TrackedRepositoryHistoryResponse> {
+export async function getTrackedRepositoryHistory(trackedRepositoryId: string, query: { "activityKinds"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPage"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPageSize"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<TrackedRepositoryHistoryResponse> {
   return requestJson<TrackedRepositoryHistoryResponse>({
     method: "GET",
     path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/history`,
+    query,
     options
   });
 }

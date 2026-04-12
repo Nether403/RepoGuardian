@@ -221,6 +221,7 @@ function createTestApp(
     createFleetRouter({
       repositoryActivityStore: {
         listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
+          appliedKinds: [],
           availableKinds: [
             "analysis_job",
             "analysis_run",
@@ -229,6 +230,11 @@ function createTestApp(
             "tracked_pull_request"
           ],
           events: [],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          page: 1,
+          pageSize: 20,
+          totalPages: 0,
           totalEvents: 0
         })
       },
@@ -532,6 +538,36 @@ describe("fleet routes", () => {
   });
 
   it("returns tracked repository history", async () => {
+    const listActivitiesByRepositoryFullName = vi.fn().mockResolvedValue({
+      appliedKinds: ["execution_plan"],
+      availableKinds: [
+        "analysis_job",
+        "analysis_run",
+        "execution_event",
+        "execution_plan",
+        "tracked_pull_request"
+      ],
+      events: [
+        createRepositoryActivity(),
+        createRepositoryActivity({
+          activityId: "plan:plan_one",
+          executionId: "exec_one",
+          kind: "execution_plan",
+          occurredAt: "2026-04-12T10:05:00.000Z",
+          planId: "plan_one",
+          runId: "run_one",
+          status: "planned",
+          summary: "1 actions",
+          title: "plan_one"
+        })
+      ],
+      hasNextPage: true,
+      hasPreviousPage: false,
+      page: 1,
+      pageSize: 2,
+      totalPages: 3,
+      totalEvents: 2
+    });
     const trackedRepository = {
       canonicalUrl: "https://github.com/openai/openai-node",
       createdAt: "2026-04-12T10:00:00.000Z",
@@ -596,30 +632,7 @@ describe("fleet routes", () => {
         ])
       },
       repositoryActivityStore: {
-        listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
-          availableKinds: [
-            "analysis_job",
-            "analysis_run",
-            "execution_event",
-            "execution_plan",
-            "tracked_pull_request"
-          ],
-          events: [
-            createRepositoryActivity(),
-            createRepositoryActivity({
-              activityId: "plan:plan_one",
-              executionId: "exec_one",
-              kind: "execution_plan",
-              occurredAt: "2026-04-12T10:05:00.000Z",
-              planId: "plan_one",
-              runId: "run_one",
-              status: "planned",
-              summary: "1 actions",
-              title: "plan_one"
-            })
-          ],
-          totalEvents: 2
-        })
+        listActivitiesByRepositoryFullName
       },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
@@ -629,7 +642,9 @@ describe("fleet routes", () => {
     });
 
     const response = await request(app)
-      .get("/tracked-repositories/tracked_one/history")
+      .get(
+        "/tracked-repositories/tracked_one/history?activityKinds=execution_plan&activityPage=1&activityPageSize=2"
+      )
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
     expect(response.status).toBe(200);
@@ -640,11 +655,19 @@ describe("fleet routes", () => {
     expect(response.body.recentPlans[0]?.planId).toBe("plan_one");
     expect(response.body.trackedPullRequests[0]?.trackedPullRequestId).toBe("tpr_one");
     expect(response.body.activityFeed.totalEvents).toBe(2);
+    expect(response.body.activityFeed.pageSize).toBe(2);
+    expect(response.body.activityFeed.appliedKinds).toEqual(["execution_plan"]);
     expect(
       response.body.activityFeed.events.some(
         (event: { activityId: string }) => event.activityId === "plan:plan_one"
       )
     ).toBe(true);
+    expect(listActivitiesByRepositoryFullName).toHaveBeenCalledWith({
+      kinds: ["execution_plan"],
+      limit: 2,
+      offset: 0,
+      repositoryFullName: "openai/openai-node"
+    });
   });
 
   it("returns 404 when tracked repository history does not exist", async () => {

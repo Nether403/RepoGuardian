@@ -15,8 +15,10 @@ import {
   CreateTrackedRepositoryRequestSchema,
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
+  RepositoryActivityKindSchema,
   TrackedRepositoryHistoryResponseSchema
 } from "@repo-guardian/shared-types";
+import { z } from "zod";
 import {
   type AnalysisJobProcessor,
   getAnalysisJobProcessor
@@ -77,6 +79,35 @@ type AnalysisJobProcessorLike = Pick<
   | "retryJob"
   | "triggerSweepSchedule"
 >;
+
+const trackedRepositoryHistoryQuerySchema = z.object({
+  activityKinds: z
+    .union([
+      RepositoryActivityKindSchema,
+      z.array(RepositoryActivityKindSchema),
+      z.string().trim().min(1)
+    ])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) {
+        return [];
+      }
+
+      const values = Array.isArray(value) ? value : [value];
+
+      return values.flatMap((entry) =>
+        typeof entry === "string"
+          ? entry
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0)
+          : entry
+      );
+    })
+    .pipe(z.array(RepositoryActivityKindSchema)),
+  activityPage: z.coerce.number().int().positive().default(1),
+  activityPageSize: z.coerce.number().int().min(1).max(100).default(20)
+});
 
 function mapPersistenceError(error: unknown): number | null {
   if (!isPersistenceError(error)) {
@@ -157,6 +188,15 @@ export function createFleetRouter(input: {
 
   fleetRouter.get("/tracked-repositories/:trackedRepositoryId/history", async (request, response, next) => {
     try {
+      const parsedQuery = trackedRepositoryHistoryQuerySchema.safeParse(request.query);
+
+      if (!parsedQuery.success) {
+        response.status(400).json({
+          error: "Tracked repository history query could not be validated."
+        });
+        return;
+      }
+
       const trackedRepository = await input.trackedRepositoryStore.getRepository(
         getSingleParam(request.params.trackedRepositoryId)
       );
@@ -181,7 +221,10 @@ export function createFleetRouter(input: {
         ]);
       const activityFeed =
         await input.repositoryActivityStore.listActivitiesByRepositoryFullName({
-          limit: 40,
+          kinds: parsedQuery.data.activityKinds,
+          limit: parsedQuery.data.activityPageSize,
+          offset:
+            (parsedQuery.data.activityPage - 1) * parsedQuery.data.activityPageSize,
           repositoryFullName: trackedRepository.fullName
         });
       const currentStatus = fleetStatus.trackedRepositories.find(

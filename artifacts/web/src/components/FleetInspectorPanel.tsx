@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type {
   AnalysisJob,
   CodeReviewFinding,
@@ -44,10 +43,16 @@ type FleetInspectorPanelProps = {
   onOpenPlan: (planId: string) => void;
   onOpenRun: (runId: string) => void;
   onRefresh: () => void;
+  onRepositoryTimelineKindsChange: (activityKinds: RepositoryActivityKind[]) => void;
+  onRepositoryTimelinePageChange: (page: number) => void;
   planDetail: ExecutionPlanDetailResponse | null;
   planEvents: ExecutionPlanEventsResponse | null;
   planRunDetail: GetAnalysisRunResponse | null;
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
+  repositoryTimelineQuery: {
+    activityKinds: RepositoryActivityKind[];
+    activityPage: number;
+  };
   runDetail: GetAnalysisRunResponse | null;
   selection: InspectorSelection | null;
 };
@@ -219,25 +224,16 @@ export function FleetInspectorPanel({
   onOpenPlan,
   onOpenRun,
   onRefresh,
+  onRepositoryTimelineKindsChange,
+  onRepositoryTimelinePageChange,
   planDetail,
   planEvents,
   planRunDetail,
   repositoryHistory,
+  repositoryTimelineQuery,
   runDetail,
   selection
 }: FleetInspectorPanelProps) {
-  const [activityKindFilter, setActivityKindFilter] = useState<"all" | RepositoryActivityKind>("all");
-
-  useEffect(() => {
-    setActivityKindFilter("all");
-  }, [selection?.id, selection?.kind]);
-
-  const repositoryTimeline =
-    repositoryHistory === null
-      ? []
-      : repositoryHistory.activityFeed.events.filter(
-          (activity) => activityKindFilter === "all" || activity.kind === activityKindFilter
-        );
   const planTraceability =
     selection?.kind === "plan" && planDetail
       ? collectPlanTraceability(planDetail, planRunDetail)
@@ -370,7 +366,7 @@ export function FleetInspectorPanel({
               <div className="trace-chip-row">
                 <button
                   className="secondary-button"
-                  onClick={() => setActivityKindFilter("all")}
+                  onClick={() => onRepositoryTimelineKindsChange([])}
                   type="button"
                 >
                   All activity
@@ -379,16 +375,16 @@ export function FleetInspectorPanel({
                   <button
                     className="secondary-button"
                     key={kind}
-                    onClick={() => setActivityKindFilter(kind)}
+                    onClick={() => onRepositoryTimelineKindsChange([kind])}
                     type="button"
                   >
                     {formatActivityKind(kind)}
                   </button>
                 ))}
               </div>
-              {repositoryTimeline.length > 0 ? (
+              {repositoryHistory.activityFeed.events.length > 0 ? (
                 <div className="fleet-timeline">
-                  {repositoryTimeline.map((activity) => {
+                  {repositoryHistory.activityFeed.events.map((activity) => {
                     const primaryAction = getPrimaryActivityAction(activity);
 
                     return (
@@ -438,9 +434,42 @@ export function FleetInspectorPanel({
                 </div>
               ) : (
                 <p className="empty-copy">
-                  No {activityKindFilter === "all" ? "" : formatActivityKind(activityKindFilter) + " "}events recorded for this repository yet.
+                  No {repositoryHistory.activityFeed.appliedKinds.length === 0
+                    ? ""
+                    : `${repositoryHistory.activityFeed.appliedKinds
+                        .map(formatActivityKind)
+                        .join(", ")} `}events recorded for this repository yet.
                 </p>
               )}
+              <div className="fleet-inline-actions">
+                <span className="trace-chip trace-chip-muted">
+                  Page {repositoryHistory.activityFeed.totalPages === 0 ? 0 : repositoryHistory.activityFeed.page} of{" "}
+                  {repositoryHistory.activityFeed.totalPages}
+                </span>
+                <span className="trace-chip trace-chip-muted">
+                  {repositoryHistory.activityFeed.totalEvents} total events
+                </span>
+                <button
+                  className="secondary-button"
+                  disabled={!repositoryHistory.activityFeed.hasPreviousPage}
+                  onClick={() =>
+                    onRepositoryTimelinePageChange(repositoryTimelineQuery.activityPage - 1)
+                  }
+                  type="button"
+                >
+                  Previous page
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={!repositoryHistory.activityFeed.hasNextPage}
+                  onClick={() =>
+                    onRepositoryTimelinePageChange(repositoryTimelineQuery.activityPage + 1)
+                  }
+                  type="button"
+                >
+                  Next page
+                </button>
+              </div>
             </div>
             <div className="fleet-inspector-block">
               <h3>Recent runs</h3>

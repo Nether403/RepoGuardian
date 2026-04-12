@@ -1309,6 +1309,7 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
 
   return TrackedRepositoryHistoryResponseSchema.parse({
     activityFeed: {
+      appliedKinds: [],
       availableKinds: [
         "analysis_job",
         "analysis_run",
@@ -1403,6 +1404,11 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           trackedPullRequestId: null
         }
       ],
+      hasNextPage: false,
+      hasPreviousPage: false,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
       totalEvents: 5
     },
     currentStatus: fleetStatus.trackedRepositories[0],
@@ -3307,8 +3313,31 @@ describe("App", () => {
   it("opens repository, run, and plan drill-downs inside the fleet inspector", async () => {
     const user = userEvent.setup();
     const fetchMock = mockAuthenticatedFetch(async (url) => {
-      if (url === "/api/tracked-repositories/tracked_one/history") {
-        return createJsonResponse(createTrackedRepositoryHistoryFixture());
+      if (url.startsWith("/api/tracked-repositories/tracked_one/history")) {
+        const requestUrl = new URL(`http://localhost${url}`);
+        const activityKinds = requestUrl.searchParams.getAll("activityKinds");
+        const activityPage = Number(requestUrl.searchParams.get("activityPage") ?? "1");
+        const fixture = createTrackedRepositoryHistoryFixture();
+        const filteredEvents =
+          activityKinds.length === 0
+            ? fixture.activityFeed.events
+            : fixture.activityFeed.events.filter((event) =>
+                activityKinds.includes(event.kind)
+              );
+
+        return createJsonResponse({
+          ...fixture,
+          activityFeed: {
+            ...fixture.activityFeed,
+            appliedKinds: activityKinds,
+            events: filteredEvents,
+            hasNextPage: false,
+            hasPreviousPage: activityPage > 1,
+            page: activityPage,
+            totalPages: 1,
+            totalEvents: filteredEvents.length
+          }
+        });
       }
 
       if (url === "/api/runs/run_one") {
@@ -3377,11 +3406,27 @@ describe("App", () => {
     await user.click(
       repositoryInspector.getByRole("button", { name: /execution event/i })
     );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/tracked-repositories/tracked_one/history?activityKinds=execution_event&activityPage=1&activityPageSize=20"
+        ),
+        expect.any(Object)
+      );
+    });
     expect(repositoryInspector.getByText(/Execution Completed/i)).toBeInTheDocument();
     expect(
       repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
     ).not.toBeInTheDocument();
     await user.click(repositoryInspector.getByRole("button", { name: /All activity/i }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/tracked-repositories/tracked_one/history?activityPage=1&activityPageSize=20"
+        ),
+        expect.any(Object)
+      );
+    });
     expect(
       repositoryInspector.getByText(/3 findings, 4 executable patch plans/i)
     ).toBeInTheDocument();

@@ -21,6 +21,10 @@ type ClientOperation = {
   functionName: string;
   method: string;
   path: string;
+  queryParameters: Array<{
+    name: string;
+    required: boolean;
+  }>;
   requestType: string | null;
   responseType: string;
   pathParameters: string[];
@@ -37,6 +41,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getPathParameters(path: string): string[] {
   return [...path.matchAll(/\{([^}]+)\}/gu)].map((match) => match[1] ?? "");
+}
+
+function getQueryParameters(parameters: unknown): Array<{
+  name: string;
+  required: boolean;
+}> {
+  if (!Array.isArray(parameters)) {
+    return [];
+  }
+
+  return parameters.flatMap((parameter) => {
+    if (!isRecord(parameter)) {
+      return [];
+    }
+
+    if (parameter.in !== "query" || typeof parameter.name !== "string") {
+      return [];
+    }
+
+    return [
+      {
+        name: parameter.name,
+        required: parameter.required === true
+      }
+    ];
+  });
 }
 
 function toOperation(
@@ -67,6 +97,7 @@ function toOperation(
     method: method.toUpperCase(),
     path,
     pathParameters: getPathParameters(path),
+    queryParameters: getQueryParameters(operation.parameters),
     requestType: requestType ?? null,
     responseType: operation["x-repo-guardian-response-type"]
   };
@@ -94,10 +125,19 @@ function buildFunction(operation: ClientOperation): string {
   const pathParameterArgs = operation.pathParameters
     .map((parameter) => `${parameter}: string`)
     .join(", ");
+  const queryArg =
+    operation.queryParameters.length > 0
+      ? `query: { ${operation.queryParameters
+          .map(
+            (parameter) =>
+              `"${parameter.name}"${parameter.required ? "" : "?"}: string | number | boolean | readonly (string | number | boolean)[]`
+          )
+          .join("; ")} }`
+      : "";
   const bodyArg = operation.requestType
     ? `requestBody: ${operation.requestType}`
     : "";
-  const args = [pathParameterArgs, bodyArg, "options: RepoGuardianApiRequestOptions = {}"]
+  const args = [pathParameterArgs, queryArg, bodyArg, "options: RepoGuardianApiRequestOptions = {}"]
     .filter((arg) => arg.length > 0)
     .join(", ");
   const encodedPath = operation.pathParameters.reduce(
@@ -111,11 +151,15 @@ function buildFunction(operation: ClientOperation): string {
   const bodyLine = operation.requestType
     ? "\n    body: requestBody,"
     : "";
+  const queryLine =
+    operation.queryParameters.length > 0
+      ? "\n    query,"
+      : "";
 
   return `export async function ${operation.functionName}(${args}): Promise<${operation.responseType}> {
   return requestJson<${operation.responseType}>({
     method: "${operation.method}",
-    path: \`${encodedPath}\`,${bodyLine}
+    path: \`${encodedPath}\`,${queryLine}${bodyLine}
     options
   });
 }
@@ -191,14 +235,42 @@ function createRequestHeaders(input: {
   return headers;
 }
 
+function buildQueryString(
+  query: Record<string, string | number | boolean | readonly (string | number | boolean)[]> | undefined
+): string {
+  if (!query) {
+    return "";
+  }
+
+  const searchParams = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(query)) {
+    if (rawValue === undefined) {
+      continue;
+    }
+
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+
+    for (const value of values) {
+      searchParams.append(key, String(value));
+    }
+  }
+
+  const serialized = searchParams.toString();
+  return serialized.length > 0 ? \`?\${serialized}\` : "";
+}
+
 async function requestJson<TResponse>(input: {
   body?: unknown;
   method: string;
   options: RepoGuardianApiRequestOptions;
   path: string;
+  query?: Record<string, string | number | boolean | readonly (string | number | boolean)[]>;
 }): Promise<TResponse> {
   const fetchImpl = input.options.fetchImpl ?? fetch;
-  const response = await fetchImpl(\`\${input.options.baseUrl ?? ""}\${input.path}\`, {
+  const response = await fetchImpl(
+    \`\${input.options.baseUrl ?? ""}\${input.path}\${buildQueryString(input.query)}\`,
+    {
     body: input.body === undefined ? undefined : JSON.stringify(input.body),
     headers: createRequestHeaders({
       body: input.body,
@@ -206,7 +278,8 @@ async function requestJson<TResponse>(input: {
     }),
     method: input.method,
     signal: input.options.signal
-  });
+    }
+  );
   const payload = await parseJsonResponse(response);
 
   if (!response.ok) {

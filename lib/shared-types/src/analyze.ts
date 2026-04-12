@@ -1108,8 +1108,14 @@ export const RepositoryActivityEventSchema = z.object({
 });
 
 export const RepositoryActivityFeedSchema = z.object({
+  appliedKinds: z.array(RepositoryActivityKindSchema),
   availableKinds: z.array(RepositoryActivityKindSchema),
   events: z.array(RepositoryActivityEventSchema),
+  hasNextPage: z.boolean(),
+  hasPreviousPage: z.boolean(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+  totalPages: z.number().int().nonnegative(),
   totalEvents: z.number().int().nonnegative()
 });
 
