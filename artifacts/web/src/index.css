@@ -1061,6 +1061,34 @@ code {
   gap: 0.8rem;
 }
 
+.fleet-timeline {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.fleet-timeline-item {
+  display: grid;
+  grid-template-columns: 0.9rem minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.fleet-timeline-marker {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 201, 255, 0.34);
+  background: rgba(140, 201, 255, 0.14);
+}
+
+.fleet-timeline-content {
+  display: grid;
+  gap: 0.55rem;
+  padding-left: 0.15rem;
+  border-left: 1px solid rgba(140, 201, 255, 0.12);
+}
+
 .fleet-inspector-block h3,
 .fleet-inspector-panel h3 {
   margin: 0;

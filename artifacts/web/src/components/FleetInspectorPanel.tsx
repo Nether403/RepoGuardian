@@ -1,11 +1,17 @@
 import type {
   AnalysisJob,
+  CodeReviewFinding,
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
   GetAnalysisRunResponse,
+  IssueCandidate,
+  PRCandidate,
   TrackedRepositoryHistoryResponse
 } from "@repo-guardian/shared-types";
-import { formatTimestamp } from "../features/analysis/view-model";
+import {
+  buildTraceabilityViewModel,
+  formatTimestamp
+} from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
@@ -37,9 +43,23 @@ type FleetInspectorPanelProps = {
   onRefresh: () => void;
   planDetail: ExecutionPlanDetailResponse | null;
   planEvents: ExecutionPlanEventsResponse | null;
+  planRunDetail: GetAnalysisRunResponse | null;
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
   runDetail: GetAnalysisRunResponse | null;
   selection: InspectorSelection | null;
+};
+
+type TimelineItem = {
+  actionLabel: string | null;
+  actionTargetId: string | null;
+  actionType: "plan" | "run" | null;
+  href: string | null;
+  id: string;
+  kind: "job" | "plan" | "pr" | "run";
+  statusLabel: string;
+  timestamp: string;
+  title: string;
+  tone: "active" | "muted" | "up-next" | "warning";
 };
 
 function getJobTone(status: AnalysisJob["status"]): "active" | "muted" | "up-next" | "warning" {
@@ -88,6 +108,135 @@ function getHistoryTitle(selection: InspectorSelection | null): string {
   }
 }
 
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  return [...new Map(items.map((item) => [item.id, item] as const)).values()];
+}
+
+function buildRepositoryTimeline(
+  repositoryHistory: TrackedRepositoryHistoryResponse
+): TimelineItem[] {
+  const runItems: TimelineItem[] = repositoryHistory.recentRuns.map((run) => ({
+    actionLabel: "Open run",
+    actionTargetId: run.id,
+    actionType: "run",
+    href: null,
+    id: `run:${run.id}`,
+    kind: "run",
+    statusLabel: `${run.executablePatchPlans} executable`,
+    timestamp: run.fetchedAt,
+    title: run.label ?? run.id,
+    tone: run.executablePatchPlans > 0 ? "active" : "muted"
+  }));
+  const jobItems: TimelineItem[] = repositoryHistory.recentJobs.map((job) => ({
+    actionLabel: job.planId ? "Open plan" : job.runId ? "Open run" : null,
+    actionTargetId: job.planId ?? job.runId ?? null,
+    actionType: job.planId ? "plan" : job.runId ? "run" : null,
+    href: null,
+    id: `job:${job.jobId}`,
+    kind: "job",
+    statusLabel: job.status,
+    timestamp: job.completedAt ?? job.failedAt ?? job.startedAt ?? job.queuedAt,
+    title: job.label ?? job.jobId,
+    tone: getJobTone(job.status)
+  }));
+  const planItems: TimelineItem[] = repositoryHistory.recentPlans.map((plan) => ({
+    actionLabel: "Open plan",
+    actionTargetId: plan.planId,
+    actionType: "plan",
+    href: null,
+    id: `plan:${plan.planId}`,
+    kind: "plan",
+    statusLabel: plan.status,
+    timestamp: plan.completedAt ?? plan.failedAt ?? plan.startedAt ?? plan.createdAt,
+    title: plan.planId,
+    tone:
+      plan.status === "completed"
+        ? "active"
+        : plan.status === "failed" || plan.status === "expired" || plan.status === "cancelled"
+          ? "warning"
+          : "up-next"
+  }));
+  const prItems: TimelineItem[] = repositoryHistory.trackedPullRequests.map((pullRequest) => ({
+    actionLabel: "Open GitHub PR",
+    actionTargetId: null,
+    actionType: null,
+    href: pullRequest.pullRequestUrl,
+    id: `pr:${pullRequest.trackedPullRequestId}`,
+    kind: "pr",
+    statusLabel: pullRequest.lifecycleStatus,
+    timestamp: pullRequest.mergedAt ?? pullRequest.closedAt ?? pullRequest.updatedAt,
+    title: `#${pullRequest.pullRequestNumber} ${pullRequest.title}`,
+    tone:
+      pullRequest.lifecycleStatus === "merged"
+        ? "active"
+        : pullRequest.lifecycleStatus === "closed"
+          ? "warning"
+          : "up-next"
+  }));
+
+  return [...runItems, ...jobItems, ...planItems, ...prItems].sort((left, right) =>
+    right.timestamp.localeCompare(left.timestamp)
+  );
+}
+
+function collectPlanTraceability(planDetail: ExecutionPlanDetailResponse, planRunDetail: GetAnalysisRunResponse | null): {
+  findings: Array<CodeReviewFinding | import("@repo-guardian/shared-types").DependencyFinding>;
+  issueCandidates: IssueCandidate[];
+  prCandidates: PRCandidate[];
+} {
+  if (!planRunDetail) {
+    return {
+      findings: [],
+      issueCandidates: [],
+      prCandidates: []
+    };
+  }
+
+  const traceability = buildTraceabilityViewModel(planRunDetail.run.analysis);
+  const prCandidates = dedupeById(
+    planDetail.actions.flatMap((action) =>
+      action.linkedPRCandidateIds
+        .map((candidateId) => traceability.prCandidateById.get(candidateId))
+        .filter((candidate): candidate is PRCandidate => Boolean(candidate))
+    )
+  );
+  const issueCandidates = dedupeById(
+    planDetail.actions.flatMap((action) =>
+      action.linkedIssueCandidateIds
+        .map((candidateId) => traceability.issueCandidateById.get(candidateId))
+        .filter((candidate): candidate is IssueCandidate => Boolean(candidate))
+    )
+  );
+  const findingIds = new Set<string>();
+
+  for (const candidate of prCandidates) {
+    for (const findingId of candidate.relatedFindingIds) {
+      findingIds.add(findingId);
+    }
+  }
+
+  for (const candidate of issueCandidates) {
+    for (const findingId of candidate.relatedFindingIds) {
+      findingIds.add(findingId);
+    }
+  }
+
+  const findings = [...findingIds]
+    .map((findingId) => traceability.findingById.get(findingId))
+    .filter(
+      (
+        finding
+      ): finding is CodeReviewFinding | import("@repo-guardian/shared-types").DependencyFinding =>
+        Boolean(finding)
+    );
+
+  return {
+    findings,
+    issueCandidates,
+    prCandidates
+  };
+}
+
 export function FleetInspectorPanel({
   errorMessage,
   isLoading,
@@ -98,10 +247,23 @@ export function FleetInspectorPanel({
   onRefresh,
   planDetail,
   planEvents,
+  planRunDetail,
   repositoryHistory,
   runDetail,
   selection
 }: FleetInspectorPanelProps) {
+  const repositoryTimeline = repositoryHistory
+    ? buildRepositoryTimeline(repositoryHistory)
+    : [];
+  const planTraceability =
+    selection?.kind === "plan" && planDetail
+      ? collectPlanTraceability(planDetail, planRunDetail)
+      : {
+          findings: [],
+          issueCandidates: [],
+          prCandidates: []
+        };
+
   return (
     <Panel
       className="panel-half fleet-inspector-panel"
@@ -219,6 +381,55 @@ export function FleetInspectorPanel({
               <span className="trace-chip trace-chip-muted">
                 {repositoryHistory.currentStatus.patchPlanCounts.stale} stale
               </span>
+            </div>
+            <div className="fleet-inspector-block">
+              <h3>Repository timeline</h3>
+              {repositoryTimeline.length > 0 ? (
+                <div className="fleet-timeline">
+                  {repositoryTimeline.map((item) => (
+                    <article className="fleet-timeline-item" key={item.id}>
+                      <div className="fleet-timeline-marker" aria-hidden="true" />
+                      <div className="fleet-timeline-content">
+                        <div className="trace-card-header">
+                          <div>
+                            <p className="subsection-label">{item.kind}</p>
+                            <h3>{item.title}</h3>
+                          </div>
+                          <StatusBadge label={item.statusLabel} tone={item.tone} />
+                        </div>
+                        <p className="trace-copy">{formatTimestamp(item.timestamp)}</p>
+                        <div className="fleet-inline-actions">
+                          {item.actionType && item.actionTargetId ? (
+                            <button
+                              className="secondary-button"
+                              onClick={() =>
+                                item.actionType === "plan"
+                                  ? onOpenPlan(item.actionTargetId!)
+                                  : onOpenRun(item.actionTargetId!)
+                              }
+                              type="button"
+                            >
+                              {item.actionLabel}
+                            </button>
+                          ) : null}
+                          {item.href ? (
+                            <a
+                              className="secondary-button fleet-link-button"
+                              href={item.href}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              {item.actionLabel}
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-copy">No timeline events recorded for this repository yet.</p>
+              )}
             </div>
             <div className="fleet-inspector-block">
               <h3>Recent runs</h3>
@@ -484,6 +695,15 @@ export function FleetInspectorPanel({
                 <dd>{planDetail.actions.length}</dd>
               </div>
             </dl>
+            <div className="fleet-inline-actions">
+              <button
+                className="secondary-button"
+                onClick={() => onOpenRun(planDetail.analysisRunId)}
+                type="button"
+              >
+                Open source run
+              </button>
+            </div>
             <div className="fleet-inspector-block">
               <h3>Actions</h3>
               <div className="fleet-card-list">
@@ -508,6 +728,37 @@ export function FleetInspectorPanel({
                       />
                     </div>
                     <p className="trace-copy">{action.reason}</p>
+                    {action.linkedPRCandidateIds.length > 0 ||
+                    action.linkedIssueCandidateIds.length > 0 ? (
+                      <div className="trace-chip-row">
+                        {action.linkedPRCandidateIds.length > 0 ? (
+                          <a
+                            className="secondary-button fleet-link-button"
+                            href="#plan-traceability-pr-candidates"
+                          >
+                            Linked PR candidates
+                          </a>
+                        ) : null}
+                        {action.linkedIssueCandidateIds.length > 0 ? (
+                          <a
+                            className="secondary-button fleet-link-button"
+                            href="#plan-traceability-issue-candidates"
+                          >
+                            Linked issue candidates
+                          </a>
+                        ) : null}
+                        {(action.linkedPRCandidateIds.length > 0 ||
+                          action.linkedIssueCandidateIds.length > 0) &&
+                        planTraceability.findings.length > 0 ? (
+                          <a
+                            className="secondary-button fleet-link-button"
+                            href="#plan-traceability-findings"
+                          >
+                            Originating findings
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="fleet-inline-actions">
                       {action.issueUrl ? (
                         <a
@@ -534,6 +785,84 @@ export function FleetInspectorPanel({
                 ))}
               </div>
             </div>
+            {planRunDetail ? (
+              <>
+                <div className="fleet-inspector-block" id="plan-traceability-pr-candidates">
+                  <h3>Linked PR candidates</h3>
+                  {planTraceability.prCandidates.length > 0 ? (
+                    <div className="fleet-card-list">
+                      {planTraceability.prCandidates.map((candidate) => (
+                        <article className="fleet-entity-card" key={candidate.id}>
+                          <div className="trace-card-header">
+                            <div>
+                              <p className="subsection-label">{candidate.candidateType}</p>
+                              <h3>{candidate.title}</h3>
+                            </div>
+                            <StatusBadge label={candidate.readiness} tone="up-next" />
+                          </div>
+                          <p className="trace-copy">{candidate.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-copy">No PR candidates are linked to this plan's actions.</p>
+                  )}
+                </div>
+                <div className="fleet-inspector-block" id="plan-traceability-issue-candidates">
+                  <h3>Linked issue candidates</h3>
+                  {planTraceability.issueCandidates.length > 0 ? (
+                    <div className="fleet-card-list">
+                      {planTraceability.issueCandidates.map((candidate) => (
+                        <article className="fleet-entity-card" key={candidate.id}>
+                          <div className="trace-card-header">
+                            <div>
+                              <p className="subsection-label">{candidate.candidateType}</p>
+                              <h3>{candidate.title}</h3>
+                            </div>
+                            <StatusBadge label={candidate.scope} tone="muted" />
+                          </div>
+                          <p className="trace-copy">{candidate.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-copy">
+                      No issue candidates are linked to this plan's actions.
+                    </p>
+                  )}
+                </div>
+                <div className="fleet-inspector-block" id="plan-traceability-findings">
+                  <h3>Originating findings</h3>
+                  {planTraceability.findings.length > 0 ? (
+                    <div className="fleet-card-list">
+                      {planTraceability.findings.map((finding) => (
+                        <article className="fleet-entity-card" key={finding.id}>
+                          <div className="trace-card-header">
+                            <div>
+                              <p className="subsection-label">{finding.sourceType}</p>
+                              <h3>{finding.title}</h3>
+                            </div>
+                            <StatusBadge label={finding.severity} tone="warning" />
+                          </div>
+                          <p className="trace-copy">{finding.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-copy">
+                      No findings could be resolved from the linked plan actions.
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="fleet-inspector-block">
+                <h3>Traceability source</h3>
+                <p className="empty-copy">
+                  Open the source run to inspect the underlying findings and candidates.
+                </p>
+              </div>
+            )}
             <div className="fleet-inspector-block">
               <h3>Audit events</h3>
               {planEvents && planEvents.events.length > 0 ? (

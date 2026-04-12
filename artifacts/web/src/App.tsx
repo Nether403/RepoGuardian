@@ -311,6 +311,10 @@ function App() {
     fleetInspectorSelection?.kind === "plan"
       ? executionPlanEventsById[fleetInspectorSelection.id] ?? null
       : null;
+  const selectedPlanRunDetail =
+    fleetInspectorSelection?.kind === "plan" && selectedPlanDetail
+      ? runDetailsById[selectedPlanDetail.analysisRunId] ?? null
+      : null;
   const selectedRepositoryHistory =
     fleetInspectorSelection?.kind === "repository"
       ? trackedRepositoryHistoriesById[fleetInspectorSelection.id] ?? null
@@ -763,9 +767,10 @@ function App() {
           break;
         }
         case "plan": {
-          const [detail, events] = await Promise.all([
-            getExecutionPlanDetail(selection.id),
-            listExecutionPlanEvents(selection.id)
+          const detail = await getExecutionPlanDetail(selection.id);
+          const [events, run] = await Promise.all([
+            listExecutionPlanEvents(selection.id),
+            getSavedAnalysisRun(detail.analysisRunId)
           ]);
 
           if (fleetInspectorRequestIdRef.current !== requestId) {
@@ -779,6 +784,10 @@ function App() {
           setExecutionPlanEventsById((current) => ({
             ...current,
             [selection.id]: events
+          }));
+          setRunDetailsById((current) => ({
+            ...current,
+            [detail.analysisRunId]: run
           }));
           break;
         }
@@ -1133,6 +1142,7 @@ function App() {
               onRefresh={() => void handleRefreshFleetInspector()}
               planDetail={selectedPlanDetail}
               planEvents={selectedPlanEvents}
+              planRunDetail={selectedPlanRunDetail}
               repositoryHistory={selectedRepositoryHistory}
               runDetail={selectedRunDetail}
               selection={fleetInspectorSelection}

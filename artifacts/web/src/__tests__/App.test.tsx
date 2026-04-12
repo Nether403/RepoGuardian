@@ -3271,6 +3271,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: /Tracked repository history/i })
     ).toBeInTheDocument();
+    expect(screen.getByText("Repository timeline")).toBeInTheDocument();
     expect(screen.getByText("Recent runs")).toBeInTheDocument();
     expect(screen.getByText("Related plans")).toBeInTheDocument();
 
@@ -3288,8 +3289,20 @@ describe("App", () => {
     await user.click(runInspector.getByRole("button", { name: /Open latest plan/i }));
 
     expect(await screen.findByRole("heading", { name: /Plan detail/i })).toBeInTheDocument();
-    expect(screen.getByText("Audit events")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open PR/i })).toBeInTheDocument();
+    const planInspector = within(getPanelByHeading(/Plan detail/i));
+    expect(planInspector.getByRole("button", { name: /Open source run/i })).toBeInTheDocument();
+    expect(
+      planInspector.getAllByText("Linked PR candidates").length
+    ).toBeGreaterThan(0);
+    expect(planInspector.getAllByText("Originating findings").length).toBeGreaterThan(0);
+    expect(
+      planInspector.getByText(/Upgrade react and refresh dependency locks/i)
+    ).toBeInTheDocument();
+    expect(
+      planInspector.getByText(/react is affected by GHSA-test-1234/i)
+    ).toBeInTheDocument();
+    expect(planInspector.getByText("Audit events")).toBeInTheDocument();
+    expect(planInspector.getByRole("link", { name: /Open PR/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Close inspector/i }));
 
