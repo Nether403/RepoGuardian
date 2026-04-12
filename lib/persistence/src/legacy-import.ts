@@ -23,8 +23,20 @@ const LegacyStoredPlanSchema = z.object({
 });
 
 export type LegacyImportReport = {
+  planSkipReasons: {
+    alreadyImported: number;
+    missingAnalysisRun: number;
+    nonPlannedStatus: {
+      completed: number;
+      executing: number;
+      failed: number;
+    };
+  };
   plansImported: number;
   plansSkipped: number;
+  runSkipReasons: {
+    alreadyImported: number;
+  };
   runsImported: number;
   runsSkipped: number;
 };
@@ -87,8 +99,20 @@ export async function importLegacyFileStores(input: {
   runsRootDir?: string;
 }): Promise<LegacyImportReport> {
   const report: LegacyImportReport = {
+    planSkipReasons: {
+      alreadyImported: 0,
+      missingAnalysisRun: 0,
+      nonPlannedStatus: {
+        completed: 0,
+        executing: 0,
+        failed: 0
+      }
+    },
     plansImported: 0,
     plansSkipped: 0,
+    runSkipReasons: {
+      alreadyImported: 0
+    },
     runsImported: 0,
     runsSkipped: 0
   };
@@ -108,6 +132,7 @@ export async function importLegacyFileStores(input: {
       importedRuns.set(run.id, run);
       if (existedBefore) {
         report.runsSkipped += 1;
+        report.runSkipReasons.alreadyImported += 1;
       } else {
         report.runsImported += 1;
       }
@@ -123,6 +148,7 @@ export async function importLegacyFileStores(input: {
 
       if (plan.status !== "planned") {
         report.plansSkipped += 1;
+        report.planSkipReasons.nonPlannedStatus[plan.status] += 1;
         continue;
       }
 
@@ -135,6 +161,7 @@ export async function importLegacyFileStores(input: {
 
       if (!run) {
         report.plansSkipped += 1;
+        report.planSkipReasons.missingAnalysisRun += 1;
         continue;
       }
 
@@ -146,6 +173,7 @@ export async function importLegacyFileStores(input: {
         report.plansImported += 1;
       } else {
         report.plansSkipped += 1;
+        report.planSkipReasons.alreadyImported += 1;
       }
     }
   }

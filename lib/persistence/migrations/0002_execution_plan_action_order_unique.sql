@@ -1,0 +1,3 @@
+ALTER TABLE execution_plan_actions
+ADD CONSTRAINT execution_plan_actions_plan_id_action_index_key
+UNIQUE (plan_id, action_index);

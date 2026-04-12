@@ -46,6 +46,8 @@ If you need to import older filesystem-backed run and plan JSON artifacts from `
 
 ```bash
 pnpm --filter @repo-guardian/api run db:import-legacy
+
+Legacy import only carries forward saved analysis runs and pending legacy plans. It does not reconstruct full historical execution state from legacy `executing`, `completed`, or `failed` plan files; those are skipped and reported by reason in the import output.
 ```
 
 ## Commands

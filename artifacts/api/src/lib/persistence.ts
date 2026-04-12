@@ -43,3 +43,10 @@ export function getLegacyRunStoreDir(): string {
 export function getLegacyPlanStoreDir(): string {
   return env.REPO_GUARDIAN_PLAN_STORE_DIR ?? join(process.cwd(), ".repo-guardian", "plans");
 }
+
+export async function resetPersistenceCaches(): Promise<void> {
+  await client?.close();
+  client = null;
+  runRepository = null;
+  planRepository = null;
+}

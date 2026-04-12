@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import express from "express";
+import express, { type Router as ExpressRouter } from "express";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
-import { FileAnalysisRunStore } from "@repo-guardian/runs";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PostgresClient,
+  runMigrations
+} from "@repo-guardian/persistence";
 import type { AnalyzeRepoResponse } from "@repo-guardian/shared-types";
 import {
   CompareAnalysisRunsResponseSchema,
@@ -12,9 +12,14 @@ import {
   ListAnalysisRunsResponseSchema,
   SaveAnalysisRunResponseSchema
 } from "@repo-guardian/shared-types";
-import { createRunsRouter } from "../routes/runs.js";
+import { createIsolatedTestDatabase } from "../../../../lib/persistence/src/__tests__/postgres-test-database.js";
 
-const tempDirs: string[] = [];
+const describeIf = process.env.TEST_DATABASE_URL ? describe : describe.skip;
+const authHeader = {
+  Authorization: "Bearer dev-secret-key-do-not-use-in-production"
+};
+
+type ResetPersistenceCaches = () => Promise<void>;
 
 function createAnalysis(input?: {
   findingId?: string;
@@ -203,34 +208,56 @@ function createAnalysis(input?: {
   };
 }
 
-async function createTestApp() {
-  const rootDir = await mkdtemp(join(tmpdir(), "repo-guardian-api-runs-"));
-  tempDirs.push(rootDir);
+describeIf("runs routes", () => {
+  let client: PostgresClient;
+  let createDefaultRunsRouter: () => ExpressRouter;
+  let resetPersistenceCaches: ResetPersistenceCaches;
+  let disposeDatabase: () => Promise<void>;
 
-  const app = express();
-  app.use(express.json());
-  app.use("/api", createRunsRouter(new FileAnalysisRunStore({ rootDir })));
+  beforeAll(async () => {
+    const isolatedDatabase = await createIsolatedTestDatabase("repo_guardian_api_runs");
+    disposeDatabase = isolatedDatabase.dispose;
+    client = new PostgresClient({
+      connectionString: isolatedDatabase.connectionString
+    });
 
-  return app;
-}
+    process.env.NODE_ENV = "test";
+    process.env.API_SECRET_KEY = "dev-secret-key-do-not-use-in-production";
+    process.env.DATABASE_URL = isolatedDatabase.connectionString;
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((rootDir) =>
-      rm(rootDir, {
-        force: true,
-        recursive: true
-      })
-    )
-  );
-});
+    vi.resetModules();
 
-describe("runs routes", () => {
-  it("saves, lists, reopens, and compares analysis runs", async () => {
-    const app = await createTestApp();
+    ({ default: createDefaultRunsRouter } = await import("../routes/runs.js"));
+    ({ resetPersistenceCaches } = await import("../lib/persistence.js"));
+
+    await runMigrations(client);
+  });
+
+  beforeEach(async () => {
+    await client.query(
+      "TRUNCATE execution_audit_events, execution_attempts, execution_plan_actions, execution_plans, analysis_runs RESTART IDENTITY CASCADE"
+    );
+    await resetPersistenceCaches();
+  });
+
+  afterAll(async () => {
+    await resetPersistenceCaches();
+    await client.close();
+    await disposeDatabase();
+  });
+
+  function createTestApp() {
+    const app = express();
+    app.use(express.json());
+    app.use("/api", createDefaultRunsRouter());
+    return app;
+  }
+
+  it("saves, lists, reopens, compares, and survives router restart on the durable path", async () => {
+    const app = createTestApp();
     const baseline = await request(app)
       .post("/api/runs")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .set(authHeader)
       .send({
         analysis: createAnalysis({
           findingId: "finding:old"
@@ -239,7 +266,7 @@ describe("runs routes", () => {
       });
     const target = await request(app)
       .post("/api/runs")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .set(authHeader)
       .send({
         analysis: createAnalysis({
           findingId: "finding:new"
@@ -252,38 +279,48 @@ describe("runs routes", () => {
       true
     );
     expect(target.status).toBe(201);
+    expect(SaveAnalysisRunResponseSchema.safeParse(target.body).success).toBe(
+      true
+    );
 
-    const list = await request(app).get("/api/runs").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    await resetPersistenceCaches();
+
+    const restartedApp = createTestApp();
+    const list = await request(restartedApp).get("/api/runs").set(authHeader);
     expect(list.status).toBe(200);
     expect(ListAnalysisRunsResponseSchema.safeParse(list.body).success).toBe(true);
     expect(list.body.runs).toHaveLength(2);
 
-    const reopened = await request(app).get(`/api/runs/${baseline.body.run.id}`).set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    const reopened = await request(restartedApp)
+      .get(`/api/runs/${baseline.body.run.id}`)
+      .set(authHeader);
     expect(reopened.status).toBe(200);
     expect(GetAnalysisRunResponseSchema.safeParse(reopened.body).success).toBe(
       true
     );
     expect(reopened.body.run.label).toBe("Baseline");
 
-    const comparison = await request(app)
+    const comparison = await request(restartedApp)
       .post("/api/runs/compare")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .set(authHeader)
       .send({
         baseRunId: baseline.body.run.id,
         targetRunId: target.body.run.id
       });
 
     expect(comparison.status).toBe(200);
-    expect(CompareAnalysisRunsResponseSchema.safeParse(comparison.body).success).toBe(
-      true
-    );
+    expect(
+      CompareAnalysisRunsResponseSchema.safeParse(comparison.body).success
+    ).toBe(true);
     expect(comparison.body.findings.newFindingIds).toEqual(["finding:new"]);
-    expect(comparison.body.findings.resolvedFindingIds).toEqual(["finding:old"]);
+    expect(comparison.body.findings.resolvedFindingIds).toEqual([
+      "finding:old"
+    ]);
   });
 
   it("returns 404 when reopening a missing run", async () => {
-    const app = await createTestApp();
-    const response = await request(app).get("/api/runs/missing-run").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    const app = createTestApp();
+    const response = await request(app).get("/api/runs/missing-run").set(authHeader);
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({

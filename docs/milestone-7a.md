@@ -80,6 +80,7 @@ Legacy import rules:
 - saved runs import idempotently by run id
 - only legacy `planned` plan files are imported
 - legacy `executing`, `completed`, and `failed` plans are skipped because 7A cannot reconstruct trustworthy execution history from them
+- import output reports skipped plan reasons explicitly, including non-`planned` legacy status buckets
 
 ## Validation
 
@@ -88,6 +89,8 @@ Current validation layers:
 - shared-type coverage for additive run and execution read models
 - persistence unit tests for lifecycle and legacy import behavior
 - API route tests for plan creation, execution, plan detail reads, audit event reads, and duplicate execution rejection
-- optional real-Postgres repository tests gated by `TEST_DATABASE_URL`
+- real-Postgres repository tests gated by `TEST_DATABASE_URL` covering run durability, execution lifecycle, action ordering, and claim contention
+- real-Postgres API tests gated by `TEST_DATABASE_URL` covering the default `/api/runs*` path and restart durability
+- DB-backed smoke coverage for `db:migrate` first-run and rerun behavior plus `db:import-legacy`
 
 Milestone 7B builds queue-backed orchestration and scheduled planning on top of this durable foundation.

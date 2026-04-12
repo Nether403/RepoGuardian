@@ -1,11 +1,19 @@
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  AnalysisRunRepository,
+  ExecutionPlanRepository,
+  PostgresClient
+} from "@repo-guardian/persistence";
 import type { SavedAnalysisRun } from "@repo-guardian/shared-types";
-import { importLegacyFileStores } from "../legacy-import.js";
+import { createIsolatedTestDatabase } from "../../../../lib/persistence/src/__tests__/postgres-test-database.js";
 
+const describeIf = process.env.TEST_DATABASE_URL ? describe : describe.skip;
 const tempDirs: string[] = [];
+
+type ResetPersistenceCaches = () => Promise<void>;
 
 function createRun(runId: string): SavedAnalysisRun {
   return {
@@ -106,19 +114,100 @@ function createRun(runId: string): SavedAnalysisRun {
   };
 }
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) =>
-      rm(dir, {
-        force: true,
-        recursive: true
-      })
-    )
-  );
-});
+describeIf("database scripts", () => {
+  let client: PostgresClient;
+  let runRepository: AnalysisRunRepository;
+  let planRepository: ExecutionPlanRepository;
+  let connectionString: string;
+  let disposeDatabase: () => Promise<void>;
 
-describe("importLegacyFileStores", () => {
-  it("imports runs idempotently and skips non-planned legacy plans", async () => {
+  beforeAll(async () => {
+    const isolatedDatabase = await createIsolatedTestDatabase("repo_guardian_api_scripts");
+    connectionString = isolatedDatabase.connectionString;
+    disposeDatabase = isolatedDatabase.dispose;
+    client = new PostgresClient({ connectionString });
+    runRepository = new AnalysisRunRepository(client);
+    planRepository = new ExecutionPlanRepository(client);
+  });
+
+  afterEach(async () => {
+    await Promise.all(
+      tempDirs.splice(0).map((dir) =>
+        rm(dir, {
+          force: true,
+          recursive: true
+        })
+      )
+    );
+  });
+
+  afterAll(async () => {
+    vi.resetModules();
+    const { resetPersistenceCaches } = await import("../lib/persistence.js");
+    await resetPersistenceCaches();
+    await client.close();
+    await disposeDatabase();
+  });
+
+  async function loadScriptModules(input?: {
+    plansRootDir?: string;
+    runsRootDir?: string;
+  }): Promise<{
+    resetPersistenceCaches: ResetPersistenceCaches;
+    runDatabaseMigrations: () => Promise<string[]>;
+    runLegacyImport: () => Promise<unknown>;
+  }> {
+    process.env.NODE_ENV = "test";
+    process.env.API_SECRET_KEY = "dev-secret-key-do-not-use-in-production";
+    process.env.DATABASE_URL = connectionString;
+
+    if (input?.runsRootDir) {
+      process.env.REPO_GUARDIAN_RUN_STORE_DIR = input.runsRootDir;
+    } else {
+      delete process.env.REPO_GUARDIAN_RUN_STORE_DIR;
+    }
+
+    if (input?.plansRootDir) {
+      process.env.REPO_GUARDIAN_PLAN_STORE_DIR = input.plansRootDir;
+    } else {
+      delete process.env.REPO_GUARDIAN_PLAN_STORE_DIR;
+    }
+
+    vi.resetModules();
+
+    const [{ runDatabaseMigrations }, { runLegacyImport }, { resetPersistenceCaches }] =
+      await Promise.all([
+        import("../scripts/db-migrate.ts"),
+        import("../scripts/db-import-legacy.ts"),
+        import("../lib/persistence.js")
+      ]);
+
+    return {
+      resetPersistenceCaches,
+      runDatabaseMigrations,
+      runLegacyImport
+    };
+  }
+
+  it("runs migrations on an empty database and reruns idempotently", async () => {
+    const { resetPersistenceCaches, runDatabaseMigrations } =
+      await loadScriptModules();
+
+    const first = await runDatabaseMigrations();
+    expect(first).toEqual([
+      "0001_execution_backbone.sql",
+      "0002_execution_plan_action_order_unique.sql"
+    ]);
+
+    await resetPersistenceCaches();
+
+    const second = await runDatabaseMigrations();
+    expect(second).toEqual([]);
+
+    await resetPersistenceCaches();
+  });
+
+  it("imports legacy JSON into Postgres and reports skipped non-planned plans honestly", async () => {
     const runsRootDir = await mkdtemp(join(tmpdir(), "repo-guardian-runs-"));
     const plansRootDir = await mkdtemp(join(tmpdir(), "repo-guardian-plans-"));
     tempDirs.push(runsRootDir, plansRootDir);
@@ -194,64 +283,16 @@ describe("importLegacyFileStores", () => {
       "utf8"
     );
 
-    const importedRuns = new Map<string, SavedAnalysisRun>();
-    const importedPlans = new Set<string>();
-    const runRepository = {
-      async getRun(runId: string) {
-        const existing = importedRuns.get(runId);
+    const { resetPersistenceCaches, runDatabaseMigrations, runLegacyImport } =
+      await loadScriptModules({
+        plansRootDir,
+        runsRootDir
+      });
 
-        if (!existing) {
-          throw new Error("missing");
-        }
+    await runDatabaseMigrations();
+    const report = await runLegacyImport();
 
-        return {
-          run: existing,
-          summary: {
-            blockedPatchPlans: 0,
-            createdAt: existing.createdAt,
-            defaultBranch: existing.analysis.repository.defaultBranch,
-            executablePatchPlans: 0,
-            fetchedAt: existing.analysis.fetchedAt,
-            highSeverityFindings: 0,
-            id: existing.id,
-            issueCandidates: 0,
-            label: existing.label,
-            prCandidates: 0,
-            repositoryFullName: existing.analysis.repository.fullName,
-            totalFindings: 0
-          }
-        };
-      },
-      async upsertRun(input: SavedAnalysisRun) {
-        importedRuns.set(input.id, input);
-      }
-    };
-    const planRepository = {
-      async upsertLegacyPlan(input: { planId: string }) {
-        if (importedPlans.has(input.planId)) {
-          return false;
-        }
-
-        importedPlans.add(input.planId);
-        return true;
-      }
-    };
-
-    const first = await importLegacyFileStores({
-      planRepository: planRepository as never,
-      plansRootDir,
-      runRepository: runRepository as never,
-      runsRootDir
-    });
-    const second = await importLegacyFileStores({
-      planRepository: planRepository as never,
-      plansRootDir,
-      runRepository: runRepository as never,
-      runsRootDir
-    });
-
-    expect(await readdir(runsRootDir)).toHaveLength(1);
-    expect(first).toEqual({
+    expect(report).toEqual({
       planSkipReasons: {
         alreadyImported: 0,
         missingAnalysisRun: 0,
@@ -269,23 +310,14 @@ describe("importLegacyFileStores", () => {
       runsImported: 1,
       runsSkipped: 0
     });
-    expect(second).toEqual({
-      planSkipReasons: {
-        alreadyImported: 1,
-        missingAnalysisRun: 0,
-        nonPlannedStatus: {
-          completed: 1,
-          executing: 0,
-          failed: 0
-        }
-      },
-      plansImported: 0,
-      plansSkipped: 2,
-      runSkipReasons: {
-        alreadyImported: 1
-      },
-      runsImported: 0,
-      runsSkipped: 1
-    });
+
+    const storedRun = await runRepository.getRun(run.id);
+    const storedPlan = await planRepository.getPlanDetail("plan_legacy");
+
+    expect(storedRun.run.id).toBe(run.id);
+    expect(storedPlan.planId).toBe("plan_legacy");
+    expect(storedPlan.status).toBe("planned");
+
+    await resetPersistenceCaches();
   });
 });
