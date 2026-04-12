@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type {
   ExecutionActionPlan,
   ExecutionPlanningContext,
-  ExecutionRequest,
   ExecutionResult,
   IssueCandidate,
   PRCandidate,
@@ -21,7 +20,7 @@ import { createExecutionSummary, uniqueSorted } from "./utils.js";
 export type ExecutionPlanInput = {
   analysis: ExecutionPlanningContext;
   approvalGranted: boolean;
-  mode: ExecutionRequest["mode"];
+  mode: "dry_run" | "execute_approved";
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
 };
@@ -139,7 +138,7 @@ function buildExecutionWarnings(actions: ExecutionActionPlan[]): string[] {
 function buildExecutionErrors(input: {
   actions: ExecutionActionPlan[];
   approvalGranted: boolean;
-  mode: ExecutionRequest["mode"];
+  mode: "dry_run" | "execute_approved";
 }): string[] {
   const errors = uniqueSorted(
     input.actions
@@ -160,7 +159,7 @@ function buildExecutionErrors(input: {
 function determineStatus(input: {
   actions: ExecutionActionPlan[];
   approvalGranted: boolean;
-  mode: ExecutionRequest["mode"];
+  mode: "dry_run" | "execute_approved";
   summary: ExecutionResult["summary"];
 }): ExecutionResult["status"] {
   if (input.mode === "dry_run") {
@@ -367,7 +366,7 @@ async function executePRActions(input: {
   }
 }
 
-async function executeApprovedActions(
+export async function executeApprovedActions(
   input: ExecutionPlanInput,
   actions: ExecutionActionPlan[],
   dependencies: ExecutionServiceDependencies

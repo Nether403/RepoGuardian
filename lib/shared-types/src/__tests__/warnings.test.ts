@@ -49,6 +49,34 @@ describe("analysis warning schemas", () => {
     expect(warnings).toHaveLength(1);
     expect(hasCoverageWarnings(warnings)).toBe(true);
   });
+
+  it("preserves distinct warning messages from the same file and stage", () => {
+    const warnings = dedupeAnalysisWarnings([
+      createAnalysisWarning({
+        code: "FILE_PARSE_FAILED",
+        message: "Skipped unsupported Gradle dependency declaration on line 12 in build.gradle.",
+        paths: ["build.gradle"],
+        source: "build.gradle",
+        stage: "dependency-parse"
+      }),
+      createAnalysisWarning({
+        code: "FILE_PARSE_FAILED",
+        message:
+          'Parsed Gradle dependency org.projectlombok:lombok with unresolved version placeholder "lombokVersion".',
+        paths: ["build.gradle"],
+        source: "build.gradle",
+        stage: "dependency-parse"
+      })
+    ]);
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings.map((warning) => warning.message)).toEqual(
+      expect.arrayContaining([
+        "Skipped unsupported Gradle dependency declaration on line 12 in build.gradle.",
+        'Parsed Gradle dependency org.projectlombok:lombok with unresolved version placeholder "lombokVersion".'
+      ])
+    );
+  });
 });
 
 describe("AnalyzeRepoResponseSchema", () => {

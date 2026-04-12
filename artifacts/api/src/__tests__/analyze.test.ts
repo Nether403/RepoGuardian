@@ -178,7 +178,7 @@ describe("POST /api/analyze", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -856,7 +856,7 @@ describe("POST /api/analyze", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -943,7 +943,7 @@ describe("POST /api/analyze", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "github.com/openai/openai-node" });
 
     expect(response.status).toBe(200);
@@ -1126,7 +1126,7 @@ describe("POST /api/analyze", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "openai/repo-guardian-sample" });
 
     expect(response.status).toBe(200);
@@ -1201,9 +1201,195 @@ describe("POST /api/analyze", () => {
     expect(fetchMock).toHaveBeenCalledTimes(17);
   });
 
+  it("hardens Gradle, Maven, and Bundler parsing in mixed-ecosystem analysis responses", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          default_branch: "main",
+          description: "Parser hardening repository",
+          forks_count: 1,
+          full_name: "openai/repo-guardian-hardening-sample",
+          html_url: "https://github.com/openai/repo-guardian-hardening-sample",
+          language: "Kotlin",
+          name: "repo-guardian-hardening-sample",
+          owner: {
+            login: "openai"
+          },
+          stargazers_count: 4
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          object: {
+            sha: "commit-sha",
+            type: "commit"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: {
+            sha: "tree-sha"
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          tree: [
+            { path: "Gemfile", type: "blob" },
+            { path: "Gemfile.lock", type: "blob" },
+            { path: "build.gradle", type: "blob" },
+            { path: "gradle.lockfile", type: "blob" },
+            { path: "pom.xml", type: "blob" }
+          ],
+          truncated: false
+        })
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "dependencies {",
+            "  implementation(",
+            '    group = "org.springframework",',
+            '    name = "spring-context",',
+            '    version = "6.1.15"',
+            "  )",
+            "  compileOnly(",
+            '    group = "org.projectlombok",',
+            '    name = "lombok",',
+            "    version = lombokVersion",
+            "  )",
+            '  implementation project(":shared")',
+            "}"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            'gem "rails", "~> 7.1.5"',
+            "group :development do",
+            '  source "https://rubygems.org" do',
+            '    gem "rubocop", "~> 1.72"',
+            "  end",
+            "end"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "GEM",
+            "  remote: https://rubygems.org/",
+            "  specs:",
+            "    rails (7.1.5)",
+            "    rubocop (1.72.0)",
+            "",
+            "DEPENDENCIES",
+            "  rails (~> 7.1.5)",
+            "  rubocop (~> 1.72)"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "org.springframework:spring-context:6.1.15=compileClasspath",
+            "org.projectlombok:lombok:1.18.32=compileClasspath"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createTextResponse(
+          [
+            "<project>",
+            "  <properties>",
+            "    <revision>1.2.3</revision>",
+            "  </properties>",
+            "  <version>${revision}</version>",
+            "  <dependencies>",
+            "    <dependency>",
+            "      <groupId>com.example</groupId>",
+            "      <artifactId>repo-guardian-api</artifactId>",
+            "      <version>${project.version}</version>",
+            "    </dependency>",
+            "    <dependency>",
+            "      <groupId>com.example</groupId>",
+            "      <artifactId>unresolved</artifactId>",
+            "      <version>${missing.version}</version>",
+            "    </dependency>",
+            "  </dependencies>",
+            "</project>"
+          ].join("\n")
+        )
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          results: Array.from({ length: 5 }, () => ({
+            vulns: []
+          }))
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({ repoInput: "openai/repo-guardian-hardening-sample" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.dependencySnapshot.dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dependencyType: "peer",
+          name: "org.projectlombok:lombok",
+          sourceFile: "gradle.lockfile",
+          version: "1.18.32"
+        }),
+        expect.objectContaining({
+          dependencyType: "production",
+          name: "com.example:repo-guardian-api",
+          sourceFile: "pom.xml",
+          version: "1.2.3"
+        }),
+        expect.objectContaining({
+          dependencyType: "development",
+          name: "rubocop",
+          sourceFile: "Gemfile.lock",
+          version: "1.72.0"
+        })
+      ])
+    );
+    expect(response.body.dependencySnapshot.parseWarningDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining('project(":shared")')
+        }),
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining("lombokVersion")
+        }),
+        expect.objectContaining({
+          code: "FILE_PARSE_FAILED",
+          message: expect.stringContaining("missing.version")
+        })
+      ])
+    );
+    expect(response.body.dependencyFindings).toEqual([]);
+    expect(response.body.warnings).toEqual(
+      expect.arrayContaining([
+        "Targeted review did not inspect any files from the 5-file repository snapshot; full-repo review was not performed."
+      ])
+    );
+    expect(AnalyzeRepoResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+  });
+
   it("returns 400 for invalid repo input", async () => {
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "not a repo" });
 
     expect(response.status).toBe(400);
@@ -1229,7 +1415,7 @@ describe("POST /api/analyze", () => {
     );
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "openai/missing-repo" });
 
     expect(response.status).toBe(404);
@@ -1260,7 +1446,7 @@ describe("POST /api/analyze", () => {
     );
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(429);
@@ -1282,7 +1468,7 @@ describe("POST /api/analyze", () => {
     );
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(502);
@@ -1349,7 +1535,7 @@ describe("POST /api/analyze", () => {
     );
 
     const response = await request(app)
-      .post("/api/analyze")
+      .post("/api/analyze").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({ repoInput: "openai/openai-node" });
 
     expect(response.status).toBe(200);

@@ -7,6 +7,7 @@ import {
   analyzeRepository as requestAnalyzeRepository,
   RepoGuardianApiError
 } from "@repo-guardian/api-client";
+import { getApiOptions } from "./api-options";
 
 export class AnalyzeRepoClientError extends Error {
   readonly details: unknown;
@@ -33,7 +34,7 @@ export async function analyzeRepository(repoInput: string): Promise<AnalyzeRepoR
 
   try {
     return AnalyzeRepoResponseSchema.parse(
-      await requestAnalyzeRepository(requestBody)
+      await requestAnalyzeRepository(requestBody, getApiOptions())
     );
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {

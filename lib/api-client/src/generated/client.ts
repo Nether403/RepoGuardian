@@ -4,7 +4,9 @@ import type {
   AnalyzeRepoResponse,
   CompareAnalysisRunsRequest,
   CompareAnalysisRunsResponse,
-  ExecutionRequest,
+  ExecutionExecuteRequest,
+  ExecutionPlanRequest,
+  ExecutionPlanResponse,
   ExecutionResult,
   GetAnalysisRunResponse,
   ListAnalysisRunsResponse,
@@ -104,8 +106,17 @@ export async function analyzeRepository(requestBody: AnalyzeRepoRequest, options
   });
 }
 
-export async function createExecutionPlan(requestBody: ExecutionRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionResult> {
+export async function executeExecutionPlan(requestBody: ExecutionExecuteRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionResult> {
   return requestJson<ExecutionResult>({
+    method: "POST",
+    path: `/api/execution/execute`,
+    body: requestBody,
+    options
+  });
+}
+
+export async function createExecutionPlan(requestBody: ExecutionPlanRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionPlanResponse> {
+  return requestJson<ExecutionPlanResponse>({
     method: "POST",
     path: `/api/execution/plan`,
     body: requestBody,

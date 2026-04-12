@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Repo Guardian API
   version: 0.1.0
-  description: Canonical post-5B alpha contract for supervised repository analysis, approval-gated execution planning, and local saved analysis runs. The public route surface is `/api/analyze`, `/api/execution/plan`, and `/api/runs*`, and `AnalyzeRepoResponse` remains backward-compatible while dependency coverage expands.
+  description: Canonical post-6F alpha contract for supervised repository analysis, security-hardened two-phase execution planning, and local saved analysis runs. The public route surface is `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
 servers:
   - url: /
 paths:
@@ -36,15 +36,38 @@ paths:
   /api/execution/plan:
     post:
       operationId: createExecutionPlan
-      summary: Preview or execute an approval-gated execution plan
-      x-repo-guardian-request-type: ExecutionRequest
+      summary: Request an approval-gated execution plan with a short-lived token
+      x-repo-guardian-request-type: ExecutionPlanRequest
+      x-repo-guardian-response-type: ExecutionPlanResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionPlanRequest"
+      responses:
+        "200":
+          description: Planned execution actions with approval token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionPlanResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/execution/execute:
+    post:
+      operationId: executeExecutionPlan
+      summary: Execute a planned set of actions by presenting a valid approval token
+      x-repo-guardian-request-type: ExecutionExecuteRequest
       x-repo-guardian-response-type: ExecutionResult
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExecutionRequest"
+              $ref: "#/components/schemas/ExecutionExecuteRequest"
       responses:
         "200":
           description: Structured execution result.
@@ -53,6 +76,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExecutionResult"
         "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
           $ref: "#/components/responses/ErrorResponse"
   /api/runs:
     get:
@@ -163,10 +188,18 @@ components:
       type: object
       description: Runtime schema is owned by AnalyzeRepoResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: AnalyzeRepoResponseSchema
-    ExecutionRequest:
+    ExecutionPlanRequest:
       type: object
-      description: Runtime schema is owned by ExecutionRequestSchema in @repo-guardian/shared-types.
-      x-repo-guardian-zod-schema: ExecutionRequestSchema
+      description: Runtime schema is owned by ExecutionPlanRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionPlanRequestSchema
+    ExecutionPlanResponse:
+      type: object
+      description: Runtime schema is owned by ExecutionPlanResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionPlanResponseSchema
+    ExecutionExecuteRequest:
+      type: object
+      description: Runtime schema is owned by ExecutionExecuteRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionExecuteRequestSchema
     ExecutionResult:
       type: object
       description: Runtime schema is owned by ExecutionResultSchema in @repo-guardian/shared-types.

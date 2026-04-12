@@ -2,40 +2,21 @@
 
 ## Current status
 
-Repo Guardian is currently a post-`5B` alpha. The implemented contract is centered on:
+Repo Guardian is currently a post-`6F` alpha. The implemented contract is centered on a security-hardened, two-phase execution model:
 
 - `POST /api/analyze`
-- `POST /api/execution/plan`
+- `POST /api/execution/plan` (Planning)
+- `POST /api/execution/execute` (Execution)
 - `GET /api/runs`
 - `POST /api/runs`
 - `GET /api/runs/{runId}`
 - `POST /api/runs/compare`
 
-GitHub write-back remains approval-gated and intentionally narrow: selected Issue creation, bounded workflow-hardening PR execution, and bounded root npm dependency-upgrade PR execution.
+All routes require `Authorization: Bearer <API_SECRET_KEY>`.
 
-## Active milestone: 6A
+## Active milestone: Post-6F Stabilization
 
-`Milestone 6A` is V1 contract alignment first:
-
-- align docs and OpenAPI with the implemented route surface
-- expand dependency-analysis coverage across supported ecosystems
-- preserve `AnalyzeRepoResponse` compatibility
-- add mixed-ecosystem regression coverage
-
-See `docs/milestone-6a.md` for the active milestone guardrails.
-
-## Next milestone: 6B
-
-`Milestone 6B` is parser hardening:
-
-- harden Gradle DSL coverage before any broader write-back work
-- improve Maven property and version resolution without fabricating findings
-- tighten Bundler declaration handling and keep heuristic cases explicit warnings
-
-## Follow-on milestone: 6C
-
-`Milestone 6C` is bounded write-back expansion:
-
-- add new deterministic write-back slices only after contract alignment, coverage expansion, and parser hardening are complete
-- keep approval-gated execution and explicit write guardrails
-- avoid autonomous maintenance, background jobs, or broad patch synthesis
+- maintain stability of the established two-phase contract
+- ensure high fidelity of deterministic patch generation across all supported ecosystems
+- improve error handling and traceability in the Guardian Graph
+- prepare for V1 release candidate

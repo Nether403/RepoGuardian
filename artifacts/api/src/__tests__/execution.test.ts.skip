@@ -1,23 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import express from "express";
 import request from "supertest";
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ExecutionResultSchema,
-  ExecutionPlanResponseSchema,
-  type AnalyzeRepoResponse,
   type CodeReviewFinding,
   type DependencyFinding,
+  type ExecutionPlanningContext,
   type IssueCandidate,
   type PRCandidate,
   type PRPatchPlan
 } from "@repo-guardian/shared-types";
-import { FileAnalysisRunStore } from "@repo-guardian/runs";
-import { FilePlanStore } from "../lib/plan-store.js";
 import { createExecutionRouter } from "../routes/execution.js";
-import fsPromises from "node:fs/promises";
 
 function createIssueCandidate(
   overrides: Partial<IssueCandidate> = {}
@@ -301,40 +294,9 @@ function createDependencyPRPatchPlan(
 }
 
 function createAnalysisContext(
-  overrides: Partial<AnalyzeRepoResponse> = {}
-): AnalyzeRepoResponse {
+  overrides: Partial<ExecutionPlanningContext> = {}
+): ExecutionPlanningContext {
   return {
-    codeReviewFindingSummary: {
-      findingsBySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      isPartial: false, reviewedFileCount: 0, totalFindings: 0
-    },
-    dependencyFindingSummary: {
-      findingsBySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      isPartial: false, totalFindings: 0, vulnerableDirectCount: 0, vulnerableTransitiveCount: 0
-    },
-    dependencySnapshot: {
-      dependencies: [], filesParsed: [], filesSkipped: [], isPartial: false, parseWarningDetails: [], parseWarnings: [],
-      summary: { byEcosystem: [], directDependencies: 0, parsedFileCount: 0, skippedFileCount: 0, totalDependencies: 0, transitiveDependencies: 0 }
-    },
-    detectedFiles: { lockfiles: [], manifests: [], signals: [] },
-    ecosystems: [],
-    fetchedAt: "2026-04-08T00:00:00.000Z",
-    isPartial: false,
-    issueCandidateSummary: {
-      bySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      byType: [], totalCandidates: 0
-    },
-    prCandidateSummary: {
-      byReadiness: [], byRiskLevel: [], byType: [], totalCandidates: 0
-    },
-    prPatchPlanSummary: { byPatchability: [], byValidationStatus: [], totalPatchCandidates: 0, totalPlans: 0 },
-    reviewCoverage: {
-      candidateFileCount: 0, isPartial: false, reviewedFileCount: 0, selectedFileCount: 0,
-      selectedPaths: [], skippedFileCount: 0, skippedPaths: [], strategy: "targeted"
-    },
-    treeSummary: { samplePaths: [], totalDirectories: 0, totalFiles: 0, truncated: false },
-    warningDetails: [],
-    warnings: [],
     codeReviewFindings: [createWorkflowFinding()],
     dependencyFindings: [],
     issueCandidates: [createIssueCandidate()],
@@ -357,40 +319,9 @@ function createAnalysisContext(
 }
 
 function createDependencyAnalysisContext(
-  overrides: Partial<AnalyzeRepoResponse> = {}
-): AnalyzeRepoResponse {
+  overrides: Partial<ExecutionPlanningContext> = {}
+): ExecutionPlanningContext {
   return {
-    codeReviewFindingSummary: {
-      findingsBySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      isPartial: false, reviewedFileCount: 0, totalFindings: 0
-    },
-    dependencyFindingSummary: {
-      findingsBySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      isPartial: false, totalFindings: 0, vulnerableDirectCount: 0, vulnerableTransitiveCount: 0
-    },
-    dependencySnapshot: {
-      dependencies: [], filesParsed: [], filesSkipped: [], isPartial: false, parseWarningDetails: [], parseWarnings: [],
-      summary: { byEcosystem: [], directDependencies: 0, parsedFileCount: 0, skippedFileCount: 0, totalDependencies: 0, transitiveDependencies: 0 }
-    },
-    detectedFiles: { lockfiles: [], manifests: [], signals: [] },
-    ecosystems: [],
-    fetchedAt: "2026-04-08T00:00:00.000Z",
-    isPartial: false,
-    issueCandidateSummary: {
-      bySeverity: { critical: 0, high: 0, info: 0, low: 0, medium: 0 },
-      byType: [], totalCandidates: 0
-    },
-    prCandidateSummary: {
-      byReadiness: [], byRiskLevel: [], byType: [], totalCandidates: 0
-    },
-    prPatchPlanSummary: { byPatchability: [], byValidationStatus: [], totalPatchCandidates: 0, totalPlans: 0 },
-    reviewCoverage: {
-      candidateFileCount: 0, isPartial: false, reviewedFileCount: 0, selectedFileCount: 0,
-      selectedPaths: [], skippedFileCount: 0, skippedPaths: [], strategy: "targeted"
-    },
-    treeSummary: { samplePaths: [], totalDirectories: 0, totalFiles: 0, truncated: false },
-    warningDetails: [],
-    warnings: [],
     codeReviewFindings: [],
     dependencyFindings: [createDependencyFinding()],
     issueCandidates: [createDependencyIssueCandidate()],
@@ -464,81 +395,13 @@ function createPackageLockContent(lockfileVersion = 3): string {
   )}\n`;
 }
 
-const tempDirs: string[] = [];
-
-beforeEach(async () => {
-  const p1 = await mkdtemp(join(tmpdir(), "plan-store-"));
-  const p2 = await mkdtemp(join(tmpdir(), "run-store-"));
-  process.env.REPO_GUARDIAN_PLAN_STORE_DIR = p1;
-  process.env.REPO_GUARDIAN_RUN_STORE_DIR = p2;
-  tempDirs.push(p1, p2);
-});
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((d) => rm(d, { force: true, recursive: true }))
-  );
-  delete process.env.REPO_GUARDIAN_PLAN_STORE_DIR;
-  delete process.env.REPO_GUARDIAN_RUN_STORE_DIR;
-});
-
 function createTestApp(dependencies: Parameters<typeof createExecutionRouter>[0]) {
   const app = express();
+
   app.use(express.json());
-
-  const planStore = new FilePlanStore({
-    rootDir: process.env.REPO_GUARDIAN_PLAN_STORE_DIR!
-  });
-  const runStore = new FileAnalysisRunStore({
-    rootDir: process.env.REPO_GUARDIAN_RUN_STORE_DIR!
-  });
-
-  app.use("/api", createExecutionRouter(dependencies, { planStore, runStore }));
+  app.use("/api", createExecutionRouter(dependencies));
 
   return app;
-}
-
-async function runTwoPhaseExecution(
-  app: express.Express,
-  analysisData: AnalyzeRepoResponse,
-  selectedIssues: string[],
-  selectedPRs: string[]
-) {
-  const runId = "test_run_" + Date.now() + Math.floor(Math.random() * 1000);
-  const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-  const fakeRun = {
-    id: runId,
-    createdAt: new Date().toISOString(),
-    label: "Test",
-    analysis: analysisData
-  };
-  await fsPromises.writeFile(runPath, JSON.stringify(fakeRun));
-
-  const planRes = await request(app)
-    .post("/api/execution/plan")
-    .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-    .send({
-      analysisRunId: runId,
-      selectedIssueCandidateIds: selectedIssues,
-      selectedPRCandidateIds: selectedPRs
-    });
-
-  if (planRes.status !== 200) {
-    return planRes;
-  }
-
-  const execRes = await request(app)
-    .post("/api/execution/execute")
-    .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-    .send({
-      planId: planRes.body.planId,
-      planHash: planRes.body.planHash,
-      approvalToken: planRes.body.approvalToken,
-      confirm: true,
-      confirmationText: "I approve this GitHub write-back plan."
-    });
-
-  return execRes;
 }
 
 describe("POST /api/execution/plan", () => {
@@ -557,39 +420,27 @@ describe("POST /api/execution/plan", () => {
       writeClient
     });
 
-    const runId = "test_run_" + Date.now();
-    const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-    await fsPromises.writeFile(runPath, JSON.stringify({
-      id: runId,
-      createdAt: new Date().toISOString(),
-      label: "Test",
-      analysis: createAnalysisContext()
-    }));
-
-    const response = await request(app)
-      .post("/api/execution/plan")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-      .send({
-        analysisRunId: runId,
-        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
-        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
-      });
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: false,
+      mode: "dry_run",
+      selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
-      planId: expect.stringMatching(/^plan_/),
-      planHash: expect.stringMatching(/^sha256:/),
-      approvalToken: expect.any(String),
-      summary: expect.objectContaining({
-        totalSelections: 2
-      })
+      approvalRequired: true,
+      approvalStatus: "required",
+      mode: "dry_run",
+      status: "planned"
     });
     expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
     expect(writeClient.commitFileChanges).not.toHaveBeenCalled();
     expect(writeClient.openPullRequest).not.toHaveBeenCalled();
-    expect(ExecutionPlanResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
   });
 
   it("executes an approved issue creation request", async () => {
@@ -608,12 +459,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createAnalysisContext(),
-      ["issue:workflow-hardening:.github/workflows/ci.yml"],
-      []
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+      selectedPRCandidateIds: []
+    });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -663,12 +515,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createAnalysisContext(),
-      [],
-      ["pr:workflow-hardening:.github/workflows/ci.yml"]
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("completed");
@@ -735,12 +588,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createAnalysisContext(),
-      [],
-      ["pr:workflow-hardening:.github/workflows/ci.yml"]
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("completed");
@@ -810,12 +664,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createAnalysisContext(),
-      [],
-      ["pr:workflow-hardening:.github/workflows/ci.yml"]
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("completed");
@@ -877,12 +732,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createDependencyAnalysisContext(),
-      [],
-      ["pr:dependency-upgrade:react"]
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createDependencyAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("completed");
@@ -933,12 +789,13 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await runTwoPhaseExecution(
-      app,
-      createDependencyAnalysisContext(),
-      [],
-      ["pr:dependency-upgrade:react"]
-    );
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createDependencyAnalysisContext(),
+      approvalGranted: true,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:dependency-upgrade:react"]
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("completed");
@@ -977,34 +834,25 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const runId = "test_run_" + Date.now();
-    const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-    await fsPromises.writeFile(runPath, JSON.stringify({
-      id: runId, createdAt: new Date().toISOString(), label: "Test", analysis: createAnalysisContext()
-    }));
+    const response = await request(app).post("/api/execution/plan").send({
+      analysis: createAnalysisContext(),
+      approvalGranted: false,
+      mode: "execute_approved",
+      selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
 
-    const planRes = await request(app)
-      .post("/api/execution/plan")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-      .send({
-        analysisRunId: runId,
-        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
-        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
-      });
-
-    const response = await request(app)
-      .post("/api/execution/execute")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-      .send({
-        planId: planRes.body.planId,
-        planHash: planRes.body.planHash,
-        approvalToken: planRes.body.approvalToken,
-        confirm: false, // Explicitly false
-        confirmationText: "I approve this GitHub write-back plan."
-      });
-
-    expect(response.status).toBe(400); // Zod validation fails for confirm: false
-    expect(response.body.error).toMatch(/Invalid literal value|Required/);
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      approvalRequired: true,
+      approvalStatus: "denied",
+      mode: "execute_approved",
+      status: "blocked"
+    });
+    expect(response.body.errors).toContain(
+      "Execution is blocked because approvalGranted was not explicitly set to true."
+    );
+    expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
   });
 
   it("returns 400 for an invalid execution request", async () => {
@@ -1020,16 +868,15 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await request(app)
-      .post("/api/execution/plan")
-      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
-      .send({
-        analysisRunId: "", // Missing or invalid
-        selectedIssueCandidateIds: [],
-        selectedPRCandidateIds: []
-      });
+    const response = await request(app).post("/api/execution/plan").send({
+      mode: "dry_run",
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: []
+    });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBeDefined();
+    expect(response.body).toEqual({
+      error: "Required"
+    });
   });
 });

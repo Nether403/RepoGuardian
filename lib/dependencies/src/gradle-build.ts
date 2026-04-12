@@ -28,6 +28,17 @@ const gradleConfigurations = new Set([
   "testRuntimeOnly"
 ]);
 
+type ParsedCoordinate = {
+  name: string;
+  version: string | null;
+};
+
+type GradleDependencyStatement = {
+  configuration: string;
+  lineNumber: number;
+  text: string;
+};
+
 function getGradleDependencyType(configuration: string): DependencyType {
   if (configuration.startsWith("test") || configuration === "developmentOnly") {
     return "development";
@@ -40,9 +51,7 @@ function getGradleDependencyType(configuration: string): DependencyType {
   return "production";
 }
 
-function parseCoordinateNotation(
-  notation: string
-): { name: string; version: string | null } | null {
+function parseCoordinateNotation(notation: string): ParsedCoordinate | null {
   const match = /^([^:\s]+:[^:\s]+)(?::([^:\s][^\s]*))?$/u.exec(notation.trim());
 
   if (!match?.[1]) {
@@ -55,22 +64,56 @@ function parseCoordinateNotation(
   };
 }
 
-function isSkippableGradleReference(line: string): boolean {
-  return /(?:project|fileTree|files|gradleApi|localGroovy)\s*\(/u.test(line) ||
-    /libs\./u.test(line);
+function stripGradleLineComment(line: string): string {
+  return line.replace(/\/\/.*$/u, "");
 }
 
-export function parseGradleBuildFile(
-  file: DetectedManifest,
-  content: string
-): ParserResult {
-  const dependencies: NormalizedDependency[] = [];
-  const warningDetails: AnalysisWarning[] = [];
-  const workspacePath = normalizeWorkspacePath(file.path);
-  const cleanedContent = content.replace(/\/\*[\s\S]*?\*\//gu, "");
+function countOccurrences(text: string, character: string): number {
+  return [...text].filter((value) => value === character).length;
+}
 
-  for (const [lineIndex, rawLine] of cleanedContent.split(/\r?\n/u).entries()) {
-    const line = rawLine.replace(/\/\/.*$/u, "").trim();
+function normalizeGradleStatementText(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+function stripTrailingClosure(text: string): string {
+  const trimmed = text.trim();
+
+  if (!trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  let braceDepth = 0;
+  let closureStart = -1;
+
+  for (let characterIndex = trimmed.length - 1; characterIndex >= 0; characterIndex -= 1) {
+    const character = trimmed[characterIndex];
+
+    if (character === "}") {
+      braceDepth += 1;
+
+      if (closureStart === -1) {
+        closureStart = characterIndex;
+      }
+    } else if (character === "{") {
+      braceDepth -= 1;
+
+      if (braceDepth === 0) {
+        return trimmed.slice(0, characterIndex).trim();
+      }
+    }
+  }
+
+  return trimmed;
+}
+
+function collectGradleDependencyStatements(content: string): GradleDependencyStatement[] {
+  const statements: GradleDependencyStatement[] = [];
+  const cleanedContent = content.replace(/\/\*[\s\S]*?\*\//gu, "");
+  const lines = cleanedContent.split(/\r?\n/u);
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = stripGradleLineComment(lines[lineIndex] ?? "").trim();
 
     if (!line) {
       continue;
@@ -83,64 +126,166 @@ export function parseGradleBuildFile(
       continue;
     }
 
-    if (isSkippableGradleReference(line)) {
-      continue;
-    }
+    const statementLines = [line];
+    let parenthesisDepth =
+      countOccurrences(line, "(") - countOccurrences(line, ")");
+    let braceDepth =
+      countOccurrences(line, "{") - countOccurrences(line, "}");
+    let shouldContinue =
+      parenthesisDepth > 0 || braceDepth > 0 || /,\s*$/u.test(line);
 
-    let parsedCoordinate: { name: string; version: string | null } | null = null;
+    while (shouldContinue && lineIndex + 1 < lines.length) {
+      lineIndex += 1;
+      const continuationLine = stripGradleLineComment(lines[lineIndex] ?? "").trim();
 
-    const stringNotationMatch =
-      /^\w+\s*(?:\(\s*)?(?:platform\(\s*)?["']([^"']+)["']\s*\)?\s*\)?/u.exec(line);
-    if (stringNotationMatch?.[1]) {
-      parsedCoordinate = parseCoordinateNotation(stringNotationMatch[1]);
-    }
-
-    if (!parsedCoordinate) {
-      const groovyMapMatch =
-        /^\w+\s+group:\s*["']([^"']+)["']\s*,\s*name:\s*["']([^"']+)["'](?:\s*,\s*version:\s*["']([^"']+)["'])?/u.exec(
-          line
-        );
-      if (groovyMapMatch?.[1] && groovyMapMatch[2]) {
-        parsedCoordinate = {
-          name: `${groovyMapMatch[1]}:${groovyMapMatch[2]}`,
-          version: groovyMapMatch[3]?.trim() || null
-        };
+      if (!continuationLine) {
+        continue;
       }
+
+      statementLines.push(continuationLine);
+      parenthesisDepth +=
+        countOccurrences(continuationLine, "(") -
+        countOccurrences(continuationLine, ")");
+      braceDepth +=
+        countOccurrences(continuationLine, "{") -
+        countOccurrences(continuationLine, "}");
+      shouldContinue =
+        parenthesisDepth > 0 || braceDepth > 0 || /,\s*$/u.test(continuationLine);
     }
 
-    if (!parsedCoordinate) {
-      const kotlinMapMatch =
-        /^\w+\s*\(\s*group\s*=\s*"([^"]+)"\s*,\s*name\s*=\s*"([^"]+)"(?:\s*,\s*version\s*=\s*"([^"]+)")?/u.exec(
-          line
-        );
-      if (kotlinMapMatch?.[1] && kotlinMapMatch[2]) {
-        parsedCoordinate = {
-          name: `${kotlinMapMatch[1]}:${kotlinMapMatch[2]}`,
-          version: kotlinMapMatch[3]?.trim() || null
-        };
-      }
-    }
+    statements.push({
+      configuration,
+      lineNumber: lineIndex + 1 - (statementLines.length - 1),
+      text: normalizeGradleStatementText(statementLines.join(" "))
+    });
+  }
 
-    if (!parsedCoordinate) {
+  return statements;
+}
+
+function isExplicitlyUnsupportedGradleReference(statement: string): boolean {
+  const withoutClosure = stripTrailingClosure(statement);
+  return /(?:project|fileTree|files|gradleApi|localGroovy)\s*\(/u.test(withoutClosure) ||
+    /(?:^|[^\w])libs\./u.test(withoutClosure);
+}
+
+function extractNamedArgumentValue(
+  statement: string,
+  argumentName: "group" | "name" | "version"
+): string | null {
+  const quotedMatch = new RegExp(
+    `${argumentName}\\s*[:=]\\s*["']([^"']+)["']`,
+    "u"
+  ).exec(statement);
+
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].trim();
+  }
+
+  const unquotedMatch = new RegExp(
+    `${argumentName}\\s*[:=]\\s*([^,\\s)]+)`,
+    "u"
+  ).exec(statement);
+
+  return unquotedMatch?.[1]?.trim() || null;
+}
+
+function parseNamedArgumentCoordinate(statement: string): ParsedCoordinate | null {
+  const group = extractNamedArgumentValue(statement, "group");
+  const name = extractNamedArgumentValue(statement, "name");
+
+  if (!group || !name) {
+    return null;
+  }
+
+  return {
+    name: `${group}:${name}`,
+    version: extractNamedArgumentValue(statement, "version")
+  };
+}
+
+function parseStringNotationCoordinate(statement: string): ParsedCoordinate | null {
+  const withoutClosure = stripTrailingClosure(statement);
+  const stringNotationMatch =
+    /^\w+\s*(?:\(\s*)?(?:platform\(\s*)?["']([^"']+)["']\s*\)?\s*\)?/u.exec(withoutClosure);
+
+  if (!stringNotationMatch?.[1]) {
+    return null;
+  }
+
+  return parseCoordinateNotation(stringNotationMatch[1]);
+}
+
+function parseGradleStatementCoordinate(statement: string): ParsedCoordinate | null {
+  return parseStringNotationCoordinate(statement) ?? parseNamedArgumentCoordinate(statement);
+}
+
+function hasUnresolvedGradleVersionPlaceholder(version: string | null): boolean {
+  return version !== null && (/[$}{()]/u.test(version) || !/\d/u.test(version));
+}
+
+function createUnsupportedGradleWarning(
+  file: DetectedManifest,
+  lineNumber: number,
+  statement: string
+): AnalysisWarning {
+  return createDependencyParseWarning({
+    code: "FILE_PARSE_FAILED",
+    message: `Skipped unsupported Gradle dependency declaration on line ${lineNumber} in ${file.path}: ${statement}.`,
+    path: file.path,
+    source: file.kind
+  });
+}
+
+export function parseGradleBuildFile(
+  file: DetectedManifest,
+  content: string
+): ParserResult {
+  const dependencies: NormalizedDependency[] = [];
+  const warningDetails: AnalysisWarning[] = [];
+  const workspacePath = normalizeWorkspacePath(file.path);
+
+  for (const statement of collectGradleDependencyStatements(content)) {
+    if (isExplicitlyUnsupportedGradleReference(statement.text)) {
       warningDetails.push(
-        createDependencyParseWarning({
-          code: "FILE_PARSE_FAILED",
-          message: `Skipped unsupported Gradle dependency declaration on line ${lineIndex + 1} in ${file.path}.`,
-          path: file.path,
-          source: file.kind
-        })
+        createUnsupportedGradleWarning(file, statement.lineNumber, statement.text)
       );
       continue;
     }
 
+    const parsedCoordinate = parseGradleStatementCoordinate(statement.text);
+
+    if (!parsedCoordinate) {
+      warningDetails.push(
+        createUnsupportedGradleWarning(file, statement.lineNumber, statement.text)
+      );
+      continue;
+    }
+
+    const hasPlaceholderVersion = hasUnresolvedGradleVersionPlaceholder(
+      parsedCoordinate.version
+    );
+
+    if (hasPlaceholderVersion && parsedCoordinate.version) {
+      warningDetails.push(
+        createDependencyParseWarning({
+          code: "FILE_PARSE_FAILED",
+          message: `Parsed Gradle dependency ${parsedCoordinate.name} on line ${statement.lineNumber} in ${file.path} with unresolved version placeholder "${parsedCoordinate.version}".`,
+          path: file.path,
+          source: file.kind
+        })
+      );
+    }
+
     dependencies.push(
       createDependency({
-        dependencyType: getGradleDependencyType(configuration),
+        dependencyType: getGradleDependencyType(statement.configuration),
         ecosystem: "jvm",
         isDirect: true,
         name: parsedCoordinate.name,
         packageManager: "gradle",
-        parseConfidence: parsedCoordinate.version ? "medium" : "low",
+        parseConfidence:
+          parsedCoordinate.version && !hasPlaceholderVersion ? "medium" : "low",
         sourceFile: file.path,
         version: parsedCoordinate.version,
         workspacePath

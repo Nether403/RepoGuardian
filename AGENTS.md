@@ -146,20 +146,17 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6A
+### Active milestone: Post-Milestone 6F / Stabilization
 Allowed:
-- align `SPEC.md`, `README.md`, `AGENTS.md`, and `lib/api-spec/openapi.yaml` with the implemented route surface
-- keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- expand deterministic dependency parsing and advisory coverage for supported ecosystems
-- add mixed-ecosystem API and web regression coverage
-- keep the current approval-gated GitHub write behavior working as-is
+- keep `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*` as the canonical public contract
+- ensure deterministic patch PR generation for already supported ecosystems (including Gradle and Yarn) stays stable
+- maintain the two-phase approval-gated and authenticated GitHub write behavior
 
 Not allowed in this milestone unless explicitly requested:
-- broaden GitHub write-back beyond the existing bounded Issue, workflow-hardening, and root npm dependency-upgrade slices
+- broaden GitHub write-back beyond the existing bounded slices (now including the new 6F targets)
 - add autonomous or background execution
 - add auth, billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason
-- hide unsupported or partial dependency coverage behind guessed findings
 
 If asked for work in an earlier milestone, stay inside that explicitly requested milestone.
 

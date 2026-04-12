@@ -9,6 +9,7 @@ import {
   SaveAnalysisRunRequestSchema
 } from "@repo-guardian/shared-types";
 import { env } from "../lib/env.js";
+import { requireAuth } from "../middleware/auth.js";
 
 type AnalysisRunStore = Pick<
   FileAnalysisRunStore,
@@ -32,6 +33,8 @@ function mapRunStoreStatus(error: unknown): number | null {
 
 export function createRunsRouter(store: AnalysisRunStore): ExpressRouter {
   const runsRouter: ExpressRouter = Router();
+
+  runsRouter.use(requireAuth);
 
   runsRouter.get("/runs", async (_request, response, next) => {
     try {

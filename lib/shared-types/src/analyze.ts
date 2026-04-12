@@ -616,12 +616,23 @@ export const ExecutionPlanningContextSchema = z.object({
   prPatchPlans: z.array(PRPatchPlanSchema)
 });
 
-export const ExecutionRequestSchema = z.object({
-  analysis: ExecutionPlanningContextSchema,
-  approvalGranted: z.boolean().default(false),
-  mode: ExecutionModeSchema,
+export const ExecutionPlanRequestSchema = z.object({
+  analysisRunId: z.string().min(1),
   selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
   selectedPRCandidateIds: z.array(z.string().min(1)).default([])
+});
+
+export const ExecutionExecuteRequestSchema = z.object({
+  planId: z.string().min(1),
+  planHash: z.string().min(1),
+  approvalToken: z.string().min(1),
+  confirm: z.literal(true),
+  confirmationText: z.string().min(1)
+});
+
+export const ApprovalRequirementSchema = z.object({
+  required: z.boolean(),
+  confirmationText: z.string().min(1)
 });
 
 export const ExecutionActionPlanSchema = z.object({
@@ -676,6 +687,17 @@ export const ExecutionResultSchema = z.object({
   warnings: z.array(z.string()),
   errors: z.array(z.string()),
   summary: ExecutionSummarySchema
+});
+
+export const ExecutionPlanResponseSchema = z.object({
+  planId: z.string().min(1),
+  planHash: z.string().min(1),
+  approvalToken: z.string().min(1),
+  expiresAt: z.string().datetime(),
+  repository: RepositoryMetadataSchema.pick({ owner: true, repo: true, defaultBranch: true }),
+  summary: ExecutionSummarySchema,
+  actions: z.array(ExecutionActionPlanSchema),
+  approval: ApprovalRequirementSchema
 });
 
 export const AnalyzeRepoResponseSchema = z.object({
@@ -815,7 +837,8 @@ function createWarningDeduplicationKey(warning: z.infer<typeof AnalysisWarningSc
     warning.code,
     warning.stage,
     sortStrings(warning.paths).join("|"),
-    warning.source ?? ""
+    warning.source ?? "",
+    warning.message
   ].join("::");
 }
 
@@ -995,7 +1018,10 @@ export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
 export type ExecutionPlanningContext = z.infer<
   typeof ExecutionPlanningContextSchema
 >;
-export type ExecutionRequest = z.infer<typeof ExecutionRequestSchema>;
+export type ExecutionPlanRequest = z.infer<typeof ExecutionPlanRequestSchema>;
+export type ExecutionExecuteRequest = z.infer<typeof ExecutionExecuteRequestSchema>;
+export type ApprovalRequirement = z.infer<typeof ApprovalRequirementSchema>;
+export type ExecutionPlanResponse = z.infer<typeof ExecutionPlanResponseSchema>;
 export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
 export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;

@@ -1,31 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  ExecutionRequestSchema,
+  ExecutionPlanRequestSchema,
   ExecutionResultSchema
 } from "../analyze.js";
 
 describe("execution schemas", () => {
-  it("accepts the execution request contract", () => {
-    const result = ExecutionRequestSchema.safeParse({
-      analysis: {
-        issueCandidates: [],
-        prCandidates: [],
-        prPatchPlans: [],
-        repository: {
-          canonicalUrl: "https://github.com/openai/openai-node",
-          defaultBranch: "main",
-          description: null,
-          fullName: "openai/openai-node",
-          forks: 12,
-          htmlUrl: "https://github.com/openai/openai-node",
-          owner: "openai",
-          primaryLanguage: "TypeScript",
-          repo: "openai-node",
-          stars: 42
-        }
-      },
-      mode: "dry_run",
-      approvalGranted: false,
+  it("accepts the execution plan request contract", () => {
+    const result = ExecutionPlanRequestSchema.safeParse({
+      analysisRunId: "run_test_id",
       selectedIssueCandidateIds: [],
       selectedPRCandidateIds: []
     });

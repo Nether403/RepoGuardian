@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import type {
   AnalyzeRepoResponse,
   CompareAnalysisRunsResponse,
-  ExecutionMode,
+  ExecutionPlanResponse,
   ExecutionResult,
   SavedAnalysisRunSummary
 } from "@repo-guardian/shared-types";
@@ -42,8 +42,8 @@ import {
   analyzeRepository
 } from "./lib/api-client";
 import {
-  ExecutionPlanClientError,
-  requestExecutionPlan
+  requestExecutionPlan,
+  requestExecutionExecute
 } from "./lib/execution-client";
 import {
   compareSavedAnalysisRuns,
@@ -64,7 +64,7 @@ function App() {
   const [executionErrorMessage, setExecutionErrorMessage] = useState<string | null>(
     null
   );
-  const [executionMode, setExecutionMode] = useState<ExecutionMode>("dry_run");
+  const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(
     null
   );
@@ -72,7 +72,8 @@ function App() {
   const [baseRunId, setBaseRunId] = useState("");
   const [compareResult, setCompareResult] =
     useState<CompareAnalysisRunsResponse | null>(null);
-  const [isExecutionLoading, setIsExecutionLoading] = useState(false);
+  const [isExecutionPlanLoading, setIsExecutionPlanLoading] = useState(false);
+  const [isExecutionExecuteLoading, setIsExecutionExecuteLoading] = useState(false);
   const [isCompareLoading, setIsCompareLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpeningRun, setIsOpeningRun] = useState(false);
@@ -126,9 +127,10 @@ function App() {
   function resetExecutionState() {
     setApprovalGranted(false);
     setExecutionErrorMessage(null);
-    setExecutionMode("dry_run");
+    setExecutionPlan(null);
     setExecutionResult(null);
-    setIsExecutionLoading(false);
+    setIsExecutionPlanLoading(false);
+    setIsExecutionExecuteLoading(false);
     setSelectedIssueCandidateIds([]);
     setSelectedPRCandidateIds([]);
   }
@@ -266,16 +268,7 @@ function App() {
     setExecutionErrorMessage(null);
   }
 
-  function handleExecutionModeChange(nextMode: ExecutionMode) {
-    setExecutionMode(nextMode);
-    setExecutionErrorMessage(null);
-
-    if (nextMode === "dry_run") {
-      setApprovalGranted(false);
-    }
-  }
-
-  async function handleExecutionSubmit() {
+  async function handleRequestPlan() {
     if (!analysis) {
       return;
     }
@@ -288,35 +281,77 @@ function App() {
       return;
     }
 
-    if (executionMode === "execute_approved" && !approvalGranted) {
+    setExecutionErrorMessage(null);
+    setExecutionPlan(null);
+    setExecutionResult(null);
+    setIsExecutionPlanLoading(true);
+
+    try {
+      // NOTE: We MUST have a saved run ID for execution planning.
+      // If we don't have targetRunId, we will save the run right now automatically.
+      let runIdToUse = targetRunId;
+      if (!runIdToUse) {
+        const response = await saveAnalysisRun({
+          analysis,
+          label: "Auto-saved for Execution Planning"
+        });
+        const nextRuns = [
+          response.summary,
+          ...savedRuns.filter((run) => run.id !== response.summary.id)
+        ];
+        applySavedRuns(nextRuns);
+        setTargetRunId(response.summary.id);
+        runIdToUse = response.summary.id;
+      }
+
+      const plan = await requestExecutionPlan({
+        analysisRunId: runIdToUse,
+        selectedIssueCandidateIds,
+        selectedPRCandidateIds
+      });
+
+      setExecutionPlan(plan);
+      setApprovalGranted(false);
+    } catch (error) {
       setExecutionErrorMessage(
-        "Approved execution requires the explicit GitHub write-back approval checkbox."
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not complete the execution plan request."
       );
+    } finally {
+      setIsExecutionPlanLoading(false);
+    }
+  }
+
+  async function handleRequestExecute() {
+    if (!executionPlan) return;
+
+    if (!approvalGranted) {
+      setExecutionErrorMessage("Explicit approval is required before execution.");
       return;
     }
 
     setExecutionErrorMessage(null);
-    setExecutionResult(null);
-    setIsExecutionLoading(true);
+    setIsExecutionExecuteLoading(true);
 
     try {
-      const result = await requestExecutionPlan({
-        analysis,
-        approvalGranted: executionMode === "execute_approved" && approvalGranted,
-        mode: executionMode,
-        selectedIssueCandidateIds,
-        selectedPRCandidateIds
+      const result = await requestExecutionExecute({
+        planId: executionPlan.planId,
+        planHash: executionPlan.planHash,
+        approvalToken: executionPlan.approvalToken,
+        confirm: true,
+        confirmationText: "I approve this GitHub write-back plan."
       });
 
       setExecutionResult(result);
     } catch (error) {
       setExecutionErrorMessage(
-        error instanceof ExecutionPlanClientError
+        error instanceof Error
           ? error.message
-          : "Repo Guardian could not complete the execution request."
+          : "Repo Guardian could not execute the approved plan."
       );
     } finally {
-      setIsExecutionLoading(false);
+      setIsExecutionExecuteLoading(false);
     }
   }
 
@@ -465,15 +500,36 @@ function App() {
           <ExecutionPlannerPanel
             approvalGranted={approvalGranted}
             executionErrorMessage={executionErrorMessage}
-            isSubmitting={isExecutionLoading}
-            mode={executionMode}
+            executionPlan={executionPlan}
+            isSubmittingPlan={isExecutionPlanLoading}
+            isSubmittingExecute={isExecutionExecuteLoading}
             onApprovalChange={setApprovalGranted}
-            onModeChange={handleExecutionModeChange}
-            onSubmit={handleExecutionSubmit}
+            onRequestPlan={handleRequestPlan}
+            onRequestExecute={handleRequestExecute}
             selectedIssueCount={selectedIssueCandidateIds.length}
             selectedPRCount={selectedPRCandidateIds.length}
           />
-          <ExecutionResultsPanel result={executionResult} />
+          <ExecutionResultsPanel
+            result={
+              executionResult ||
+              (executionPlan
+                ? {
+                    executionId: executionPlan.planId,
+                    mode: "dry_run" as const,
+                    status: "planned" as const,
+                    approvalStatus: "required" as const,
+                    approvalRequired: true,
+                    approvalNotes: ["Dry-run plan generated; approval required for execution."],
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    summary: executionPlan.summary,
+                    actions: executionPlan.actions,
+                    errors: [],
+                    warnings: []
+                  }
+                : null)
+            }
+          />
           <EcosystemPanel analysis={analysis} />
           <WarningsPanel analysis={analysis} />
         </>

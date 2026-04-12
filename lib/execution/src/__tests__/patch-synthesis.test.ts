@@ -530,4 +530,665 @@ describe("explainPRWriteBackEligibility", () => {
       "Workflow trigger-risk findings remain blocked for real write-back because the trigger change is not deterministic enough yet."
     );
   });
+
+  it("marks a deterministic Python requirements.txt candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:requests:1",
+      packageName: "requests",
+      paths: ["requirements.txt"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["requests"],
+      affectedPaths: ["requirements.txt"],
+      id: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["requests"],
+      affectedPaths: ["requirements.txt"],
+      id: "patch-plan:pr:dependency-upgrade:requests",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "requirements.txt",
+            reason: "Update requirements.txt."
+          }
+        ]
+      },
+      prCandidateId: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "requirements.txt": "requests==2.25.1\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Python dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Python dependency upgrade for requests."
+    );
+    expect(result.details).toContain(
+      "Matched deterministic requirement pattern: requests==2.25.1."
+    );
+  });
+
+  it("marks a deterministic Maven pom.xml candidate executable", () => {
+    const packageName = "com.google.guava:guava";
+    const finding = dependencyFinding({
+      id: "dependency:guava:1",
+      packageName,
+      paths: ["pom.xml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: [packageName],
+      affectedPaths: ["pom.xml"],
+      id: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: [packageName],
+      affectedPaths: ["pom.xml"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "pom.xml",
+            reason: "Update pom.xml."
+          }
+        ]
+      },
+      prCandidateId: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "pom.xml": [
+          "<project>",
+          "  <dependencies>",
+          "    <dependency>",
+          "      <groupId>com.google.guava</groupId>",
+          "      <artifactId>guava</artifactId>",
+          "      <version>30.1-jre</version>",
+          "    </dependency>",
+          "  </dependencies>",
+          "</project>"
+        ].join("\n")
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Maven dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Maven dependency upgrade for com.google.guava:guava."
+    );
+  });
+
+  it("blocks Python write-back if version is not exact", () => {
+    const finding = dependencyFinding({
+      id: "dependency:requests:1",
+      packageName: "requests",
+      paths: ["requirements.txt"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["requests"],
+      affectedPaths: ["requirements.txt"],
+      id: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["requests"],
+      affectedPaths: ["requirements.txt"],
+      id: "patch-plan:pr:dependency-upgrade:requests",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "requirements.txt",
+            reason: "Update requirements.txt."
+          }
+        ]
+      },
+      prCandidateId: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "requirements.txt": "requests>=2.25.1\n"
+      },
+      patchPlan
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.summary).toBe(
+      "Repo Guardian could not find a deterministic exact-version requirement for requests in requirements.txt."
+    );
+  });
+
+  it("blocks Maven write-back if version is a property", () => {
+    const packageName = "com.google.guava:guava";
+    const finding = dependencyFinding({
+      packageName,
+      paths: ["pom.xml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: [packageName],
+      affectedPaths: ["pom.xml"],
+      relatedFindingIds: [finding.id]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: [packageName],
+      affectedPaths: ["pom.xml"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "pom.xml",
+            reason: "Update pom.xml."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: [finding.id]
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "pom.xml": [
+          "<project>",
+          "  <dependencies>",
+          "    <dependency>",
+          "      <groupId>com.google.guava</groupId>",
+          "      <artifactId>guava</artifactId>",
+          "      <version>${guava.version}</version>",
+          "    </dependency>",
+          "  </dependencies>",
+          "</project>"
+        ].join("\n")
+      },
+      patchPlan
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.summary).toBe(
+      "Repo Guardian could not find a deterministic explicit-version dependency for com.google.guava:guava in pom.xml."
+    );
+  });
+
+  it("marks a deterministic Go go.mod candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:github.com/pkg/errors:1",
+      packageName: "github.com/pkg/errors",
+      paths: ["go.mod"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["github.com/pkg/errors"],
+      affectedPaths: ["go.mod"],
+      id: "pr:dependency-upgrade:pkg-errors",
+      relatedFindingIds: ["dependency:github.com/pkg/errors:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["github.com/pkg/errors"],
+      affectedPaths: ["go.mod"],
+      id: "patch-plan:pr:dependency-upgrade:pkg-errors",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "go.mod",
+            reason: "Update go.mod."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "go.mod": "module myapp\n\ngo 1.20\n\nrequire (\n\tgithub.com/pkg/errors v0.8.1\n)\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Go dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Go dependency upgrade for github.com/pkg/errors."
+    );
+  });
+
+  it("marks a deterministic Rust Cargo.toml candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:serde:1",
+      packageName: "serde",
+      paths: ["Cargo.toml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["serde"],
+      affectedPaths: ["Cargo.toml"],
+      id: "pr:dependency-upgrade:serde",
+      relatedFindingIds: ["dependency:serde:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["serde"],
+      affectedPaths: ["Cargo.toml"],
+      id: "patch-plan:pr:dependency-upgrade:serde",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Cargo.toml",
+            reason: "Update Cargo.toml."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Cargo.toml": "[package]\nname = \"myapp\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1.0.100\"\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Rust dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Rust dependency upgrade for serde."
+    );
+  });
+
+  it("marks a deterministic Ruby Gemfile candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:rails:1",
+      packageName: "rails",
+      paths: ["Gemfile"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["rails"],
+      affectedPaths: ["Gemfile"],
+      id: "pr:dependency-upgrade:rails",
+      relatedFindingIds: ["dependency:rails:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["rails"],
+      affectedPaths: ["Gemfile"],
+      id: "patch-plan:pr:dependency-upgrade:rails",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Gemfile",
+            reason: "Update Gemfile."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Gemfile": "source 'https://rubygems.org'\n\ngem 'rails', '6.0.3'\ngem 'puma', '~> 4.1'\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Ruby dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Ruby dependency upgrade for rails."
+    );
+  });
+
+  it("marks a deterministic Python pyproject.toml candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:requests:1",
+      packageName: "requests",
+      paths: ["pyproject.toml"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["requests"],
+      affectedPaths: ["pyproject.toml"],
+      id: "pr:dependency-upgrade:requests",
+      relatedFindingIds: ["dependency:requests:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["requests"],
+      affectedPaths: ["pyproject.toml"],
+      id: "patch-plan:pr:dependency-upgrade:requests",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "pyproject.toml",
+            reason: "Update pyproject.toml."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "pyproject.toml": "[tool.poetry.dependencies]\npython = \"^3.8\"\nrequests = \"^2.25.1\"\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Python dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Python dependency upgrade for requests."
+    );
+  });
+
+  it("marks a deterministic Infra Dockerfile candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:node:1",
+      packageName: "node",
+      paths: ["Dockerfile"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["node"],
+      affectedPaths: ["Dockerfile"],
+      id: "pr:dependency-upgrade:node",
+      relatedFindingIds: ["dependency:node:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["node"],
+      affectedPaths: ["Dockerfile"],
+      id: "patch-plan:pr:dependency-upgrade:node",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "Dockerfile",
+            reason: "Update Dockerfile."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "Dockerfile": "FROM node:14-alpine\nWORKDIR /app\nCOPY . .\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Infra dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Docker base image upgrade for node."
+    );
+  });
+
+  it("marks a deterministic Gradle build build.gradle candidate executable", () => {
+    const finding = dependencyFinding({
+      id: "dependency:guava:1",
+      packageName: "com.google.guava:guava",
+      paths: ["build.gradle"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "build.gradle",
+            reason: "Update build.gradle."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "build.gradle": "dependencies {\n  implementation 'com.google.guava:guava:31.0.1-jre'\n}\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Gradle dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The PR candidate is a direct Gradle dependency upgrade for com.google.guava:guava."
+    );
+  });
+
+  it("blocks a Gradle build.gradle candidate if the version is variable-driven", () => {
+    const finding = dependencyFinding({
+      id: "dependency:guava:1",
+      packageName: "com.google.guava:guava",
+      paths: ["build.gradle"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "pr:dependency-upgrade:guava",
+      relatedFindingIds: ["dependency:guava:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["com.google.guava:guava"],
+      affectedPaths: ["build.gradle"],
+      id: "patch-plan:pr:dependency-upgrade:guava",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "build.gradle",
+            reason: "Update build.gradle."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "build.gradle": "dependencies {\n  implementation 'com.google.guava:guava:$guavaVersion'\n}\n"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "blocked",
+      summary: "Repo Guardian blocked updating com.google.guava:guava because its version is centrally managed by a variable ($guavaVersion)."
+    });
+  });
+
+  it("marks a Yarn package.json candidate executable while ignoring yarn.lock payload", () => {
+    const finding = dependencyFinding({
+      id: "dependency:react:1",
+      packageName: "react",
+      paths: ["package.json", "yarn.lock"]
+    });
+    const candidate = dependencyCandidate({
+      affectedPackages: ["react"],
+      affectedPaths: ["package.json", "yarn.lock"],
+      id: "pr:dependency-upgrade:react",
+      relatedFindingIds: ["dependency:react:1"]
+    });
+    const patchPlan = dependencyPatchPlan({
+      affectedPackages: ["react"],
+      affectedPaths: ["package.json", "yarn.lock"],
+      id: "patch-plan:pr:dependency-upgrade:react",
+      patchPlan: {
+        ...dependencyPatchPlan().patchPlan!,
+        filesPlanned: [
+          {
+            changeType: "edit",
+            path: "package.json",
+            reason: "Update package.json."
+          }
+        ]
+      },
+      prCandidateId: candidate.id,
+      relatedFindingIds: candidate.relatedFindingIds
+    });
+    const analysis = createAnalysisContext({
+      dependencyFindings: [finding],
+      prCandidates: [candidate],
+      prPatchPlans: [patchPlan]
+    });
+
+    const result = explainPRWriteBackEligibility({
+      analysis,
+      candidate,
+      fileContentsByPath: {
+        "package.json": JSON.stringify({ dependencies: { react: "^1.0.0" } }),
+        "yarn.lock": "some lock content"
+      },
+      patchPlan
+    });
+
+    expect(result).toMatchObject({
+      approvalRequired: true,
+      status: "executable",
+      summary: "Eligible for approved deterministic Yarn dependency write-back."
+    });
+    expect(result.details).toContain(
+      "The change scope is limited to package.json; yarn.lock will be naturally regenerated by CI actions."
+    );
+  });
 });

@@ -1,15 +1,16 @@
-import type { ExecutionMode } from "@repo-guardian/shared-types";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import type { ExecutionPlanResponse } from "@repo-guardian/shared-types";
 
 type ExecutionPlannerPanelProps = {
   approvalGranted: boolean;
   executionErrorMessage: string | null;
-  isSubmitting: boolean;
-  mode: ExecutionMode;
+  executionPlan: ExecutionPlanResponse | null;
+  isSubmittingPlan: boolean;
+  isSubmittingExecute: boolean;
   onApprovalChange: (approvalGranted: boolean) => void;
-  onModeChange: (mode: ExecutionMode) => void;
-  onSubmit: () => void;
+  onRequestPlan: () => void;
+  onRequestExecute: () => void;
   selectedIssueCount: number;
   selectedPRCount: number;
 };
@@ -17,18 +18,18 @@ type ExecutionPlannerPanelProps = {
 export function ExecutionPlannerPanel({
   approvalGranted,
   executionErrorMessage,
-  isSubmitting,
-  mode,
+  executionPlan,
+  isSubmittingPlan,
+  isSubmittingExecute,
   onApprovalChange,
-  onModeChange,
-  onSubmit,
+  onRequestPlan,
+  onRequestExecute,
   selectedIssueCount,
   selectedPRCount
 }: ExecutionPlannerPanelProps) {
   const totalSelections = selectedIssueCount + selectedPRCount;
-  const isExecuteMode = mode === "execute_approved";
-  const isSubmitDisabled =
-    isSubmitting || totalSelections === 0 || (isExecuteMode && !approvalGranted);
+  const isPlanDisabled = isSubmittingPlan || totalSelections === 0;
+  const isExecuteDisabled = isSubmittingExecute || !approvalGranted || !executionPlan;
 
   return (
     <Panel
@@ -50,55 +51,59 @@ export function ExecutionPlannerPanel({
     >
       <div className="execution-planner">
         <p className="empty-copy">
-          Select candidate issues and PRs, preview a dry-run plan, or explicitly approve
-          execution for supported GitHub write-back actions.
+          Select candidate issues and PRs to preview an execution plan.
+          The plan must be explicitly approved before any GitHub write actions occur.
         </p>
-        <div className="readiness-filter-row" aria-label="Execution mode">
-          <label>
-            <span>Mode</span>
-            <select
-              onChange={(event) => onModeChange(event.target.value as ExecutionMode)}
-              value={mode}
-            >
-              <option value="dry_run">Dry-run plan</option>
-              <option value="execute_approved">Execute approved actions</option>
-            </select>
-          </label>
-        </div>
-        {isExecuteMode ? (
-          <label className="approval-control">
-            <input
-              checked={approvalGranted}
-              onChange={(event) => onApprovalChange(event.target.checked)}
-              type="checkbox"
-            />
-            <span>
-              I explicitly approve Repo Guardian to create the selected GitHub Issues
-              and open supported Pull Requests for this repository.
-            </span>
-          </label>
-        ) : (
+
+        {!executionPlan ? (
           <p className="execution-note">
-            Dry-run mode does not perform GitHub write actions and does not require approval.
+            Planning mode does not perform GitHub write actions and does not require approval.
           </p>
+        ) : (
+          <div className="execution-plan-summary">
+            <p className="execution-note">
+              Plan <code>{executionPlan.planId}</code> generated successfully.
+            </p>
+            <label className="approval-control">
+              <input
+                checked={approvalGranted}
+                onChange={(event) => onApprovalChange(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                {executionPlan.approval.confirmationText}
+              </span>
+            </label>
+          </div>
         )}
+
         {executionErrorMessage ? (
           <p className="form-message form-message-error" role="alert">
             {executionErrorMessage}
           </p>
         ) : null}
-        <button
-          className="submit-button execution-submit-button"
-          disabled={isSubmitDisabled}
-          onClick={onSubmit}
-          type="button"
-        >
-          {isSubmitting
-            ? "Submitting execution request..."
-            : isExecuteMode
-              ? "Execute approved actions"
-              : "Preview dry-run plan"}
-        </button>
+
+        <div className="button-group" style={{ display: "flex", gap: "1rem" }}>
+          <button
+            className="submit-button execution-submit-button"
+            disabled={isPlanDisabled}
+            onClick={onRequestPlan}
+            type="button"
+          >
+            {isSubmittingPlan ? "Generating plan..." : (executionPlan ? "Regenerate plan" : "Generate plan")}
+          </button>
+          
+          {executionPlan ? (
+            <button
+              className="submit-button execution-submit-button"
+              disabled={isExecuteDisabled}
+              onClick={onRequestExecute}
+              type="button"
+            >
+              {isSubmittingExecute ? "Executing..." : "Execute approved actions"}
+            </button>
+          ) : null}
+        </div>
       </div>
     </Panel>
   );

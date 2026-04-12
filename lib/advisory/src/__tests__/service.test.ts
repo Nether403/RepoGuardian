@@ -13,10 +13,12 @@ import { createDependencyFindingResult } from "../service.js";
 
 class FakeAdvisoryProvider implements AdvisoryProvider {
   readonly name = "fake";
+  readonly calls: AdvisoryQuery[][] = [];
 
   constructor(private readonly result: AdvisoryLookupResult) {}
 
-  async lookupAdvisories(_queries: AdvisoryQuery[]): Promise<AdvisoryLookupResult> {
+  async lookupAdvisories(queries: AdvisoryQuery[]): Promise<AdvisoryLookupResult> {
+    this.calls.push(queries);
     return this.result;
   }
 }
@@ -200,6 +202,37 @@ describe("createDependencyFindingResult", () => {
       expect.objectContaining({
         code: "DECLARATION_ONLY_VERSION"
       })
+    ]);
+  });
+
+  it("does not query advisories for unresolved Maven placeholders", async () => {
+    const snapshot = createSnapshot([
+      {
+        dependencyType: "production",
+        ecosystem: "jvm",
+        isDirect: true,
+        name: "org.springframework:spring-core",
+        packageManager: "maven",
+        parseConfidence: "low",
+        sourceFile: "pom.xml",
+        version: "${missing.version}",
+        workspacePath: "."
+      }
+    ]);
+    const provider = new FakeAdvisoryProvider({
+      advisoriesByQueryKey: new Map(),
+      isPartial: false,
+      warningDetails: [],
+      warnings: []
+    });
+
+    const result = await createDependencyFindingResult(snapshot, provider);
+
+    expect(provider.calls).toEqual([]);
+    expect(result.findings).toEqual([]);
+    expect(result.isPartial).toBe(true);
+    expect(result.warnings).toEqual([
+      "Declaration-only advisory coverage for org.springframework:spring-core in pom.xml; no exact resolved version was available."
     ]);
   });
 

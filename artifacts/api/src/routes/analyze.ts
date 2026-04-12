@@ -7,6 +7,7 @@ import {
 import { AnalyzeRepoRequestSchema } from "@repo-guardian/shared-types";
 import { analyzeRepository } from "../lib/analyze-repository.js";
 import { env } from "../lib/env.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
 const analyzeRouter: ExpressRouter = Router();
@@ -26,7 +27,7 @@ function mapErrorCodeToStatus(code: GitHubReadErrorCode): number {
   }
 }
 
-analyzeRouter.post("/analyze", async (request, response, next) => {
+analyzeRouter.post("/analyze", requireAuth, async (request, response, next) => {
   const parsedRequest = AnalyzeRepoRequestSchema.safeParse(request.body);
 
   if (!parsedRequest.success) {

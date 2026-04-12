@@ -66,6 +66,7 @@ export type ParserResult = {
 };
 
 export type ParseContext = {
+  directDependencyDetailsByName?: Map<string, NormalizedDependency[]>;
   directDependencyNames: Set<string>;
   lockfilesByWorkspace: Map<string, DetectedLockfile[]>;
 };
@@ -413,7 +414,7 @@ export function createDirectDependencyIndexKey(
 }
 
 export function indexDirectDependencies(
-  index: Map<string, Set<string>>,
+  index: Map<string, Map<string, NormalizedDependency[]>>,
   dependencies: NormalizedDependency[]
 ): void {
   for (const dependency of dependencies) {
@@ -423,18 +424,77 @@ export function indexDirectDependencies(
 
     const workspacePath = dependency.workspacePath ?? ".";
     const key = createDirectDependencyIndexKey(dependency.ecosystem, workspacePath);
-    const knownDependencies = index.get(key) ?? new Set<string>();
-    knownDependencies.add(dependency.name);
-    index.set(key, knownDependencies);
+    const dependenciesByName = index.get(key) ?? new Map<string, NormalizedDependency[]>();
+    const matchingDependencies = dependenciesByName.get(dependency.name) ?? [];
+    matchingDependencies.push(dependency);
+    dependenciesByName.set(dependency.name, matchingDependencies);
+    index.set(key, dependenciesByName);
   }
 }
 
 export function getDirectDependencyNames(
-  index: Map<string, Set<string>>,
+  index: Map<string, Map<string, NormalizedDependency[]>>,
   ecosystem: EcosystemId,
   workspacePath: string
 ): Set<string> {
-  return index.get(createDirectDependencyIndexKey(ecosystem, workspacePath)) ?? new Set();
+  return new Set(
+    index
+      .get(createDirectDependencyIndexKey(ecosystem, workspacePath))
+      ?.keys() ?? []
+  );
+}
+
+export function getDirectDependencyDetailsByName(
+  index: Map<string, Map<string, NormalizedDependency[]>>,
+  ecosystem: EcosystemId,
+  workspacePath: string
+): Map<string, NormalizedDependency[]> {
+  return (
+    index.get(createDirectDependencyIndexKey(ecosystem, workspacePath)) ??
+    new Map<string, NormalizedDependency[]>()
+  );
+}
+
+function getParseConfidenceWeight(confidence: ParseConfidence): number {
+  switch (confidence) {
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+export function getPreferredDirectDependency(
+  context: ParseContext,
+  name: string
+): NormalizedDependency | null {
+  const dependencies =
+    context.directDependencyDetailsByName?.get(normalizeDependencyName(name)) ?? [];
+
+  return (
+    [...dependencies].sort((left, right) => {
+      const confidenceDifference =
+        getParseConfidenceWeight(right.parseConfidence) -
+        getParseConfidenceWeight(left.parseConfidence);
+
+      if (confidenceDifference !== 0) {
+        return confidenceDifference;
+      }
+
+      const versionDifference =
+        Number(right.version !== null) - Number(left.version !== null);
+
+      if (versionDifference !== 0) {
+        return versionDifference;
+      }
+
+      return left.sourceFile.localeCompare(right.sourceFile);
+    })[0] ?? null
+  );
 }
 
 export function uniqueWarnings(warnings: string[]): string[] {

@@ -36,6 +36,7 @@ import {
   createSkippedFile,
   createUnsupportedFileWarnings,
   dedupeDependencies,
+  getDirectDependencyDetailsByName,
   getDirectDependencyNames,
   getWarningMessagesFromDetails,
   hasPartialCoverageWarnings,
@@ -127,7 +128,7 @@ export function createDependencySnapshot(
     ])
   );
   const lockfilesByWorkspace = buildLockfilesByWorkspace(options.detection);
-  const directDependencyIndex = new Map<string, Set<string>>();
+  const directDependencyIndex = new Map<string, Map<string, NormalizedDependency[]>>();
   const dependencies: NormalizedDependency[] = [];
   const filesParsed: ParsedDependencyFile[] = [];
   const filesSkipped: SkippedDependencyFile[] = [...unsupportedFiles, ...providedSkippedFiles];
@@ -173,6 +174,11 @@ export function createDependencySnapshot(
 
     const workspacePath = normalizeWorkspacePath(file.path);
     const context: ParseContext = {
+      directDependencyDetailsByName: getDirectDependencyDetailsByName(
+        directDependencyIndex,
+        file.ecosystem,
+        workspacePath
+      ),
       directDependencyNames: getDirectDependencyNames(
         directDependencyIndex,
         file.ecosystem,

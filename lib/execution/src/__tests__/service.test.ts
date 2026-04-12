@@ -1230,7 +1230,7 @@ describe("createExecutionPlanResult", () => {
           actionType: "prepare_patch",
           blocked: true,
           reason:
-            "Deterministic dependency write-back currently supports only repo-root npm package.json and package-lock.json targets."
+            "Deterministic dependency write-back currently supports only repo-root npm, Yarn (package.json/yarn.lock), Python (requirements.txt / pyproject.toml), Maven (pom.xml), Gradle (build.gradle/kts), Go (go.mod), Rust (Cargo.toml), Ruby (Gemfile), or Infra (Dockerfile) targets."
         })
       ])
     );

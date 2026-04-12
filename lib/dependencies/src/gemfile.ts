@@ -11,6 +11,15 @@ import {
   normalizeWorkspacePath
 } from "./utils.js";
 
+type GemfileBlock =
+  | {
+      groups: string[];
+      type: "group";
+    }
+  | {
+      type: "install_if" | "path" | "platforms" | "source" | "git" | "unknown";
+    };
+
 function extractInlineGroups(line: string): string[] {
   const groups: string[] = [];
   const singleGroupMatch = /group:\s*:([A-Za-z_][A-Za-z0-9_]*)/u.exec(line);
@@ -36,6 +45,49 @@ function isDevelopmentGroup(group: string): boolean {
   return group === "development" || group === "test";
 }
 
+function detectGemfileBlockStart(line: string): GemfileBlock | null {
+  const groupMatch = /^group\s+(.+?)\s+do$/u.exec(line);
+
+  if (groupMatch?.[1]) {
+    return {
+      groups: [...groupMatch[1].matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/gu)].flatMap(
+        (match) => (match[1] ? [match[1]] : [])
+      ),
+      type: "group"
+    };
+  }
+
+  if (/^source\s+.+\s+do$/u.test(line)) {
+    return { type: "source" };
+  }
+
+  if (/^git\s+.+\s+do$/u.test(line)) {
+    return { type: "git" };
+  }
+
+  if (/^path\s+.+\s+do$/u.test(line)) {
+    return { type: "path" };
+  }
+
+  if (/^platforms?\s+.+\s+do$/u.test(line)) {
+    return { type: "platforms" };
+  }
+
+  if (/^install_if\s+.+\s+do$/u.test(line)) {
+    return { type: "install_if" };
+  }
+
+  if (/\bdo$/u.test(line)) {
+    return { type: "unknown" };
+  }
+
+  return null;
+}
+
+function getActiveGemfileGroups(blockStack: GemfileBlock[]): string[] {
+  return blockStack.flatMap((block) => (block.type === "group" ? block.groups : []));
+}
+
 export function parseGemfile(
   file: DetectedManifest,
   content: string
@@ -43,7 +95,7 @@ export function parseGemfile(
   const dependencies: NormalizedDependency[] = [];
   const warningDetails: AnalysisWarning[] = [];
   const workspacePath = normalizeWorkspacePath(file.path);
-  const groupStack: string[][] = [];
+  const blockStack: GemfileBlock[] = [];
 
   for (const [lineIndex, rawLine] of content.split(/\r?\n/u).entries()) {
     const line = rawLine.replace(/#.*$/u, "").trim();
@@ -52,30 +104,44 @@ export function parseGemfile(
       continue;
     }
 
-    const groupMatch = /^group\s+(.+?)\s+do$/u.exec(line);
+    const blockStart = detectGemfileBlockStart(line);
 
-    if (groupMatch?.[1]) {
-      const groups = [...groupMatch[1].matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/gu)].flatMap(
-        (match) => (match[1] ? [match[1]] : [])
-      );
-      groupStack.push(groups);
+    if (blockStart) {
+      blockStack.push(blockStart);
       continue;
     }
 
     if (line === "end") {
-      groupStack.pop();
+      blockStack.pop();
       continue;
     }
 
-    const gemMatch = /^gem\s+["']([^"']+)["'](?:\s*,\s*["']([^"']+)["'])?(.*)$/u.exec(line);
+    const gemMatch = /^gem\s+["']([^"']+)["']((?:\s*,\s*["'][^"']+["'])*)(.*)$/u.exec(line);
 
     if (!gemMatch) {
+      if (line.startsWith("gem ")) {
+        warningDetails.push(
+          createDependencyParseWarning({
+            code: "FILE_PARSE_FAILED",
+            message: `Skipped unsupported Gemfile entry on line ${lineIndex + 1} in ${file.path}.`,
+            path: file.path,
+            source: file.kind
+          })
+        );
+      }
+
       continue;
     }
 
-    const [, name, version, remainder] = gemMatch;
+    const [, name, versionPart, remainder] = gemMatch;
+    const versionConstraints = [...(versionPart ?? "").matchAll(/["']([^"']+)["']/gu)]
+      .map((match) => match[1]?.trim())
+      .filter((value): value is string => Boolean(value));
+    const version = versionConstraints.length > 0
+      ? versionConstraints.join(", ")
+      : null;
     const inlineGroups = extractInlineGroups(remainder ?? "");
-    const activeGroups = [...groupStack.flat(), ...inlineGroups];
+    const activeGroups = [...getActiveGemfileGroups(blockStack), ...inlineGroups];
     const dependencyType = activeGroups.some(isDevelopmentGroup)
       ? "development"
       : "production";
@@ -101,7 +167,7 @@ export function parseGemfile(
         packageManager: "bundler",
         parseConfidence: version ? "medium" : "low",
         sourceFile: file.path,
-        version: version?.trim() || null,
+        version,
         workspacePath
       })
     );

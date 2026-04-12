@@ -1,38 +1,29 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`5B` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` v2/v3 path.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`6F` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, 5B, 6A, 6B, 6C, 6D, 6E, and 6F write-back slices across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, security-hardened two-phase execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic dependency write-back for root `package.json` (npm/yarn), `package-lock.json` (v2/v3), `go.mod`, `Cargo.toml`, `requirements.txt`, `pyproject.toml`, `pom.xml`, and `build.gradle`/`build.gradle.kts` paths.
 
 ## Current scope
 
 - pnpm workspace monorepo
 - `POST /api/analyze` for public GitHub repository intake
+- Mandatory `Authorization: Bearer <API_SECRET_KEY>` header for all canonical API routes
 - recursive tree fetch for the default branch
 - manifest and lockfile detection
 - ecosystem inference and notable repository signals
-- dependency file fetches from GitHub for supported Node.js, Python, Go, Rust, JVM, and Ruby formats
-- normalized dependency snapshot parsing for `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `requirements.txt`, `pyproject.toml`, `poetry.lock`, `Pipfile`, `Pipfile.lock`, `go.mod`, `go.sum`, `Cargo.toml`, `Cargo.lock`, `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle.lockfile`, `Gemfile`, and `Gemfile.lock`
-- OSV-backed advisory lookup behind a swappable provider interface, with explicit warnings when parsing or exact-version coverage is partial
+- dependency file fetches from GitHub
+- normalized dependency snapshot parsing for 20+ formats across Node.js, Python, Go, Rust, JVM, and Ruby
+- OSV-backed advisory lookup behind a swappable provider interface
 - structured dependency findings with severity, confidence, evidence, and remediation hints
-- targeted code-review file selection for workflows, config, security-sensitive files, and common entrypoints
-- deterministic code-review findings for secret-like literals, dangerous dynamic execution, unsafe shell execution, and workflow hardening risks
-- deterministic issue-candidate grouping across dependency and code-review findings
-- structured candidate issues with titles, summaries, labels, acceptance criteria, and finding traceability
-- deterministic PR-candidate drafting with readiness, risk, expected file changes, and rollback/test guidance
-- linked patch-planning records with patchability, patch plans, validation-status preparation, and traceability back to PR candidates
-- `POST /api/execution/plan` for approval-gated dry-run planning and explicitly approved execution
-- structured execution action results with per-action success/failure, branch metadata, commit metadata, and issue/PR metadata
-- real GitHub Issue creation for selected issue candidates when `approvalGranted` is explicitly true
-- real branch creation, bounded workflow-file patch commits, and PR opening for selected workflow-hardening PR candidates when `approvalGranted` is explicitly true for deterministic permissions rewrites such as `permissions: write-all`, explicit `contents: write`, inline `permissions: { contents: write }`, and missing top-level permissions insertion
-- real branch creation, bounded root `package.json` plus `package-lock.json` v2/v3 patch commits, and PR opening for selected npm dependency-upgrade PR candidates when `approvalGranted` is explicitly true and deterministic lock metadata already exists in the current lockfile
-- Vite + React UI for repository analysis, candidate selection, dry-run execution previews, approved execution submission, and structured action results
-- reusable analysis view-model helpers for traceability formatting, anchors, filters, summaries, and status tones
-- deterministic Guardian Graph view for visual traceability across repository signals, findings, candidates, patch plans, and write-back eligibility
-- `GET /api/runs`, `POST /api/runs`, `GET /api/runs/:runId`, and `POST /api/runs/compare` for local saved analysis runs and compare mode
-- file-backed local/dev saved-run storage under `.repo-guardian/runs` by default, overridable with `REPO_GUARDIAN_RUN_STORE_DIR`
-- UI for saving current analyses, reopening saved reports without re-analyzing live, and comparing findings, candidates, executable patch plans, blocked patch plans, ecosystems, manifests, and lockfiles across runs
-- `lib/api-spec/openapi.yaml` as the API contract for analyze, execution planning, and saved-run endpoints
-- generated `@repo-guardian/api-client` endpoint functions consumed by the web app's validated client wrappers
-- shared typed schemas across API and web
+- targeted code-review findings for secret-like literals, dangerous execution, and workflow hardening risks
+- deterministic issue-candidate grouping and PR-candidate drafting
+- linked patch-planning records with visibility into patchability and validation status
+- `POST /api/execution/plan` and `POST /api/execution/execute` for security-hardened, two-phase approval-gated write-back
+- real GitHub Issue creation and bounded Pull Request write-back for supported deterministic slices
+- Vite + React UI for analysis, candidate selection, two-phase execution previews, and results
+- deterministic Guardian Graph view for visual traceability
+- `GET /api/runs`, `POST /api/runs`, etc. for local saved analysis runs and compare mode
+- `lib/api-spec/openapi.yaml` as the API contract
+- generated `@repo-guardian/api-client` and shared typed schemas
 
 ## Commands
 
@@ -50,10 +41,6 @@ pnpm run build
 
 ## Roadmap
 
-The active milestone is `6A`: V1 contract alignment first. This phase keeps `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical route surface, aligns the docs and OpenAPI contract with the implemented alpha, and expands dependency-analysis coverage without broadening GitHub write-back.
+The current state reflects the completion of **Milestone 6F** (Gradle and Yarn write-back expansion). The platform now supports deterministic patch generation across all primary supported ecosystems.
 
-The follow-on milestone is `6B`: parser hardening, with emphasis on Gradle DSL fidelity, Maven property/version resolution, and nontrivial Bundler declarations before any broader cross-ecosystem write-back. See `docs/milestone-6a.md` and `docs/roadmap.md`.
-
-`6C` is the first milestone that should expand bounded write-back beyond the current guarded slices.
-
-
+The next goals are stabilization, performance optimization for large repositories, and potential expansion into multi-repo analysis. See `docs/roadmap.md`.

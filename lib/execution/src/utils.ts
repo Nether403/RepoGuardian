@@ -1,6 +1,6 @@
 import type {
   ExecutionActionPlan,
-  ExecutionRequest,
+  ExecutionPlanRequest,
   ExecutionSummary
 } from "@repo-guardian/shared-types";
 
@@ -10,7 +10,7 @@ export function uniqueSorted(values: Iterable<string>): string[] {
 
 export function createExecutionSummary(
   request: Pick<
-    ExecutionRequest,
+    ExecutionPlanRequest,
     "selectedIssueCandidateIds" | "selectedPRCandidateIds"
   >,
   actions: ExecutionActionPlan[]

@@ -18,6 +18,7 @@ import {
   RepoGuardianApiError,
   saveAnalysisRun as requestSaveAnalysisRun
 } from "@repo-guardian/api-client";
+import { getApiOptions } from "./api-options";
 
 export class SavedRunsClientError extends Error {
   readonly details: unknown;
@@ -33,7 +34,7 @@ export class SavedRunsClientError extends Error {
 
 export async function listSavedAnalysisRuns(): Promise<ListAnalysisRunsResponse> {
   try {
-    return ListAnalysisRunsResponseSchema.parse(await listAnalysisRuns());
+    return ListAnalysisRunsResponseSchema.parse(await listAnalysisRuns(getApiOptions()));
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
       throw new SavedRunsClientError(
@@ -73,7 +74,7 @@ export async function saveAnalysisRun(input: {
 
   try {
     return SaveAnalysisRunResponseSchema.parse(
-      await requestSaveAnalysisRun(requestBody)
+      await requestSaveAnalysisRun(requestBody, getApiOptions())
     );
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
@@ -97,7 +98,7 @@ export async function getSavedAnalysisRun(
   runId: string
 ): Promise<GetAnalysisRunResponse> {
   try {
-    return GetAnalysisRunResponseSchema.parse(await getAnalysisRun(runId));
+    return GetAnalysisRunResponseSchema.parse(await getAnalysisRun(runId, getApiOptions()));
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
       throw new SavedRunsClientError(
@@ -132,7 +133,7 @@ export async function compareSavedAnalysisRuns(input: {
 
   try {
     return CompareAnalysisRunsResponseSchema.parse(
-      await compareAnalysisRuns(requestBody)
+      await compareAnalysisRuns(requestBody, getApiOptions())
     );
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
