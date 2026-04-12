@@ -4,6 +4,7 @@ import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
 type TrackedPullRequestsPanelProps = {
+  onOpenPlanDetails: (planId: string) => void;
   pullRequests: TrackedPullRequest[];
 };
 
@@ -19,6 +20,7 @@ function getTone(status: TrackedPullRequest["lifecycleStatus"]): "active" | "mut
 }
 
 export function TrackedPullRequestsPanel({
+  onOpenPlanDetails,
   pullRequests
 }: TrackedPullRequestsPanelProps) {
   return (
@@ -78,6 +80,17 @@ export function TrackedPullRequestsPanel({
                     <span className="trace-chip trace-chip-muted">
                       merged {formatTimestamp(pullRequest.mergedAt)}
                     </span>
+                  ) : null}
+                </div>
+                <div className="fleet-inline-actions">
+                  {pullRequest.planId ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenPlanDetails(pullRequest.planId!)}
+                      type="button"
+                    >
+                      Open plan
+                    </button>
                   ) : null}
                 </div>
               </article>

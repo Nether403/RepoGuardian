@@ -10,6 +10,9 @@ type AnalysisJobsPanelProps = {
   jobs: AnalysisJob[];
   pendingJobId: string | null;
   onCancelJob: (jobId: string) => void;
+  onOpenJobDetails: (jobId: string) => void;
+  onOpenPlanDetails: (planId: string) => void;
+  onOpenRunDetails: (runId: string) => void;
   onRefresh: () => void;
   onRetryJob: (jobId: string) => void;
 };
@@ -37,6 +40,9 @@ export function AnalysisJobsPanel({
   jobs,
   pendingJobId,
   onCancelJob,
+  onOpenJobDetails,
+  onOpenPlanDetails,
+  onOpenRunDetails,
   onRefresh,
   onRetryJob
 }: AnalysisJobsPanelProps) {
@@ -130,6 +136,31 @@ export function AnalysisJobsPanel({
                   <p className="form-message form-message-error">{job.errorMessage}</p>
                 ) : null}
                 <div className="fleet-inline-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => onOpenJobDetails(job.jobId)}
+                    type="button"
+                  >
+                    View details
+                  </button>
+                  {job.runId ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenRunDetails(job.runId!)}
+                      type="button"
+                    >
+                      Open run
+                    </button>
+                  ) : null}
+                  {job.planId ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenPlanDetails(job.planId!)}
+                      type="button"
+                    >
+                      Open plan
+                    </button>
+                  ) : null}
                   {job.status === "queued" ? (
                     <button
                       className="secondary-button"

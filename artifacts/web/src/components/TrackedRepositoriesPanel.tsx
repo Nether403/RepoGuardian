@@ -15,6 +15,10 @@ type TrackedRepositoriesPanelProps = {
     repoInput: string;
   }) => void;
   onEnqueueAnalysis: (trackedRepositoryId: string) => void;
+  onOpenJobDetails: (jobId: string) => void;
+  onOpenPlanDetails: (planId: string) => void;
+  onOpenRepositoryDetails: (trackedRepositoryId: string) => void;
+  onOpenRunDetails: (runId: string) => void;
   onRefresh: () => void;
 };
 
@@ -34,6 +38,10 @@ export function TrackedRepositoriesPanel({
   repositories,
   onCreateRepository,
   onEnqueueAnalysis,
+  onOpenJobDetails,
+  onOpenPlanDetails,
+  onOpenRepositoryDetails,
+  onOpenRunDetails,
   onRefresh
 }: TrackedRepositoriesPanelProps) {
   const [label, setLabel] = useState("");
@@ -153,16 +161,52 @@ export function TrackedRepositoriesPanel({
                     {entry.latestAnalysisJob.status}
                   </p>
                 ) : null}
-                <button
-                  className="secondary-button"
-                  disabled={pendingTrackedRepositoryId === entry.trackedRepository.id}
-                  onClick={() => onEnqueueAnalysis(entry.trackedRepository.id)}
-                  type="button"
-                >
-                  {pendingTrackedRepositoryId === entry.trackedRepository.id
-                    ? "Queueing analysis..."
-                    : "Enqueue analysis"}
-                </button>
+                <div className="fleet-inline-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => onOpenRepositoryDetails(entry.trackedRepository.id)}
+                    type="button"
+                  >
+                    View details
+                  </button>
+                  {entry.latestRun ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenRunDetails(entry.latestRun!.id)}
+                      type="button"
+                    >
+                      Open run
+                    </button>
+                  ) : null}
+                  {entry.latestPlanId ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenPlanDetails(entry.latestPlanId!)}
+                      type="button"
+                    >
+                      Open plan
+                    </button>
+                  ) : null}
+                  {entry.latestAnalysisJob ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => onOpenJobDetails(entry.latestAnalysisJob!.jobId)}
+                      type="button"
+                    >
+                      Open job
+                    </button>
+                  ) : null}
+                  <button
+                    className="secondary-button"
+                    disabled={pendingTrackedRepositoryId === entry.trackedRepository.id}
+                    onClick={() => onEnqueueAnalysis(entry.trackedRepository.id)}
+                    type="button"
+                  >
+                    {pendingTrackedRepositoryId === entry.trackedRepository.id
+                      ? "Queueing analysis..."
+                      : "Enqueue analysis"}
+                  </button>
+                </div>
               </article>
             ))}
           </div>

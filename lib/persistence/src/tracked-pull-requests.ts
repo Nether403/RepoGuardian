@@ -158,6 +158,35 @@ export class TrackedPullRequestRepository {
     return result.rows.map(parseTrackedPullRequest);
   }
 
+  async listTrackedPullRequestsByRepositoryFullName(
+    repositoryFullName: string
+  ): Promise<TrackedPullRequest[]> {
+    const result = await this.client.query<TrackedPullRequestRow>(
+      `SELECT
+        tracked_pull_request_id,
+        repository_full_name,
+        repository_owner,
+        repository_repo,
+        pull_request_number,
+        pull_request_url,
+        branch_name,
+        title,
+        plan_id,
+        execution_id,
+        lifecycle_status,
+        created_at,
+        updated_at,
+        closed_at,
+        merged_at
+      FROM tracked_pull_requests
+      WHERE repository_full_name = $1
+      ORDER BY updated_at DESC, tracked_pull_request_id DESC`,
+      [repositoryFullName]
+    );
+
+    return result.rows.map(parseTrackedPullRequest);
+  }
+
   async listOpenTrackedPullRequests(): Promise<TrackedPullRequest[]> {
     const result = await this.client.query<TrackedPullRequestRow>(
       `SELECT

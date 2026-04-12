@@ -201,6 +201,50 @@ export class AnalysisRunRepository {
     );
   }
 
+  async listRunsByRepositoryFullName(input: {
+    limit?: number;
+    repositoryFullName: string;
+  }): Promise<SavedAnalysisRunSummary[]> {
+    const result = await this.client.query<AnalysisRunRow>(
+      `SELECT
+        runs.run_id,
+        runs.created_at,
+        runs.label,
+        runs.repository_full_name,
+        runs.default_branch,
+        runs.fetched_at,
+        runs.total_findings,
+        runs.high_severity_findings,
+        runs.issue_candidates,
+        runs.pr_candidates,
+        runs.executable_patch_plans,
+        runs.blocked_patch_plans,
+        runs.analysis_payload,
+        plans.plan_id AS latest_plan_id,
+        plans.status AS latest_plan_status,
+        plans.completed_at AS latest_execution_completed_at
+      FROM analysis_runs AS runs
+      LEFT JOIN LATERAL (
+        SELECT
+          execution_plans.plan_id,
+          execution_plans.status,
+          execution_plans.completed_at
+        FROM execution_plans
+        WHERE execution_plans.analysis_run_id = runs.run_id
+        ORDER BY execution_plans.created_at DESC
+        LIMIT 1
+      ) AS plans ON TRUE
+      WHERE runs.repository_full_name = $1
+      ORDER BY runs.created_at DESC
+      LIMIT $2`,
+      [input.repositoryFullName, input.limit ?? 10]
+    );
+
+    return result.rows.map((row: AnalysisRunRow) =>
+      enrichSummary(createAnalysisRunSummary(parseSavedRun(row)), row)
+    );
+  }
+
   async getRun(runId: string): Promise<GetAnalysisRunResponse> {
     assertValidRunId(runId);
     const row = await this.getRunRow(runId);

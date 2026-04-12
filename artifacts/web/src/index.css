@@ -1052,6 +1052,30 @@ code {
   color: var(--text-muted);
 }
 
+.fleet-inspector-panel {
+  align-self: start;
+}
+
+.fleet-inspector-block {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.fleet-inspector-block h3,
+.fleet-inspector-panel h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+
+.fleet-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.25rem;
+  text-decoration: none;
+}
+
 .saved-run-form,
 .saved-run-compare-row {
   display: grid;

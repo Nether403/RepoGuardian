@@ -29,6 +29,7 @@ import type {
   RetryAnalysisJobResponse,
   SaveAnalysisRunRequest,
   SaveAnalysisRunResponse,
+  TrackedRepositoryHistoryResponse,
   TriggerSweepScheduleResponse
 } from "@repo-guardian/shared-types";
 
@@ -288,6 +289,14 @@ export async function createTrackedRepository(requestBody: CreateTrackedReposito
     method: "POST",
     path: `/api/tracked-repositories`,
     body: requestBody,
+    options
+  });
+}
+
+export async function getTrackedRepositoryHistory(trackedRepositoryId: string, options: RepoGuardianApiRequestOptions = {}): Promise<TrackedRepositoryHistoryResponse> {
+  return requestJson<TrackedRepositoryHistoryResponse>({
+    method: "GET",
+    path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/history`,
     options
   });
 }

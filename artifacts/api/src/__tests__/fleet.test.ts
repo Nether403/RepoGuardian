@@ -1,4 +1,5 @@
 import express from "express";
+import { PersistenceError } from "@repo-guardian/persistence";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createFleetRouter } from "../routes/fleet.js";
@@ -39,6 +40,37 @@ function createSweepSchedule(overrides: Record<string, unknown> = {}) {
     scheduleId: "sweep_one",
     selectionStrategy: "all_executable_prs",
     updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  };
+}
+
+function createExecutionPlanSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    analysisRunId: "run_one",
+    approvalStatus: "required",
+    cancelledAt: null,
+    completedAt: null,
+    createdAt: "2026-04-12T10:01:00.000Z",
+    executionId: null,
+    executionResultStatus: null,
+    expiresAt: "2026-04-12T10:16:00.000Z",
+    failedAt: null,
+    planId: "plan_one",
+    repositoryFullName: "openai/openai-node",
+    selectedIssueCandidateCount: 0,
+    selectedPRCandidateCount: 1,
+    startedAt: null,
+    status: "planned",
+    summary: {
+      approvalRequiredActions: 1,
+      blockedActions: 0,
+      eligibleActions: 1,
+      issueSelections: 0,
+      prSelections: 1,
+      skippedActions: 0,
+      totalActions: 1,
+      totalSelections: 1
+    },
     ...overrides
   };
 }
@@ -185,9 +217,22 @@ describe("fleet routes", () => {
       updatedAt: "2026-04-12T10:00:00.000Z"
     };
     const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
       analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
       trackedRepositoryStore: {
         createRepository: vi.fn().mockResolvedValue(trackedRepository),
+        getRepository: vi.fn().mockResolvedValue(trackedRepository),
         listRepositories: vi.fn().mockResolvedValue([trackedRepository])
       }
     });
@@ -224,9 +269,22 @@ describe("fleet routes", () => {
       getJob: vi.fn().mockResolvedValue(job)
     });
     const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([job])
+      },
       analysisJobProcessor,
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
+        getRepository: vi.fn(),
         listRepositories: vi.fn().mockResolvedValue([])
       }
     });
@@ -296,9 +354,22 @@ describe("fleet routes", () => {
       })
     });
     const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([listJob])
+      },
       analysisJobProcessor,
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
+        getRepository: vi.fn(),
         listRepositories: vi.fn().mockResolvedValue([])
       }
     });
@@ -358,9 +429,22 @@ describe("fleet routes", () => {
       })
     });
     const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([sweepJob])
+      },
       analysisJobProcessor,
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
+        getRepository: vi.fn(),
         listRepositories: vi.fn().mockResolvedValue([])
       }
     });
@@ -403,6 +487,124 @@ describe("fleet routes", () => {
     expect(analysisJobProcessor.triggerSweepSchedule).toHaveBeenCalledWith({
       requestedByUserId: "usr_authenticated",
       scheduleId: "sweep_one"
+    });
+  });
+
+  it("returns tracked repository history", async () => {
+    const trackedRepository = {
+      canonicalUrl: "https://github.com/openai/openai-node",
+      createdAt: "2026-04-12T10:00:00.000Z",
+      fullName: "openai/openai-node",
+      id: "tracked_one",
+      isActive: true,
+      label: "Weekly review",
+      lastQueuedAt: "2026-04-12T10:00:00.000Z",
+      owner: "openai",
+      repo: "openai-node",
+      updatedAt: "2026-04-12T10:00:00.000Z"
+    };
+    const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([createAnalysisJob({
+          trackedRepositoryId: "tracked_one"
+        })])
+      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([
+          createExecutionPlanSummary()
+        ])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([
+          {
+            blockedPatchPlans: 1,
+            createdAt: "2026-04-12T10:03:00.000Z",
+            defaultBranch: "main",
+            executablePatchPlans: 2,
+            fetchedAt: "2026-04-12T10:03:00.000Z",
+            highSeverityFindings: 0,
+            id: "run_one",
+            issueCandidates: 0,
+            label: "Weekly review",
+            prCandidates: 2,
+            repositoryFullName: "openai/openai-node",
+            totalFindings: 1
+          }
+        ])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([
+          {
+            branchName: "repo-guardian/test-branch",
+            closedAt: null,
+            createdAt: "2026-04-12T10:04:00.000Z",
+            executionId: "exec_one",
+            lifecycleStatus: "open",
+            mergedAt: null,
+            owner: "openai",
+            planId: "plan_one",
+            pullRequestNumber: 19,
+            pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+            repo: "openai-node",
+            repositoryFullName: "openai/openai-node",
+            title: "Harden workflow",
+            trackedPullRequestId: "tpr_one",
+            updatedAt: "2026-04-12T10:04:00.000Z"
+          }
+        ])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn().mockResolvedValue(trackedRepository),
+        listRepositories: vi.fn().mockResolvedValue([trackedRepository])
+      }
+    });
+
+    const response = await request(app)
+      .get("/tracked-repositories/tracked_one/history")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(200);
+    expect(response.body.trackedRepository.id).toBe("tracked_one");
+    expect(response.body.currentStatus.trackedRepository.id).toBe("tracked_one");
+    expect(response.body.recentRuns[0]?.id).toBe("run_one");
+    expect(response.body.recentJobs[0]?.jobId).toBe("job_one");
+    expect(response.body.recentPlans[0]?.planId).toBe("plan_one");
+    expect(response.body.trackedPullRequests[0]?.trackedPullRequestId).toBe("tpr_one");
+  });
+
+  it("returns 404 when tracked repository history does not exist", async () => {
+    const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn().mockRejectedValue(
+          new PersistenceError("not_found", "Tracked repository was not found.")
+        ),
+        listRepositories: vi.fn().mockResolvedValue([])
+      }
+    });
+
+    const response = await request(app)
+      .get("/tracked-repositories/tracked_missing/history")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: "Tracked repository was not found."
     });
   });
 });

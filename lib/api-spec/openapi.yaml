@@ -391,6 +391,29 @@ paths:
                 $ref: "#/components/schemas/CreateTrackedRepositoryResponse"
         "400":
           $ref: "#/components/responses/ErrorResponse"
+  /api/tracked-repositories/{trackedRepositoryId}/history:
+    get:
+      operationId: getTrackedRepositoryHistory
+      summary: Read tracked-repository history and linked fleet context
+      x-repo-guardian-response-type: TrackedRepositoryHistoryResponse
+      parameters:
+        - name: trackedRepositoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Tracked repository history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedRepositoryHistoryResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/fleet/status:
     get:
       operationId: getFleetStatus
@@ -623,3 +646,11 @@ components:
       type: object
       description: Runtime schema is owned by FleetStatusResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: FleetStatusResponseSchema
+    ExecutionPlanSummary:
+      type: object
+      description: Runtime schema is owned by ExecutionPlanSummarySchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionPlanSummarySchema
+    TrackedRepositoryHistoryResponse:
+      type: object
+      description: Runtime schema is owned by TrackedRepositoryHistoryResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: TrackedRepositoryHistoryResponseSchema

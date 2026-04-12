@@ -6,16 +6,23 @@ import {
   CreateTrackedRepositoryResponseSchema,
   EnqueueAnalysisJobRequestSchema,
   EnqueueAnalysisJobResponseSchema,
+  ExecutionPlanDetailResponseSchema,
+  ExecutionPlanEventsResponseSchema,
   FleetStatusResponseSchema,
+  GetAnalysisJobResponseSchema,
   ListAnalysisJobsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   RetryAnalysisJobResponseSchema,
+  TrackedRepositoryHistoryResponseSchema,
   TriggerSweepScheduleResponseSchema,
   type AnalysisJob,
   type CreateSweepScheduleRequest,
+  type ExecutionPlanDetailResponse,
+  type ExecutionPlanEventsResponse,
   type FleetStatusResponse,
   type SweepSchedule,
+  type TrackedRepositoryHistoryResponse,
   type TrackedRepository
 } from "@repo-guardian/shared-types";
 import {
@@ -23,8 +30,12 @@ import {
   createSweepSchedule as requestCreateSweepSchedule,
   createTrackedRepository as requestCreateTrackedRepository,
   enqueueAnalysisJob as requestEnqueueAnalysisJob,
+  getAnalysisJob as requestGetAnalysisJob,
+  getExecutionPlan as requestGetExecutionPlan,
   getFleetStatus as requestGetFleetStatus,
+  getTrackedRepositoryHistory as requestGetTrackedRepositoryHistory,
   listAnalysisJobs as requestListAnalysisJobs,
+  listExecutionPlanEvents as requestListExecutionPlanEvents,
   listSweepSchedules as requestListSweepSchedules,
   listTrackedRepositories as requestListTrackedRepositories,
   RepoGuardianApiError,
@@ -142,6 +153,15 @@ export async function listAnalysisJobs(): Promise<AnalysisJob[]> {
   }
 }
 
+export async function getAnalysisJob(jobId: string): Promise<AnalysisJob> {
+  try {
+    const response = await requestGetAnalysisJob(jobId, getApiOptions());
+    return GetAnalysisJobResponseSchema.parse(response).job;
+  } catch (error) {
+    throw toFleetClientError(error, "Repo Guardian could not load the analysis job");
+  }
+}
+
 export async function cancelAnalysisJob(jobId: string): Promise<AnalysisJob> {
   try {
     const response = await requestCancelAnalysisJob(jobId, getApiOptions());
@@ -166,6 +186,28 @@ export async function getFleetStatus(): Promise<FleetStatusResponse> {
     return FleetStatusResponseSchema.parse(response);
   } catch (error) {
     throw toFleetClientError(error, "Repo Guardian could not load fleet status");
+  }
+}
+
+export async function getExecutionPlanDetail(
+  planId: string
+): Promise<ExecutionPlanDetailResponse> {
+  try {
+    const response = await requestGetExecutionPlan(planId, getApiOptions());
+    return ExecutionPlanDetailResponseSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(error, "Repo Guardian could not load the execution plan");
+  }
+}
+
+export async function listExecutionPlanEvents(
+  planId: string
+): Promise<ExecutionPlanEventsResponse> {
+  try {
+    const response = await requestListExecutionPlanEvents(planId, getApiOptions());
+    return ExecutionPlanEventsResponseSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(error, "Repo Guardian could not load execution plan events");
   }
 }
 
@@ -212,5 +254,22 @@ export async function triggerSweepSchedule(scheduleId: string): Promise<{
     );
   } catch (error) {
     throw toFleetClientError(error, "Repo Guardian could not trigger the sweep schedule");
+  }
+}
+
+export async function getTrackedRepositoryHistory(
+  trackedRepositoryId: string
+): Promise<TrackedRepositoryHistoryResponse> {
+  try {
+    const response = await requestGetTrackedRepositoryHistory(
+      trackedRepositoryId,
+      getApiOptions()
+    );
+    return TrackedRepositoryHistoryResponseSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(
+      error,
+      "Repo Guardian could not load the tracked repository history"
+    );
   }
 }

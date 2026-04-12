@@ -1,25 +1,59 @@
 import { type Router as ExpressRouter, Router } from "express";
 import { normalizeRepoInput } from "@repo-guardian/github";
-import { isPersistenceError, type TrackedRepositoryRepository } from "@repo-guardian/persistence";
+import {
+  isPersistenceError,
+  type AnalysisJobRepository,
+  type AnalysisRunRepository,
+  type ExecutionPlanRepository,
+  type TrackedPullRequestRepository,
+  type TrackedRepositoryRepository
+} from "@repo-guardian/persistence";
 import {
   AnalysisJobStatusSchema,
   CreateSweepScheduleRequestSchema,
   CreateTrackedRepositoryRequestSchema,
   EnqueueAnalysisJobRequestSchema,
-  EnqueueExecutionPlanJobRequestSchema
+  EnqueueExecutionPlanJobRequestSchema,
+  TrackedRepositoryHistoryResponseSchema
 } from "@repo-guardian/shared-types";
 import {
   type AnalysisJobProcessor,
   getAnalysisJobProcessor
 } from "../lib/analysis-job-processor.js";
 import { env } from "../lib/env.js";
-import { getTrackedRepositoryRepository } from "../lib/persistence.js";
+import {
+  getAnalysisJobRepository,
+  getAnalysisRunRepository,
+  getExecutionPlanRepository,
+  getTrackedPullRequestRepository,
+  getTrackedRepositoryRepository
+} from "../lib/persistence.js";
 import { requireAuth } from "../middleware/auth.js";
 import { GitHubReadClient } from "@repo-guardian/github";
 
 type TrackedRepositoryStore = Pick<
   TrackedRepositoryRepository,
-  "createRepository" | "listRepositories"
+  "createRepository" | "getRepository" | "listRepositories"
+>;
+
+type AnalysisJobStore = Pick<
+  AnalysisJobRepository,
+  "listJobs"
+>;
+
+type AnalysisRunStore = Pick<
+  AnalysisRunRepository,
+  "listRunsByRepositoryFullName"
+>;
+
+type ExecutionPlanStore = Pick<
+  ExecutionPlanRepository,
+  "listPlanSummariesByRepositoryFullName"
+>;
+
+type TrackedPullRequestStore = Pick<
+  TrackedPullRequestRepository,
+  "listTrackedPullRequestsByRepositoryFullName"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -66,7 +100,11 @@ function getSingleParam(value: string | string[] | undefined): string {
 }
 
 export function createFleetRouter(input: {
+  analysisJobStore: AnalysisJobStore;
   analysisJobProcessor: AnalysisJobProcessorLike;
+  executionPlanStore: ExecutionPlanStore;
+  runStore: AnalysisRunStore;
+  trackedPullRequestStore: TrackedPullRequestStore;
   trackedRepositoryStore: TrackedRepositoryStore;
 }): ExpressRouter {
   const fleetRouter: ExpressRouter = Router();
@@ -105,6 +143,71 @@ export function createFleetRouter(input: {
 
       response.status(201).json({ repository });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/tracked-repositories/:trackedRepositoryId/history", async (request, response, next) => {
+    try {
+      const trackedRepository = await input.trackedRepositoryStore.getRepository(
+        getSingleParam(request.params.trackedRepositoryId)
+      );
+      const [fleetStatus, recentRuns, recentJobs, recentPlans, trackedPullRequests] =
+        await Promise.all([
+          input.analysisJobProcessor.getFleetStatus(),
+          input.runStore.listRunsByRepositoryFullName({
+            limit: 8,
+            repositoryFullName: trackedRepository.fullName
+          }),
+          input.analysisJobStore.listJobs({
+            limit: 8,
+            repositoryFullName: trackedRepository.fullName
+          }),
+          input.executionPlanStore.listPlanSummariesByRepositoryFullName({
+            limit: 8,
+            repositoryFullName: trackedRepository.fullName
+          }),
+          input.trackedPullRequestStore.listTrackedPullRequestsByRepositoryFullName(
+            trackedRepository.fullName
+          )
+        ]);
+      const currentStatus = fleetStatus.trackedRepositories.find(
+        (entry) => entry.trackedRepository.id === trackedRepository.id
+      );
+
+      response.json(
+        TrackedRepositoryHistoryResponseSchema.parse({
+          currentStatus: currentStatus ?? {
+            latestAnalysisJob: null,
+            latestPlanId: null,
+            latestPlanStatus: null,
+            latestRun: null,
+            patchPlanCounts: {
+              blocked: 0,
+              executable: 0,
+              stale: 0
+            },
+            stale: true,
+            trackedRepository
+          },
+          generatedAt: fleetStatus.generatedAt,
+          recentJobs,
+          recentPlans,
+          recentRuns,
+          trackedPullRequests,
+          trackedRepository
+        })
+      );
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Tracked repository history request failed"
+        });
+        return;
+      }
+
       next(error);
     }
   });
@@ -366,7 +469,11 @@ export default function createDefaultFleetRouter(): ExpressRouter {
   const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
 
   return createFleetRouter({
+    analysisJobStore: getAnalysisJobRepository(),
     analysisJobProcessor: getAnalysisJobProcessor({ readClient }),
+    executionPlanStore: getExecutionPlanRepository(),
+    runStore: getAnalysisRunRepository(),
+    trackedPullRequestStore: getTrackedPullRequestRepository(),
     trackedRepositoryStore: getTrackedRepositoryRepository()
   });
 }

@@ -11,13 +11,17 @@ import userEvent from "@testing-library/user-event";
 import {
   AnalysisJobSchema,
   AnalyzeRepoResponseSchema,
+  ExecutionPlanDetailResponseSchema,
+  ExecutionPlanEventsResponseSchema,
   ExecutionResultSchema,
   ExecutionPlanResponseSchema,
   FleetStatusResponseSchema,
+  GetAnalysisRunResponseSchema,
   ListAnalysisJobsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   SweepScheduleSchema,
+  TrackedRepositoryHistoryResponseSchema,
   TrackedRepositorySchema,
   type AnalyzeRepoResponse
 } from "@repo-guardian/shared-types";
@@ -1156,6 +1160,210 @@ function createFleetStatusFixture() {
         trackedRepository
       }
     ]
+  });
+}
+
+function createExecutionPlanDetailFixture(overrides: Record<string, unknown> = {}) {
+  return ExecutionPlanDetailResponseSchema.parse({
+    actions: [
+      {
+        actionType: "create_pr",
+        affectedPackages: ["react"],
+        affectedPaths: ["package.json", "package-lock.json"],
+        approvalNotes: ["Approval granted for this PR action."],
+        approvalRequired: true,
+        approvalStatus: "granted",
+        attempted: true,
+        blocked: false,
+        branchName: "repo-guardian/upgrade-react",
+        commitSha: "abc123def456",
+        completedAt: "2026-04-12T10:08:00.000Z",
+        errorMessage: null,
+        eligibility: "eligible",
+        id: "action:create-pr:react",
+        issueNumber: null,
+        issueUrl: null,
+        linkedIssueCandidateIds: [],
+        linkedPRCandidateIds: ["pr:dependency-upgrade:react"],
+        plannedSteps: ["Create the remediation PR."],
+        pullRequestNumber: 21,
+        pullRequestUrl: "https://github.com/openai/openai-node/pull/21",
+        reason: "Created PR #21.",
+        startedAt: "2026-04-12T10:07:00.000Z",
+        succeeded: true,
+        targetId: "pr:dependency-upgrade:react",
+        targetType: "pr_candidate",
+        title: "Create PR: Upgrade react"
+      }
+    ],
+    actorUserId: "usr_authenticated",
+    analysisRunId: "run_one",
+    approval: {
+      confirmationText: "I approve this GitHub write-back plan.",
+      notes: ["Approved in supervised mode."],
+      required: true,
+      status: "granted",
+      verifiedAt: "2026-04-12T10:06:00.000Z"
+    },
+    cancelledAt: null,
+    completedAt: "2026-04-12T10:08:00.000Z",
+    createdAt: "2026-04-12T10:05:00.000Z",
+    executionId: "exec_one",
+    executionResultStatus: "completed",
+    executionSummary: {
+      approvalRequiredActions: 1,
+      blockedActions: 0,
+      eligibleActions: 1,
+      issueSelections: 0,
+      prSelections: 1,
+      skippedActions: 0,
+      totalActions: 1,
+      totalSelections: 1
+    },
+    expiresAt: "2026-04-12T10:20:00.000Z",
+    failedAt: null,
+    planHash: "sha256:plan-one",
+    planId: "plan_one",
+    repository: {
+      defaultBranch: "main",
+      fullName: "openai/openai-node",
+      owner: "openai",
+      repo: "openai-node"
+    },
+    selectedIssueCandidateIds: [],
+    selectedPRCandidateIds: ["pr:dependency-upgrade:react"],
+    startedAt: "2026-04-12T10:07:00.000Z",
+    status: "completed",
+    ...overrides
+  });
+}
+
+function createExecutionPlanEventsFixture(overrides: Record<string, unknown> = {}) {
+  return ExecutionPlanEventsResponseSchema.parse({
+    events: [
+      {
+        actionId: null,
+        actorUserId: "usr_authenticated",
+        createdAt: "2026-04-12T10:05:00.000Z",
+        details: {
+          source: "test"
+        },
+        eventId: "evt_plan_created",
+        eventType: "plan_created",
+        executionId: null,
+        planId: "plan_one",
+        repositoryFullName: "openai/openai-node"
+      },
+      {
+        actionId: "action:create-pr:react",
+        actorUserId: "usr_authenticated",
+        createdAt: "2026-04-12T10:08:00.000Z",
+        details: {
+          pullRequestNumber: 21
+        },
+        eventId: "evt_action_succeeded",
+        eventType: "action_succeeded",
+        executionId: "exec_one",
+        planId: "plan_one",
+        repositoryFullName: "openai/openai-node"
+      }
+    ],
+    planId: "plan_one",
+    ...overrides
+  });
+}
+
+function createRunDetailFixture(overrides: Record<string, unknown> = {}) {
+  return GetAnalysisRunResponseSchema.parse({
+    run: {
+      analysis: successPayload,
+      createdAt: "2026-04-12T10:02:00.000Z",
+      id: "run_one",
+      label: "Weekly review"
+    },
+    summary: {
+      blockedPatchPlans: 1,
+      createdAt: "2026-04-12T10:02:00.000Z",
+      defaultBranch: "main",
+      executablePatchPlans: 4,
+      execution: {
+        latestExecutionCompletedAt: "2026-04-12T10:08:00.000Z",
+        latestPlanId: "plan_one",
+        latestPlanStatus: "completed"
+      },
+      fetchedAt: "2026-04-12T10:02:00.000Z",
+      highSeverityFindings: 1,
+      id: "run_one",
+      issueCandidates: 1,
+      label: "Weekly review",
+      prCandidates: 2,
+      repositoryFullName: "openai/openai-node",
+      totalFindings: 3
+    },
+    ...overrides
+  });
+}
+
+function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown> = {}) {
+  const fleetStatus = createFleetStatusFixture();
+
+  return TrackedRepositoryHistoryResponseSchema.parse({
+    currentStatus: fleetStatus.trackedRepositories[0],
+    generatedAt: "2026-04-12T10:09:00.000Z",
+    recentJobs: fleetStatus.recentJobs,
+    recentPlans: [
+      {
+        analysisRunId: "run_one",
+        approvalStatus: "granted",
+        cancelledAt: null,
+        completedAt: "2026-04-12T10:08:00.000Z",
+        createdAt: "2026-04-12T10:05:00.000Z",
+        executionId: "exec_one",
+        executionResultStatus: "completed",
+        expiresAt: "2026-04-12T10:20:00.000Z",
+        failedAt: null,
+        planId: "plan_one",
+        repositoryFullName: "openai/openai-node",
+        selectedIssueCandidateCount: 0,
+        selectedPRCandidateCount: 1,
+        startedAt: "2026-04-12T10:07:00.000Z",
+        status: "completed",
+        summary: {
+          approvalRequiredActions: 1,
+          blockedActions: 0,
+          eligibleActions: 1,
+          issueSelections: 0,
+          prSelections: 1,
+          skippedActions: 0,
+          totalActions: 1,
+          totalSelections: 1
+        }
+      }
+    ],
+    recentRuns: [
+      {
+        blockedPatchPlans: 1,
+        createdAt: "2026-04-12T10:02:00.000Z",
+        defaultBranch: "main",
+        executablePatchPlans: 4,
+        execution: {
+          latestExecutionCompletedAt: "2026-04-12T10:08:00.000Z",
+          latestPlanId: "plan_one",
+          latestPlanStatus: "completed"
+        },
+        fetchedAt: "2026-04-12T10:02:00.000Z",
+        highSeverityFindings: 1,
+        id: "run_one",
+        issueCandidates: 1,
+        label: "Weekly review",
+        prCandidates: 2,
+        repositoryFullName: "openai/openai-node",
+        totalFindings: 3
+      }
+    ],
+    trackedPullRequests: fleetStatus.trackedPullRequests,
+    trackedRepository: createTrackedRepositoryFixture(),
+    ...overrides
   });
 }
 
@@ -2997,6 +3205,191 @@ describe("App", () => {
         })
       );
     });
+  });
+
+  it("opens repository, run, and plan drill-downs inside the fleet inspector", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAuthenticatedFetch(async (url) => {
+      if (url === "/api/tracked-repositories/tracked_one/history") {
+        return createJsonResponse(createTrackedRepositoryHistoryFixture());
+      }
+
+      if (url === "/api/runs/run_one") {
+        return createJsonResponse(createRunDetailFixture());
+      }
+
+      if (url === "/api/execution/plans/plan_one") {
+        return createJsonResponse(createExecutionPlanDetailFixture());
+      }
+
+      if (url === "/api/execution/plans/plan_one/events") {
+        return createJsonResponse(createExecutionPlanEventsFixture());
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    const trackedRepositoriesPanel = within(getPanelByHeading(/Tracked repositories/i));
+    await user.click(
+      trackedRepositoriesPanel.getAllByRole("button", { name: /^View details$/i })[0]!
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: /Tracked repository history/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recent runs")).toBeInTheDocument();
+    expect(screen.getByText("Related plans")).toBeInTheDocument();
+
+    const repositoryInspector = within(getPanelByHeading(/Tracked repository history/i));
+    expect(
+      repositoryInspector.getAllByRole("link", { name: /Open GitHub PR/i }).length
+    ).toBeGreaterThan(0);
+    const recentRunsBlock = within(screen.getByText("Recent runs").closest("div")!);
+    await user.click(recentRunsBlock.getByRole("button", { name: /Open run/i }));
+
+    expect(await screen.findByRole("heading", { name: /Run detail/i })).toBeInTheDocument();
+    expect(screen.getByText(/dependency findings 1/i)).toBeInTheDocument();
+
+    const runInspector = within(getPanelByHeading(/Run detail/i));
+    await user.click(runInspector.getByRole("button", { name: /Open latest plan/i }));
+
+    expect(await screen.findByRole("heading", { name: /Plan detail/i })).toBeInTheDocument();
+    expect(screen.getByText("Audit events")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open PR/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Close inspector/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /Plan detail/i })
+      ).not.toBeInTheDocument();
+    });
+
+    const trackedPullRequestsPanel = within(getPanelByHeading(/Tracked pull requests/i));
+    await user.click(
+      trackedPullRequestsPanel.getAllByRole("button", { name: /Open plan/i })[0]!
+    );
+
+    expect(await screen.findByRole("heading", { name: /Plan detail/i })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/execution/plans/plan_one", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/execution/plans/plan_one/events",
+      expect.anything()
+    );
+  });
+
+  it("opens job drill-downs and supports inspector refresh after a failed detail load", async () => {
+    const user = userEvent.setup();
+    let jobDetailAttempts = 0;
+
+    const fetchMock = mockAuthenticatedFetch(async (url) => {
+      if (url === "/api/analyze/jobs/job_one") {
+        jobDetailAttempts += 1;
+
+        if (jobDetailAttempts === 1) {
+          return createJsonResponse({ error: "Job detail unavailable" }, false, 500);
+        }
+
+        return createJsonResponse({
+          job: createAnalysisJobFixture({
+            completedAt: "2026-04-12T10:07:00.000Z",
+            errorMessage: null,
+            planId: "plan_one",
+            runId: "run_one",
+            startedAt: "2026-04-12T10:06:00.000Z",
+            status: "completed",
+            trackedRepositoryId: "tracked_one"
+          })
+        });
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    const jobsPanel = within(getPanelByHeading(/Analysis jobs/i));
+    await user.click(jobsPanel.getAllByRole("button", { name: /^View details$/i })[0]!);
+
+    expect(await screen.findByRole("heading", { name: /Job detail/i })).toBeInTheDocument();
+    expect(await screen.findByText(/Job detail unavailable/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Refresh detail/i }));
+
+    await waitFor(() => {
+      const inspector = within(getPanelByHeading(/Job detail/i));
+      expect(inspector.getByText(/Tracked Repository/i)).toBeInTheDocument();
+      expect(inspector.getByRole("button", { name: /Open run/i })).toBeInTheDocument();
+      expect(inspector.getByRole("button", { name: /Open plan/i })).toBeInTheDocument();
+    });
+
+    expect(jobDetailAttempts).toBe(2);
   });
 
   it("preserves the loaded analysis when switching between analysis and fleet admin modes", async () => {

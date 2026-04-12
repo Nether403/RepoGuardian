@@ -1,14 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AnalysisJob,
   AnalyzeRepoResponse,
   CompareAnalysisRunsResponse,
+  ExecutionPlanDetailResponse,
+  ExecutionPlanEventsResponse,
   ExecutionPlanResponse,
   ExecutionResult,
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
+  GetAnalysisRunResponse,
   SavedAnalysisRunSummary,
   SweepSchedule,
+  TrackedRepositoryHistoryResponse,
   TrackedRepository
 } from "@repo-guardian/shared-types";
 import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
@@ -18,6 +22,7 @@ import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
 import { FleetOverviewPanel } from "./components/FleetOverviewPanel";
+import { FleetInspectorPanel } from "./components/FleetInspectorPanel";
 import { GuardianGraphPanel } from "./components/GuardianGraphPanel";
 import { IssueCandidatesPanel } from "./components/IssueCandidatesPanel";
 import { PageShell } from "./components/PageShell";
@@ -59,8 +64,12 @@ import {
   createTrackedRepository,
   enqueueTrackedRepositoryAnalysis,
   FleetClientError,
+  getAnalysisJob,
+  getExecutionPlanDetail,
   getFleetStatus,
+  getTrackedRepositoryHistory,
   listAnalysisJobs,
+  listExecutionPlanEvents,
   listSweepSchedules,
   listTrackedRepositories,
   retryAnalysisJob,
@@ -75,6 +84,11 @@ import {
 } from "./lib/runs-client";
 
 type AppMode = "analysis" | "fleet-admin";
+type FleetInspectorSelection =
+  | { id: string; kind: "job" }
+  | { id: string; kind: "plan" }
+  | { id: string; kind: "repository" }
+  | { id: string; kind: "run" };
 
 type FleetAdminSnapshot = {
   analysisJobs: AnalysisJob[];
@@ -210,6 +224,27 @@ function App() {
   );
   const [trackedRepositoriesErrorMessage, setTrackedRepositoriesErrorMessage] =
     useState<string | null>(null);
+  const [fleetInspectorSelection, setFleetInspectorSelection] =
+    useState<FleetInspectorSelection | null>(null);
+  const [fleetInspectorErrorMessage, setFleetInspectorErrorMessage] = useState<
+    string | null
+  >(null);
+  const [isFleetInspectorLoading, setIsFleetInspectorLoading] = useState(false);
+  const [analysisJobDetailsById, setAnalysisJobDetailsById] = useState<
+    Record<string, AnalysisJob>
+  >({});
+  const [executionPlanDetailsById, setExecutionPlanDetailsById] = useState<
+    Record<string, ExecutionPlanDetailResponse>
+  >({});
+  const [executionPlanEventsById, setExecutionPlanEventsById] = useState<
+    Record<string, ExecutionPlanEventsResponse>
+  >({});
+  const [runDetailsById, setRunDetailsById] = useState<
+    Record<string, GetAnalysisRunResponse>
+  >({});
+  const [trackedRepositoryHistoriesById, setTrackedRepositoryHistoriesById] =
+    useState<Record<string, TrackedRepositoryHistoryResponse>>({});
+  const fleetInspectorRequestIdRef = useRef(0);
 
   const statusLabel =
     appMode === "analysis"
@@ -264,6 +299,26 @@ function App() {
     fleetStatus,
     trackedRepositories
   });
+  const selectedJobDetail =
+    fleetInspectorSelection?.kind === "job"
+      ? analysisJobDetailsById[fleetInspectorSelection.id] ?? null
+      : null;
+  const selectedPlanDetail =
+    fleetInspectorSelection?.kind === "plan"
+      ? executionPlanDetailsById[fleetInspectorSelection.id] ?? null
+      : null;
+  const selectedPlanEvents =
+    fleetInspectorSelection?.kind === "plan"
+      ? executionPlanEventsById[fleetInspectorSelection.id] ?? null
+      : null;
+  const selectedRepositoryHistory =
+    fleetInspectorSelection?.kind === "repository"
+      ? trackedRepositoryHistoriesById[fleetInspectorSelection.id] ?? null
+      : null;
+  const selectedRunDetail =
+    fleetInspectorSelection?.kind === "run"
+      ? runDetailsById[fleetInspectorSelection.id] ?? null
+      : null;
 
   function resetExecutionState() {
     setApprovalGranted(false);
@@ -295,6 +350,21 @@ function App() {
     setFleetStatus(snapshot.fleetStatus);
     setSweepSchedules(snapshot.sweepSchedules);
     setTrackedRepositories(snapshot.trackedRepositories);
+  }
+
+  function hasInspectorCache(selection: FleetInspectorSelection): boolean {
+    switch (selection.kind) {
+      case "job":
+        return Boolean(analysisJobDetailsById[selection.id]);
+      case "plan":
+        return Boolean(
+          executionPlanDetailsById[selection.id] && executionPlanEventsById[selection.id]
+        );
+      case "repository":
+        return Boolean(trackedRepositoryHistoriesById[selection.id]);
+      case "run":
+        return Boolean(runDetailsById[selection.id]);
+    }
   }
 
   async function handleRefreshSavedRuns() {
@@ -661,6 +731,115 @@ function App() {
     }
   }
 
+  async function openFleetInspector(
+    selection: FleetInspectorSelection,
+    forceRefresh = false
+  ) {
+    setFleetInspectorSelection(selection);
+    setFleetInspectorErrorMessage(null);
+
+    if (!forceRefresh && hasInspectorCache(selection)) {
+      setIsFleetInspectorLoading(false);
+      return;
+    }
+
+    const requestId = fleetInspectorRequestIdRef.current + 1;
+    fleetInspectorRequestIdRef.current = requestId;
+    setIsFleetInspectorLoading(true);
+
+    try {
+      switch (selection.kind) {
+        case "job": {
+          const detail = await getAnalysisJob(selection.id);
+
+          if (fleetInspectorRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          setAnalysisJobDetailsById((current) => ({
+            ...current,
+            [selection.id]: detail
+          }));
+          break;
+        }
+        case "plan": {
+          const [detail, events] = await Promise.all([
+            getExecutionPlanDetail(selection.id),
+            listExecutionPlanEvents(selection.id)
+          ]);
+
+          if (fleetInspectorRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          setExecutionPlanDetailsById((current) => ({
+            ...current,
+            [selection.id]: detail
+          }));
+          setExecutionPlanEventsById((current) => ({
+            ...current,
+            [selection.id]: events
+          }));
+          break;
+        }
+        case "repository": {
+          const history = await getTrackedRepositoryHistory(selection.id);
+
+          if (fleetInspectorRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          setTrackedRepositoryHistoriesById((current) => ({
+            ...current,
+            [selection.id]: history
+          }));
+          break;
+        }
+        case "run": {
+          const detail = await getSavedAnalysisRun(selection.id);
+
+          if (fleetInspectorRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          setRunDetailsById((current) => ({
+            ...current,
+            [selection.id]: detail
+          }));
+          break;
+        }
+      }
+    } catch (error) {
+      if (fleetInspectorRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setFleetInspectorErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not load the selected fleet detail."
+      );
+    } finally {
+      if (fleetInspectorRequestIdRef.current === requestId) {
+        setIsFleetInspectorLoading(false);
+      }
+    }
+  }
+
+  function handleCloseFleetInspector() {
+    setFleetInspectorSelection(null);
+    setFleetInspectorErrorMessage(null);
+    setIsFleetInspectorLoading(false);
+  }
+
+  async function handleRefreshFleetInspector() {
+    if (!fleetInspectorSelection) {
+      return;
+    }
+
+    await openFleetInspector(fleetInspectorSelection, true);
+  }
+
   useEffect(() => {
     if (appMode !== "fleet-admin" || fleetStatus) {
       return;
@@ -896,6 +1075,17 @@ function App() {
             isLoading={isFleetLoading}
             onCreateRepository={handleCreateTrackedRepository}
             onEnqueueAnalysis={handleEnqueueTrackedRepositoryAnalysis}
+            onOpenJobDetails={(jobId) => void openFleetInspector({ id: jobId, kind: "job" })}
+            onOpenPlanDetails={(planId) =>
+              void openFleetInspector({ id: planId, kind: "plan" })
+            }
+            onOpenRepositoryDetails={(trackedRepositoryId) =>
+              void openFleetInspector({
+                id: trackedRepositoryId,
+                kind: "repository"
+              })
+            }
+            onOpenRunDetails={(runId) => void openFleetInspector({ id: runId, kind: "run" })}
             onRefresh={handleRefreshFleetAdmin}
             pendingTrackedRepositoryId={pendingTrackedRepositoryId}
             repositories={trackedRepositoryStatuses}
@@ -905,6 +1095,11 @@ function App() {
             isLoading={isFleetLoading}
             jobs={analysisJobs}
             onCancelJob={handleCancelJob}
+            onOpenJobDetails={(jobId) => void openFleetInspector({ id: jobId, kind: "job" })}
+            onOpenPlanDetails={(planId) =>
+              void openFleetInspector({ id: planId, kind: "plan" })
+            }
+            onOpenRunDetails={(runId) => void openFleetInspector({ id: runId, kind: "run" })}
             onRefresh={handleRefreshFleetAdmin}
             onRetryJob={handleRetryJob}
             pendingJobId={pendingJobId}
@@ -920,8 +1115,29 @@ function App() {
             schedules={sweepSchedules}
           />
           <TrackedPullRequestsPanel
+            onOpenPlanDetails={(planId) =>
+              void openFleetInspector({ id: planId, kind: "plan" })
+            }
             pullRequests={fleetStatus?.trackedPullRequests ?? []}
           />
+          {fleetInspectorSelection ? (
+            <FleetInspectorPanel
+              errorMessage={fleetInspectorErrorMessage}
+              isLoading={isFleetInspectorLoading}
+              jobDetail={selectedJobDetail}
+              onClose={handleCloseFleetInspector}
+              onOpenPlan={(planId) =>
+                void openFleetInspector({ id: planId, kind: "plan" })
+              }
+              onOpenRun={(runId) => void openFleetInspector({ id: runId, kind: "run" })}
+              onRefresh={() => void handleRefreshFleetInspector()}
+              planDetail={selectedPlanDetail}
+              planEvents={selectedPlanEvents}
+              repositoryHistory={selectedRepositoryHistory}
+              runDetail={selectedRunDetail}
+              selection={fleetInspectorSelection}
+            />
+          ) : null}
         </>
       )}
     </PageShell>

@@ -7,6 +7,7 @@ import type {
   ExecutionPlanEventsResponse,
   ExecutionPlanLifecycleStatus,
   ExecutionPlanResponse,
+  ExecutionPlanSummary,
   ExecutionResult,
   PersistedExecutionAction
 } from "@repo-guardian/shared-types";
@@ -15,6 +16,7 @@ import {
   ExecutionPlanDetailResponseSchema,
   ExecutionPlanEventsResponseSchema,
   ExecutionPlanLifecycleStatusValues,
+  ExecutionPlanSummarySchema,
   ExecutionPlanStatusEventSchema,
   ExecutionPlanStatusEventTypeValues,
   ExecutionResultSummarySchema,
@@ -316,6 +318,71 @@ export class ExecutionPlanRepository {
       ),
       planId
     });
+  }
+
+  async listPlanSummariesByRepositoryFullName(input: {
+    limit?: number;
+    repositoryFullName: string;
+  }): Promise<ExecutionPlanSummary[]> {
+    const result = await this.client.query<ExecutionPlanRow>(
+      `SELECT
+        execution_plans.plan_id,
+        execution_plans.plan_hash,
+        execution_plans.analysis_run_id,
+        execution_plans.repository_full_name,
+        execution_plans.repository_owner,
+        execution_plans.repository_repo,
+        execution_plans.repository_default_branch,
+        execution_plans.actor_user_id,
+        execution_plans.selected_issue_candidate_ids,
+        execution_plans.selected_pr_candidate_ids,
+        execution_plans.approval_required,
+        execution_plans.approval_confirmation_text,
+        execution_plans.approval_status,
+        execution_plans.approval_notes,
+        execution_plans.approval_verified_at,
+        execution_plans.status,
+        execution_plans.summary_payload,
+        execution_plans.created_at,
+        execution_plans.expires_at,
+        execution_plans.started_at,
+        execution_plans.completed_at,
+        execution_plans.failed_at,
+        execution_plans.cancelled_at,
+        execution_attempts.execution_id,
+        execution_attempts.status AS execution_status
+      FROM execution_plans
+      LEFT JOIN execution_attempts
+        ON execution_attempts.plan_id = execution_plans.plan_id
+      WHERE execution_plans.repository_full_name = $1
+      ORDER BY execution_plans.created_at DESC, execution_plans.plan_id DESC
+      LIMIT $2`,
+      [input.repositoryFullName, input.limit ?? 10]
+    );
+
+    return result.rows.map((row) =>
+      ExecutionPlanSummarySchema.parse({
+        analysisRunId: row.analysis_run_id,
+        approvalStatus: row.approval_status,
+        cancelledAt: toIsoString(row.cancelled_at),
+        completedAt: toIsoString(row.completed_at),
+        createdAt: toIsoString(row.created_at),
+        executionId: row.execution_id,
+        executionResultStatus:
+          row.execution_status === "completed" || row.execution_status === "failed"
+            ? row.execution_status
+            : null,
+        expiresAt: toIsoString(row.expires_at),
+        failedAt: toIsoString(row.failed_at),
+        planId: row.plan_id,
+        repositoryFullName: row.repository_full_name,
+        selectedIssueCandidateCount: parseStringArray(row.selected_issue_candidate_ids).length,
+        selectedPRCandidateCount: parseStringArray(row.selected_pr_candidate_ids).length,
+        startedAt: toIsoString(row.started_at),
+        status: parsePlanStatus(row.status),
+        summary: ExecutionResultSummarySchema.parse(row.summary_payload)
+      })
+    );
   }
 
   async claimExecution(input: {

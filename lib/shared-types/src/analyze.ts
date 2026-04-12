@@ -1062,6 +1062,35 @@ export const FleetStatusResponseSchema = z.object({
   trackedPullRequests: z.array(TrackedPullRequestSchema)
 });
 
+export const ExecutionPlanSummarySchema = z.object({
+  planId: z.string().min(1),
+  analysisRunId: z.string().min(1),
+  repositoryFullName: z.string().min(3),
+  status: ExecutionPlanLifecycleStatusSchema,
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  failedAt: z.string().datetime().nullable(),
+  cancelledAt: z.string().datetime().nullable(),
+  executionId: z.string().min(1).nullable(),
+  executionResultStatus: z.enum(["completed", "failed"]).nullable(),
+  approvalStatus: ApprovalStatusSchema,
+  selectedIssueCandidateCount: z.number().int().nonnegative(),
+  selectedPRCandidateCount: z.number().int().nonnegative(),
+  summary: ExecutionResultSummarySchema
+});
+
+export const TrackedRepositoryHistoryResponseSchema = z.object({
+  generatedAt: z.string().datetime(),
+  trackedRepository: TrackedRepositorySchema,
+  currentStatus: FleetTrackedRepositoryStatusSchema,
+  recentRuns: z.array(SavedAnalysisRunSummarySchema),
+  recentJobs: z.array(AnalysisJobSchema),
+  recentPlans: z.array(ExecutionPlanSummarySchema),
+  trackedPullRequests: z.array(TrackedPullRequestSchema)
+});
+
 export const CompareAnalysisRunsRequestSchema = z.object({
   baseRunId: z.string().min(1),
   targetRunId: z.string().min(1)
@@ -1419,6 +1448,10 @@ export type FleetTrackedRepositoryStatus = z.infer<
   typeof FleetTrackedRepositoryStatusSchema
 >;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
+export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
+export type TrackedRepositoryHistoryResponse = z.infer<
+  typeof TrackedRepositoryHistoryResponseSchema
+>;
 export type CompareAnalysisRunsRequest = z.infer<
   typeof CompareAnalysisRunsRequestSchema
 >;

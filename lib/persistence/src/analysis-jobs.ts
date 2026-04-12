@@ -248,7 +248,9 @@ export class AnalysisJobRepository {
 
   async listJobs(options: {
     limit?: number;
+    repositoryFullName?: string;
     status?: AnalysisJob["status"];
+    trackedRepositoryId?: string;
   } = {}): Promise<AnalysisJob[]> {
     const values: unknown[] = [];
     const filters: string[] = [];
@@ -256,6 +258,16 @@ export class AnalysisJobRepository {
     if (options.status) {
       values.push(options.status);
       filters.push(`status = $${values.length}`);
+    }
+
+    if (options.repositoryFullName) {
+      values.push(options.repositoryFullName);
+      filters.push(`repository_full_name = $${values.length}`);
+    }
+
+    if (options.trackedRepositoryId) {
+      values.push(options.trackedRepositoryId);
+      filters.push(`tracked_repository_id = $${values.length}`);
     }
 
     values.push(options.limit ?? 50);
