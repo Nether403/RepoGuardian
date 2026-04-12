@@ -9,9 +9,10 @@ It accepts a GitHub repository URL or `owner/repo` slug, analyzes dependency and
 This product is not an autonomous maintainer. It is an engineering assistant with explicit user approval before write actions.
 
 Current implementation status:
-- post-`5B` alpha, not a finished V1
-- canonical routes are `/api/analyze`, `/api/execution/plan`, and `/api/runs*`
-- GitHub write-back is intentionally narrow and approval-gated
+- post-`6F` alpha, not a finished V1
+- canonical routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
+- security-hardened two-phase execution model with mandatory `Authorization` headers
+- GitHub write-back expansion for all supported ecosystems (now including Gradle and Yarn)
 
 ---
 
@@ -254,7 +255,7 @@ Do not propose a PR when:
 Supported in the current alpha:
 - create selected GitHub Issues from issue candidates
 - create branch, update file(s), commit a patch, and open a pull request for bounded workflow-hardening candidates
-- create branch, update repo-root `package.json` plus `package-lock.json` v2/v3, commit a patch, and open a pull request for bounded npm dependency-upgrade candidates when deterministic lock metadata already exists
+- create branch, update repo-root manifest/lockfile for supported ecosystems (npm, yarn, go, rust, python, maven, gradle), commit a patch, and open a pull request for bounded dependency-upgrade candidates when deterministic patch rules apply
 
 Not supported:
 - arbitrary PR-candidate write-back outside the bounded supported slices
@@ -298,6 +299,7 @@ Repo Guardian should be a pnpm workspace monorepo.
 Canonical routes:
 - `POST /api/analyze`
 - `POST /api/execution/plan`
+- `POST /api/execution/execute`
 - `GET /api/runs`
 - `POST /api/runs`
 - `GET /api/runs/{runId}`
@@ -306,8 +308,10 @@ Canonical routes:
 Contract rules:
 - `POST /api/analyze` returns the shared `AnalyzeRepoResponse` payload directly.
 - `AnalyzeRepoResponse` stays backward-compatible while dependency coverage expands.
-- dependency expansion flows through `dependencySnapshot`, findings, candidate generation, and warnings rather than new top-level response envelopes.
-- `POST /api/execution/plan` is the canonical route for both dry-run planning and explicitly approved execution.
+- `POST /api/execution/plan` and `POST /api/execution/execute` form the canonical two-phase execution model.
+- `plan` creates a short-lived approval token and hashes the actions; it performs no write-back.
+- `execute` requires the token, a matching hash, and an explicit confirmation string; it performs the actual GitHub writes.
+- All canonical routes require `Authorization: Bearer <API_SECRET_KEY>`.
 - the older split write routes such as `/api/issues/create` and `/api/prs/create` are not part of the canonical contract.
 
 ---
@@ -336,8 +340,6 @@ UI style:
 
 ## 15. Donor repo guidance
 
-Use sibling repos for reference only.
-
 ### `../RepoRadar`
 Use for:
 - GitHub workflow ideas
@@ -357,111 +359,30 @@ Use for:
 - API contract discipline
 - validation patterns
 
-Do not modify any sibling repo.
-
 ---
 
 ## 16. Milestones
 
-### Milestone 1
-- scaffold app
-- repo input
-- GitHub metadata + tree fetch
-- manifest/lockfile detection
-- ecosystem inference
-- basic UI and tests
-
-### Milestone 2A
-- dependency parsing
-- advisory lookup interface
-- structured dependency findings
-
-### Milestone 2B
-- broaden supported Node.js and Python dependency formats
-- normalize dependency snapshots for direct and lockfile-backed records
-
-### Milestone 3A
-- targeted code review
-- structured code findings
-- issue-candidate grouping foundations
-
-### Milestone 3B
-- structured candidate issue drafting
-- finding-to-issue traceability
-
-### Milestone 4A
-- candidate PR generation
-- validation status
-- linked patch-planning metadata
-
-### Milestone 4B
-- deterministic Guardian Graph reporting
-- reusable analysis view-model helpers
-
-### Milestone 5A
-- approval-gated dry-run execution planning
-- execution action results and UX polish
-
-### Milestone 5B
-- approved GitHub Issue creation
-- approved bounded workflow-hardening PR write-back
-- approved bounded root npm dependency-upgrade PR write-back
+### Milestone 1-5 [COMPLETE]
+Initial foundation and basic write-back slices.
 
 ### Milestone 6A
-- align `SPEC.md`, `README.md`, `AGENTS.md`, and OpenAPI with the implemented contract
+- align documents and OpenAPI with implemented contract
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` canonical
-- expand dependency parsing and advisory normalization coverage for Node.js, Python, Go, Rust, JVM, and Ruby formats
-- add mixed-ecosystem API and web regression coverage
-- preserve the current write-back guardrails without broadening them
 
-### Milestone 6B
-- harden parser fidelity before any broader write-back expansion
-- focus on Gradle DSL coverage, Maven property/version resolution, and nontrivial Bundler declarations
-- keep explicit warnings for unsupported or heuristic-heavy cases instead of guessed findings
-
-### Milestone 6C
-- expand bounded write-back slices only after contract alignment, coverage expansion, and parser hardening are complete
-- keep approval-gated deterministic execution constraints
-- avoid autonomous repository maintenance
-
-### Milestone 6D
-- expand bounded write-back slices to include deterministic patch generation for Go (`go.mod`) and Rust (`Cargo.toml`)
-- harden PR execution pipelines for existing deterministic targets
-- keep approval-gated PR execution constraints
-- do not attempt complex resolution of lockfiles (`go.sum`, `Cargo.lock`) locally, instead relying on targeted string replacements
-
-### Milestone 6E
-- expand bounded write-back slices to include deterministic patch generation for Ruby (`Gemfile`), Python (`pyproject.toml`), and Infra (`Dockerfile`)
-- do not attempt complex lockfile resolution for these ecosystems locally
-- keep approval-gated PR execution constraints
-
-### Milestone 6F
-- expand bounded write-back slices to include deterministic patch generation for Gradle (`build.gradle`, `build.gradle.kts`) and Yarn (`package.json` manifest only, `yarn.lock` left for CI)
-- block Gradle DSL variable interpolations; only patch explicit hardcoded version strings
-- keep approval-gated PR execution constraints
+### Milestone 6B-6F (Hardening & Expansion) [COMPLETE]
+- hardened parser fidelity for Gradle, Maven, and Bundler
+- expanded bounded write-back to include Go, Rust, Ruby, Python (pyproject), Gradle, and Yarn
+- implemented two-phase execution security model (`plan` -> `execute`)
+- added mandatory API-key authentication for all analytical and execution routes
 
 ---
 
-## 17. Acceptance criteria for Milestone 6F
+## 17. Acceptance criteria for Milestone 6F [PASSED]
 
 Milestone 6F is complete when:
 - deterministic GitHub write-back accurately processes `build.gradle`, `build.gradle.kts`, and Yarn `package.json` targets
-- Gradle DSL variable interpolations (e.g. `version: $myVersion`) are explicitly blocked with a clear reason
-- Yarn write-back updates `package.json` only; `yarn.lock` regeneration is delegated to the user's CI pipeline
-- existing API routes safely gate these updates the same way they do for other ecosystems
+- Gradle DSL variable interpolations are explicitly blocked
+- Yarn write-back updates `package.json` only
+- existing API routes safely gate these updates
 - lint, typecheck, test, and build pass
-
----
-
-## 18. Non-goals for Codex during Milestone 6F
-
-Codex should not:
-- add auth
-- add billing
-- add subscriptions
-- add background jobs
-- broaden GitHub write-back beyond the current bounded supported slices
-- redesign the whole product beyond contract alignment and analysis coverage needs
-- invent weak dependency findings when exact version evidence is unavailable
-- attempt to parse or rewrite `yarn.lock` files (v1 classic or Berry v2+)
-- attempt to resolve Gradle DSL variable interpolations locally

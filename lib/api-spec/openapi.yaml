@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Repo Guardian API
   version: 0.1.0
-  description: Canonical post-5B alpha contract for supervised repository analysis, approval-gated execution planning, and local saved analysis runs. The public route surface is `/api/analyze`, `/api/execution/plan`, and `/api/runs*`, and `AnalyzeRepoResponse` remains backward-compatible while dependency coverage expands.
+  description: Canonical post-6F alpha contract for supervised repository analysis, security-hardened two-phase execution planning, and local saved analysis runs. The public route surface is `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
 servers:
   - url: /
 paths:

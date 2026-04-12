@@ -146,12 +146,11 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 6F
+### Active milestone: Post-Milestone 6F / Stabilization
 Allowed:
-- keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` as the canonical public contract
-- expand deterministic patch PR generation to cover Gradle (`build.gradle`, `build.gradle.kts`) and Yarn (`package.json` manifest, skip `yarn.lock`)
-- block Gradle DSL variable interpolations and only patch explicit hardcoded version strings
-- keep the current approval-gated GitHub write behavior working as-is
+- keep `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*` as the canonical public contract
+- ensure deterministic patch PR generation for already supported ecosystems (including Gradle and Yarn) stays stable
+- maintain the two-phase approval-gated and authenticated GitHub write behavior
 
 Not allowed in this milestone unless explicitly requested:
 - broaden GitHub write-back beyond the existing bounded slices (now including the new 6F targets)
