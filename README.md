@@ -1,6 +1,5 @@
 # Repo Guardian
 
-
 Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`5B` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, and a narrow Milestone 5B write-back slice across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, local saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, approval-gated dry-run execution planning, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic npm dependency write-back for a tightly bounded root `package.json` plus `package-lock.json` v2/v3 path.
 
 ## Current scope
