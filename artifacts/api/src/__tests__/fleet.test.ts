@@ -190,10 +190,51 @@ function createAnalysisJobProcessor(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createTestApp(input: Parameters<typeof createFleetRouter>[0]) {
+function createRepositoryActivity(overrides: Record<string, unknown> = {}) {
+  return {
+    actionId: null,
+    activityId: "run:run_one",
+    executionEventId: null,
+    executionId: null,
+    jobId: null,
+    kind: "analysis_run",
+    occurredAt: "2026-04-12T10:03:00.000Z",
+    planId: null,
+    pullRequestUrl: null,
+    repositoryFullName: "openai/openai-node",
+    runId: "run_one",
+    status: "snapshot_saved",
+    summary: "1 findings, 2 executable patch plans",
+    title: "Weekly review",
+    trackedPullRequestId: null,
+    ...overrides
+  };
+}
+
+function createTestApp(
+  input: Partial<Parameters<typeof createFleetRouter>[0]> &
+    Pick<Parameters<typeof createFleetRouter>[0], "analysisJobProcessor" | "analysisJobStore" | "executionPlanStore" | "runStore" | "trackedPullRequestStore" | "trackedRepositoryStore">
+) {
   const app = express();
   app.use(express.json());
-  app.use(createFleetRouter(input));
+  app.use(
+    createFleetRouter({
+      repositoryActivityStore: {
+        listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
+          availableKinds: [
+            "analysis_job",
+            "analysis_run",
+            "execution_event",
+            "execution_plan",
+            "tracked_pull_request"
+          ],
+          events: [],
+          totalEvents: 0
+        })
+      },
+      ...input
+    })
+  );
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     response.status(500).json({
       error: error instanceof Error ? error.message : "Unexpected error"
@@ -554,6 +595,32 @@ describe("fleet routes", () => {
           }
         ])
       },
+      repositoryActivityStore: {
+        listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
+          availableKinds: [
+            "analysis_job",
+            "analysis_run",
+            "execution_event",
+            "execution_plan",
+            "tracked_pull_request"
+          ],
+          events: [
+            createRepositoryActivity(),
+            createRepositoryActivity({
+              activityId: "plan:plan_one",
+              executionId: "exec_one",
+              kind: "execution_plan",
+              occurredAt: "2026-04-12T10:05:00.000Z",
+              planId: "plan_one",
+              runId: "run_one",
+              status: "planned",
+              summary: "1 actions",
+              title: "plan_one"
+            })
+          ],
+          totalEvents: 2
+        })
+      },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
         getRepository: vi.fn().mockResolvedValue(trackedRepository),
@@ -572,6 +639,12 @@ describe("fleet routes", () => {
     expect(response.body.recentJobs[0]?.jobId).toBe("job_one");
     expect(response.body.recentPlans[0]?.planId).toBe("plan_one");
     expect(response.body.trackedPullRequests[0]?.trackedPullRequestId).toBe("tpr_one");
+    expect(response.body.activityFeed.totalEvents).toBe(2);
+    expect(
+      response.body.activityFeed.events.some(
+        (event: { activityId: string }) => event.activityId === "plan:plan_one"
+      )
+    ).toBe(true);
   });
 
   it("returns 404 when tracked repository history does not exist", async () => {

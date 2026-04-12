@@ -7,6 +7,7 @@ export * from "./fleet-status.js";
 export * from "./legacy-import.js";
 export * from "./lifecycle.js";
 export * from "./migrations.js";
+export * from "./repository-activities.js";
 export * from "./sweep-schedules.js";
 export * from "./tracked-repositories.js";
 export * from "./tracked-pull-requests.js";

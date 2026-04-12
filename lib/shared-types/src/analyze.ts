@@ -1081,7 +1081,40 @@ export const ExecutionPlanSummarySchema = z.object({
   summary: ExecutionResultSummarySchema
 });
 
+export const RepositoryActivityKindSchema = z.enum([
+  "analysis_job",
+  "analysis_run",
+  "execution_event",
+  "execution_plan",
+  "tracked_pull_request"
+]);
+
+export const RepositoryActivityEventSchema = z.object({
+  actionId: z.string().min(1).nullable(),
+  activityId: z.string().min(1),
+  executionEventId: z.string().min(1).nullable(),
+  executionId: z.string().min(1).nullable(),
+  jobId: z.string().min(1).nullable(),
+  kind: RepositoryActivityKindSchema,
+  occurredAt: z.string().datetime(),
+  planId: z.string().min(1).nullable(),
+  pullRequestUrl: z.string().url().nullable(),
+  repositoryFullName: z.string().min(3),
+  runId: z.string().min(1).nullable(),
+  status: z.string().min(1),
+  summary: z.string().min(1).nullable(),
+  title: z.string().min(1),
+  trackedPullRequestId: z.string().min(1).nullable()
+});
+
+export const RepositoryActivityFeedSchema = z.object({
+  availableKinds: z.array(RepositoryActivityKindSchema),
+  events: z.array(RepositoryActivityEventSchema),
+  totalEvents: z.number().int().nonnegative()
+});
+
 export const TrackedRepositoryHistoryResponseSchema = z.object({
+  activityFeed: RepositoryActivityFeedSchema,
   generatedAt: z.string().datetime(),
   trackedRepository: TrackedRepositorySchema,
   currentStatus: FleetTrackedRepositoryStatusSchema,
@@ -1449,6 +1482,9 @@ export type FleetTrackedRepositoryStatus = z.infer<
 >;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
+export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;
+export type RepositoryActivityEvent = z.infer<typeof RepositoryActivityEventSchema>;
+export type RepositoryActivityFeed = z.infer<typeof RepositoryActivityFeedSchema>;
 export type TrackedRepositoryHistoryResponse = z.infer<
   typeof TrackedRepositoryHistoryResponseSchema
 >;

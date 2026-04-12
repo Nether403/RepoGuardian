@@ -1308,6 +1308,103 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
   const fleetStatus = createFleetStatusFixture();
 
   return TrackedRepositoryHistoryResponseSchema.parse({
+    activityFeed: {
+      availableKinds: [
+        "analysis_job",
+        "analysis_run",
+        "execution_event",
+        "execution_plan",
+        "tracked_pull_request"
+      ],
+      events: [
+        {
+          actionId: null,
+          activityId: "execution-event:event_one",
+          executionEventId: "event_one",
+          executionId: "exec_one",
+          jobId: null,
+          kind: "execution_event",
+          occurredAt: "2026-04-12T10:08:00.000Z",
+          planId: "plan_one",
+          pullRequestUrl: null,
+          repositoryFullName: "openai/openai-node",
+          runId: null,
+          status: "execution_completed",
+          summary: "Action action_one",
+          title: "Execution Completed",
+          trackedPullRequestId: null
+        },
+        {
+          actionId: null,
+          activityId: "pull-request:tpr_one",
+          executionEventId: null,
+          executionId: "exec_one",
+          jobId: null,
+          kind: "tracked_pull_request",
+          occurredAt: "2026-04-12T10:08:30.000Z",
+          planId: "plan_one",
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+          repositoryFullName: "openai/openai-node",
+          runId: null,
+          status: "open",
+          summary: "repo-guardian/test-branch",
+          title: "#19 Harden workflow",
+          trackedPullRequestId: "tpr_one"
+        },
+        {
+          actionId: null,
+          activityId: "plan:plan_one",
+          executionEventId: null,
+          executionId: "exec_one",
+          jobId: null,
+          kind: "execution_plan",
+          occurredAt: "2026-04-12T10:07:00.000Z",
+          planId: "plan_one",
+          pullRequestUrl: null,
+          repositoryFullName: "openai/openai-node",
+          runId: "run_one",
+          status: "completed",
+          summary: "1 actions",
+          title: "plan_one",
+          trackedPullRequestId: null
+        },
+        {
+          actionId: null,
+          activityId: "job:job_one",
+          executionEventId: null,
+          executionId: null,
+          jobId: "job_one",
+          kind: "analysis_job",
+          occurredAt: "2026-04-12T10:04:00.000Z",
+          planId: null,
+          pullRequestUrl: null,
+          repositoryFullName: "openai/openai-node",
+          runId: "run_one",
+          status: "completed",
+          summary: "analyze_repository",
+          title: "Nightly queue",
+          trackedPullRequestId: null
+        },
+        {
+          actionId: null,
+          activityId: "run:run_one",
+          executionEventId: null,
+          executionId: null,
+          jobId: null,
+          kind: "analysis_run",
+          occurredAt: "2026-04-12T10:02:00.000Z",
+          planId: null,
+          pullRequestUrl: null,
+          repositoryFullName: "openai/openai-node",
+          runId: "run_one",
+          status: "snapshot_saved",
+          summary: "3 findings, 4 executable patch plans",
+          title: "Weekly review",
+          trackedPullRequestId: null
+        }
+      ],
+      totalEvents: 5
+    },
     currentStatus: fleetStatus.trackedRepositories[0],
     generatedAt: "2026-04-12T10:09:00.000Z",
     recentJobs: fleetStatus.recentJobs,
@@ -3276,6 +3373,18 @@ describe("App", () => {
     expect(screen.getByText("Related plans")).toBeInTheDocument();
 
     const repositoryInspector = within(getPanelByHeading(/Tracked repository history/i));
+    expect(repositoryInspector.getByText(/Execution Completed/i)).toBeInTheDocument();
+    await user.click(
+      repositoryInspector.getByRole("button", { name: /execution event/i })
+    );
+    expect(repositoryInspector.getByText(/Execution Completed/i)).toBeInTheDocument();
+    expect(
+      repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
+    ).not.toBeInTheDocument();
+    await user.click(repositoryInspector.getByRole("button", { name: /All activity/i }));
+    expect(
+      repositoryInspector.getByText(/3 findings, 4 executable patch plans/i)
+    ).toBeInTheDocument();
     expect(
       repositoryInspector.getAllByRole("link", { name: /Open GitHub PR/i }).length
     ).toBeGreaterThan(0);

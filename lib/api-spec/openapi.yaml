@@ -394,7 +394,7 @@ paths:
   /api/tracked-repositories/{trackedRepositoryId}/history:
     get:
       operationId: getTrackedRepositoryHistory
-      summary: Read tracked-repository history and linked fleet context
+      summary: Read tracked-repository history, normalized activity feed, and linked fleet context
       x-repo-guardian-response-type: TrackedRepositoryHistoryResponse
       parameters:
         - name: trackedRepositoryId
@@ -650,6 +650,18 @@ components:
       type: object
       description: Runtime schema is owned by ExecutionPlanSummarySchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionPlanSummarySchema
+    RepositoryActivityKind:
+      type: string
+      description: Runtime schema is owned by RepositoryActivityKindSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivityKindSchema
+    RepositoryActivityEvent:
+      type: object
+      description: Runtime schema is owned by RepositoryActivityEventSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivityEventSchema
+    RepositoryActivityFeed:
+      type: object
+      description: Runtime schema is owned by RepositoryActivityFeedSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivityFeedSchema
     TrackedRepositoryHistoryResponse:
       type: object
       description: Runtime schema is owned by TrackedRepositoryHistoryResponseSchema in @repo-guardian/shared-types.

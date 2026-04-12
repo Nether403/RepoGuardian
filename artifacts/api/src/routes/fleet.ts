@@ -5,6 +5,7 @@ import {
   type AnalysisJobRepository,
   type AnalysisRunRepository,
   type ExecutionPlanRepository,
+  type RepositoryActivityRepository,
   type TrackedPullRequestRepository,
   type TrackedRepositoryRepository
 } from "@repo-guardian/persistence";
@@ -25,6 +26,7 @@ import {
   getAnalysisJobRepository,
   getAnalysisRunRepository,
   getExecutionPlanRepository,
+  getRepositoryActivityRepository,
   getTrackedPullRequestRepository,
   getTrackedRepositoryRepository
 } from "../lib/persistence.js";
@@ -54,6 +56,11 @@ type ExecutionPlanStore = Pick<
 type TrackedPullRequestStore = Pick<
   TrackedPullRequestRepository,
   "listTrackedPullRequestsByRepositoryFullName"
+>;
+
+type RepositoryActivityStore = Pick<
+  RepositoryActivityRepository,
+  "listActivitiesByRepositoryFullName"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -103,6 +110,7 @@ export function createFleetRouter(input: {
   analysisJobStore: AnalysisJobStore;
   analysisJobProcessor: AnalysisJobProcessorLike;
   executionPlanStore: ExecutionPlanStore;
+  repositoryActivityStore: RepositoryActivityStore;
   runStore: AnalysisRunStore;
   trackedPullRequestStore: TrackedPullRequestStore;
   trackedRepositoryStore: TrackedRepositoryStore;
@@ -171,12 +179,18 @@ export function createFleetRouter(input: {
             trackedRepository.fullName
           )
         ]);
+      const activityFeed =
+        await input.repositoryActivityStore.listActivitiesByRepositoryFullName({
+          limit: 40,
+          repositoryFullName: trackedRepository.fullName
+        });
       const currentStatus = fleetStatus.trackedRepositories.find(
         (entry) => entry.trackedRepository.id === trackedRepository.id
       );
 
       response.json(
         TrackedRepositoryHistoryResponseSchema.parse({
+          activityFeed,
           currentStatus: currentStatus ?? {
             latestAnalysisJob: null,
             latestPlanId: null,
@@ -472,6 +486,7 @@ export default function createDefaultFleetRouter(): ExpressRouter {
     analysisJobStore: getAnalysisJobRepository(),
     analysisJobProcessor: getAnalysisJobProcessor({ readClient }),
     executionPlanStore: getExecutionPlanRepository(),
+    repositoryActivityStore: getRepositoryActivityRepository(),
     runStore: getAnalysisRunRepository(),
     trackedPullRequestStore: getTrackedPullRequestRepository(),
     trackedRepositoryStore: getTrackedRepositoryRepository()

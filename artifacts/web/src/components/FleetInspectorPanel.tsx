@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type {
   AnalysisJob,
   CodeReviewFinding,
@@ -6,6 +7,8 @@ import type {
   GetAnalysisRunResponse,
   IssueCandidate,
   PRCandidate,
+  RepositoryActivityEvent,
+  RepositoryActivityKind,
   TrackedRepositoryHistoryResponse
 } from "@repo-guardian/shared-types";
 import {
@@ -47,19 +50,6 @@ type FleetInspectorPanelProps = {
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
   runDetail: GetAnalysisRunResponse | null;
   selection: InspectorSelection | null;
-};
-
-type TimelineItem = {
-  actionLabel: string | null;
-  actionTargetId: string | null;
-  actionType: "plan" | "run" | null;
-  href: string | null;
-  id: string;
-  kind: "job" | "plan" | "pr" | "run";
-  statusLabel: string;
-  timestamp: string;
-  title: string;
-  tone: "active" | "muted" | "up-next" | "warning";
 };
 
 function getJobTone(status: AnalysisJob["status"]): "active" | "muted" | "up-next" | "warning" {
@@ -112,71 +102,55 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.id, item] as const)).values()];
 }
 
-function buildRepositoryTimeline(
-  repositoryHistory: TrackedRepositoryHistoryResponse
-): TimelineItem[] {
-  const runItems: TimelineItem[] = repositoryHistory.recentRuns.map((run) => ({
-    actionLabel: "Open run",
-    actionTargetId: run.id,
-    actionType: "run",
-    href: null,
-    id: `run:${run.id}`,
-    kind: "run",
-    statusLabel: `${run.executablePatchPlans} executable`,
-    timestamp: run.fetchedAt,
-    title: run.label ?? run.id,
-    tone: run.executablePatchPlans > 0 ? "active" : "muted"
-  }));
-  const jobItems: TimelineItem[] = repositoryHistory.recentJobs.map((job) => ({
-    actionLabel: job.planId ? "Open plan" : job.runId ? "Open run" : null,
-    actionTargetId: job.planId ?? job.runId ?? null,
-    actionType: job.planId ? "plan" : job.runId ? "run" : null,
-    href: null,
-    id: `job:${job.jobId}`,
-    kind: "job",
-    statusLabel: job.status,
-    timestamp: job.completedAt ?? job.failedAt ?? job.startedAt ?? job.queuedAt,
-    title: job.label ?? job.jobId,
-    tone: getJobTone(job.status)
-  }));
-  const planItems: TimelineItem[] = repositoryHistory.recentPlans.map((plan) => ({
-    actionLabel: "Open plan",
-    actionTargetId: plan.planId,
-    actionType: "plan",
-    href: null,
-    id: `plan:${plan.planId}`,
-    kind: "plan",
-    statusLabel: plan.status,
-    timestamp: plan.completedAt ?? plan.failedAt ?? plan.startedAt ?? plan.createdAt,
-    title: plan.planId,
-    tone:
-      plan.status === "completed"
-        ? "active"
-        : plan.status === "failed" || plan.status === "expired" || plan.status === "cancelled"
-          ? "warning"
-          : "up-next"
-  }));
-  const prItems: TimelineItem[] = repositoryHistory.trackedPullRequests.map((pullRequest) => ({
-    actionLabel: "Open GitHub PR",
-    actionTargetId: null,
-    actionType: null,
-    href: pullRequest.pullRequestUrl,
-    id: `pr:${pullRequest.trackedPullRequestId}`,
-    kind: "pr",
-    statusLabel: pullRequest.lifecycleStatus,
-    timestamp: pullRequest.mergedAt ?? pullRequest.closedAt ?? pullRequest.updatedAt,
-    title: `#${pullRequest.pullRequestNumber} ${pullRequest.title}`,
-    tone:
-      pullRequest.lifecycleStatus === "merged"
-        ? "active"
-        : pullRequest.lifecycleStatus === "closed"
-          ? "warning"
-          : "up-next"
-  }));
+function formatActivityKind(kind: RepositoryActivityKind): string {
+  return kind.replace(/_/gu, " ");
+}
 
-  return [...runItems, ...jobItems, ...planItems, ...prItems].sort((left, right) =>
-    right.timestamp.localeCompare(left.timestamp)
-  );
+function getActivityTone(activity: RepositoryActivityEvent): "active" | "muted" | "up-next" | "warning" {
+  switch (activity.kind) {
+    case "analysis_job":
+      return getJobTone(activity.status as AnalysisJob["status"]);
+    case "execution_plan":
+      return getPlanTone(activity.status as ExecutionPlanDetailResponse["status"]);
+    case "tracked_pull_request":
+      return activity.status === "merged"
+        ? "active"
+        : activity.status === "closed"
+          ? "warning"
+          : "up-next";
+    case "execution_event":
+      return activity.status.includes("failed")
+        ? "warning"
+        : activity.status.includes("completed") || activity.status.includes("approved")
+          ? "active"
+          : "up-next";
+    case "analysis_run":
+      return "active";
+  }
+}
+
+function getPrimaryActivityAction(activity: RepositoryActivityEvent): {
+  label: string;
+  targetId: string;
+  type: "plan" | "run";
+} | null {
+  if (activity.planId) {
+    return {
+      label: "Open plan",
+      targetId: activity.planId,
+      type: "plan"
+    };
+  }
+
+  if (activity.runId) {
+    return {
+      label: "Open run",
+      targetId: activity.runId,
+      type: "run"
+    };
+  }
+
+  return null;
 }
 
 function collectPlanTraceability(planDetail: ExecutionPlanDetailResponse, planRunDetail: GetAnalysisRunResponse | null): {
@@ -252,9 +226,18 @@ export function FleetInspectorPanel({
   runDetail,
   selection
 }: FleetInspectorPanelProps) {
-  const repositoryTimeline = repositoryHistory
-    ? buildRepositoryTimeline(repositoryHistory)
-    : [];
+  const [activityKindFilter, setActivityKindFilter] = useState<"all" | RepositoryActivityKind>("all");
+
+  useEffect(() => {
+    setActivityKindFilter("all");
+  }, [selection?.id, selection?.kind]);
+
+  const repositoryTimeline =
+    repositoryHistory === null
+      ? []
+      : repositoryHistory.activityFeed.events.filter(
+          (activity) => activityKindFilter === "all" || activity.kind === activityKindFilter
+        );
   const planTraceability =
     selection?.kind === "plan" && planDetail
       ? collectPlanTraceability(planDetail, planRunDetail)
@@ -384,51 +367,79 @@ export function FleetInspectorPanel({
             </div>
             <div className="fleet-inspector-block">
               <h3>Repository timeline</h3>
+              <div className="trace-chip-row">
+                <button
+                  className="secondary-button"
+                  onClick={() => setActivityKindFilter("all")}
+                  type="button"
+                >
+                  All activity
+                </button>
+                {repositoryHistory.activityFeed.availableKinds.map((kind) => (
+                  <button
+                    className="secondary-button"
+                    key={kind}
+                    onClick={() => setActivityKindFilter(kind)}
+                    type="button"
+                  >
+                    {formatActivityKind(kind)}
+                  </button>
+                ))}
+              </div>
               {repositoryTimeline.length > 0 ? (
                 <div className="fleet-timeline">
-                  {repositoryTimeline.map((item) => (
-                    <article className="fleet-timeline-item" key={item.id}>
+                  {repositoryTimeline.map((activity) => {
+                    const primaryAction = getPrimaryActivityAction(activity);
+
+                    return (
+                    <article className="fleet-timeline-item" key={activity.activityId}>
                       <div className="fleet-timeline-marker" aria-hidden="true" />
                       <div className="fleet-timeline-content">
                         <div className="trace-card-header">
                           <div>
-                            <p className="subsection-label">{item.kind}</p>
-                            <h3>{item.title}</h3>
+                            <p className="subsection-label">{formatActivityKind(activity.kind)}</p>
+                            <h3>{activity.title}</h3>
                           </div>
-                          <StatusBadge label={item.statusLabel} tone={item.tone} />
+                          <StatusBadge label={activity.status} tone={getActivityTone(activity)} />
                         </div>
-                        <p className="trace-copy">{formatTimestamp(item.timestamp)}</p>
+                        <p className="trace-copy">{formatTimestamp(activity.occurredAt)}</p>
+                        {activity.summary ? (
+                          <p className="trace-copy">{activity.summary}</p>
+                        ) : null}
                         <div className="fleet-inline-actions">
-                          {item.actionType && item.actionTargetId ? (
+                          {primaryAction ? (
                             <button
                               className="secondary-button"
                               onClick={() =>
-                                item.actionType === "plan"
-                                  ? onOpenPlan(item.actionTargetId!)
-                                  : onOpenRun(item.actionTargetId!)
+                                primaryAction.type === "plan"
+                                  ? onOpenPlan(primaryAction.targetId)
+                                  : onOpenRun(primaryAction.targetId)
                               }
                               type="button"
                             >
-                              {item.actionLabel}
+                              {primaryAction.label}
                             </button>
                           ) : null}
-                          {item.href ? (
+                          {activity.pullRequestUrl ? (
                             <a
                               className="secondary-button fleet-link-button"
-                              href={item.href}
+                              href={activity.pullRequestUrl}
                               rel="noreferrer"
                               target="_blank"
                             >
-                              {item.actionLabel}
+                              Open GitHub PR
                             </a>
                           ) : null}
                         </div>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="empty-copy">No timeline events recorded for this repository yet.</p>
+                <p className="empty-copy">
+                  No {activityKindFilter === "all" ? "" : formatActivityKind(activityKindFilter) + " "}events recorded for this repository yet.
+                </p>
               )}
             </div>
             <div className="fleet-inspector-block">
