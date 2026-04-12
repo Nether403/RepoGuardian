@@ -129,6 +129,10 @@ code {
   font-size: 1.05rem;
 }
 
+.hero-toolbar {
+  margin-top: 1.25rem;
+}
+
 .hero-aside {
   align-self: stretch;
 }
@@ -209,6 +213,37 @@ code {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.app-mode-toggle {
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-mode-toggle-button {
+  min-height: 2.5rem;
+  border: 1px solid transparent;
+  padding: 0.45rem 0.85rem;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-mode-toggle-button[aria-selected="true"] {
+  border-color: rgba(140, 201, 255, 0.35);
+  background: var(--accent-soft);
+  color: #eff7ff;
+}
+
+.app-mode-toggle-button:focus-visible {
+  outline: 2px solid rgba(140, 201, 255, 0.5);
+  outline-offset: 2px;
 }
 
 .badge-active {
@@ -925,6 +960,98 @@ code {
   gap: 1rem;
 }
 
+.fleet-panel-shell,
+.fleet-card-list,
+.fleet-form,
+.fleet-metric-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.fleet-panel-toolbar {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: end;
+}
+
+.fleet-panel-toolbar .empty-copy {
+  max-width: 44rem;
+}
+
+.fleet-filter,
+.fleet-form label {
+  display: grid;
+  gap: 0.45rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.fleet-filter select,
+.fleet-form input {
+  width: 100%;
+  min-height: 3.05rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0 0.75rem;
+  background: rgba(4, 10, 18, 0.58);
+  color: #eff7ff;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.fleet-form {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.fleet-form-compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.fleet-form-actions,
+.fleet-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.fleet-metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.fleet-metric-card,
+.fleet-entity-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.fleet-metric-card span {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.fleet-metric-card strong {
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.fleet-metric-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 .saved-run-form,
 .saved-run-compare-row {
   display: grid;
@@ -1300,7 +1427,14 @@ code {
   }
 
   .saved-run-form,
-  .saved-run-compare-row {
+  .saved-run-compare-row,
+  .fleet-form,
+  .fleet-form-compact {
     grid-template-columns: 1fr;
+  }
+
+  .fleet-panel-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

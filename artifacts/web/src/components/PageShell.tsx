@@ -5,6 +5,7 @@ type PageShellProps = PropsWithChildren<{
   heading: string;
   summary: string;
   aside?: ReactNode;
+  toolbar?: ReactNode;
 }>;
 
 export function PageShell({
@@ -12,7 +13,8 @@ export function PageShell({
   children,
   eyebrow,
   heading,
-  summary
+  summary,
+  toolbar
 }: PageShellProps) {
   return (
     <div className="page-shell">
@@ -21,6 +23,7 @@ export function PageShell({
           <p className="eyebrow">{eyebrow}</p>
           <h1>{heading}</h1>
           <p className="summary">{summary}</p>
+          {toolbar ? <div className="hero-toolbar">{toolbar}</div> : null}
         </div>
         {aside ? <div className="hero-aside">{aside}</div> : null}
       </header>

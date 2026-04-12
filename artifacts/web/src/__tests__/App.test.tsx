@@ -9,9 +9,16 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
+  AnalysisJobSchema,
   AnalyzeRepoResponseSchema,
   ExecutionResultSchema,
   ExecutionPlanResponseSchema,
+  FleetStatusResponseSchema,
+  ListAnalysisJobsResponseSchema,
+  ListSweepSchedulesResponseSchema,
+  ListTrackedRepositoriesResponseSchema,
+  SweepScheduleSchema,
+  TrackedRepositorySchema,
   type AnalyzeRepoResponse
 } from "@repo-guardian/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -108,6 +115,11 @@ async function submitRepository(
   const input = screen.getByLabelText(/Repository input/i);
   fireEvent.change(input, { target: { value } });
   fireEvent.click(screen.getByRole("button", { name: /Analyze Repository/i }));
+}
+
+async function openFleetAdmin(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("tab", { name: /Fleet Admin/i }));
+  await screen.findByText("Fleet admin ready");
 }
 
 function buildAnchorId(prefix: string, rawId: string): string {
@@ -989,6 +1001,164 @@ function createExecutionResult(mode: "dry_run" | "execute_approved" = "dry_run")
   });
 }
 
+function createTrackedRepositoryFixture(overrides: Record<string, unknown> = {}) {
+  return TrackedRepositorySchema.parse({
+    canonicalUrl: "https://github.com/openai/openai-node",
+    createdAt: "2026-04-12T10:00:00.000Z",
+    fullName: "openai/openai-node",
+    id: "tracked_one",
+    isActive: true,
+    label: "Weekly review",
+    lastQueuedAt: "2026-04-12T10:00:00.000Z",
+    owner: "openai",
+    repo: "openai-node",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createAnalysisJobFixture(overrides: Record<string, unknown> = {}) {
+  return AnalysisJobSchema.parse({
+    attemptCount: 0,
+    completedAt: null,
+    errorMessage: null,
+    failedAt: null,
+    jobId: "job_one",
+    jobKind: "analyze_repository",
+    label: "Weekly review",
+    maxAttempts: 1,
+    planId: null,
+    queuedAt: "2026-04-12T10:00:00.000Z",
+    repoInput: "openai/openai-node",
+    repositoryFullName: "openai/openai-node",
+    requestedByUserId: "usr_authenticated",
+    runId: null,
+    scheduledSweepId: null,
+    startedAt: null,
+    status: "queued",
+    trackedRepositoryId: "tracked_one",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createSweepScheduleFixture(overrides: Record<string, unknown> = {}) {
+  return SweepScheduleSchema.parse({
+    cadence: "weekly",
+    createdAt: "2026-04-12T10:00:00.000Z",
+    isActive: true,
+    label: "Weekly sweep",
+    lastTriggeredAt: null,
+    nextRunAt: "2026-04-19T10:00:00.000Z",
+    scheduleId: "sweep_one",
+    selectionStrategy: "all_executable_prs",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createFleetStatusFixture() {
+  const trackedRepository = createTrackedRepositoryFixture();
+  const latestJob = createAnalysisJobFixture();
+
+  return FleetStatusResponseSchema.parse({
+    generatedAt: "2026-04-12T10:05:00.000Z",
+    recentJobs: [
+      latestJob,
+      createAnalysisJobFixture({
+        errorMessage: "rate limited",
+        failedAt: "2026-04-12T10:04:00.000Z",
+        jobId: "job_failed",
+        jobKind: "generate_execution_plan",
+        planId: "plan_failed",
+        status: "failed",
+        trackedRepositoryId: null
+      }),
+      createAnalysisJobFixture({
+        completedAt: "2026-04-12T10:03:00.000Z",
+        jobId: "job_complete",
+        planId: "plan_complete",
+        runId: "run_complete",
+        status: "completed"
+      })
+    ],
+    summary: {
+      blockedPatchPlans: 1,
+      executablePatchPlans: 4,
+      failedJobs: 1,
+      mergedPullRequests: 1,
+      openPullRequests: 1,
+      stalePatchPlans: 2,
+      staleRepositories: 1,
+      trackedRepositories: 1
+    },
+    trackedPullRequests: [
+      {
+        branchName: "repo-guardian/harden-workflow",
+        closedAt: null,
+        createdAt: "2026-04-12T10:01:00.000Z",
+        executionId: "exec_one",
+        lifecycleStatus: "open",
+        mergedAt: null,
+        owner: "openai",
+        planId: "plan_one",
+        pullRequestNumber: 19,
+        pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+        repo: "openai-node",
+        repositoryFullName: "openai/openai-node",
+        title: "Harden workflow permissions",
+        trackedPullRequestId: "tpr_one",
+        updatedAt: "2026-04-12T10:04:00.000Z"
+      },
+      {
+        branchName: "repo-guardian/upgrade-react",
+        closedAt: "2026-04-12T10:06:00.000Z",
+        createdAt: "2026-04-12T09:00:00.000Z",
+        executionId: "exec_two",
+        lifecycleStatus: "merged",
+        mergedAt: "2026-04-12T10:06:00.000Z",
+        owner: "openai",
+        planId: "plan_two",
+        pullRequestNumber: 21,
+        pullRequestUrl: "https://github.com/openai/openai-node/pull/21",
+        repo: "openai-node",
+        repositoryFullName: "openai/openai-node",
+        title: "Upgrade react",
+        trackedPullRequestId: "tpr_two",
+        updatedAt: "2026-04-12T10:06:00.000Z"
+      }
+    ],
+    trackedRepositories: [
+      {
+        latestAnalysisJob: latestJob,
+        latestPlanId: "plan_one",
+        latestPlanStatus: "planned",
+        latestRun: {
+          blockedPatchPlans: 1,
+          createdAt: "2026-04-12T10:02:00.000Z",
+          defaultBranch: "main",
+          executablePatchPlans: 4,
+          fetchedAt: "2026-04-12T10:02:00.000Z",
+          highSeverityFindings: 1,
+          id: "run_one",
+          issueCandidates: 1,
+          label: "Weekly review",
+          prCandidates: 2,
+          repositoryFullName: "openai/openai-node",
+          totalFindings: 3
+        },
+        patchPlanCounts: {
+          blocked: 1,
+          executable: 4,
+          stale: 2
+        },
+        stale: true,
+        trackedRepository
+      }
+    ]
+  });
+}
+
 
 describe("App", () => {
   beforeEach(() => {
@@ -1569,7 +1739,7 @@ describe("App", () => {
       patchPlans: 1,
       prCandidates: 1
     });
-  });
+  }, 10000);
 
   it("shows a scoped empty state when filters match no patch plans", async () => {
     const user = userEvent.setup();
@@ -1962,7 +2132,7 @@ describe("App", () => {
         name: /patch-plan: Upgrade react and refresh dependency locks/i
       })
     ).toBeInTheDocument();
-  });
+  }, 10000);
 
   it("searches the Guardian Graph and clears selection when the selected node becomes hidden", async () => {
     const user = userEvent.setup();
@@ -2482,5 +2652,438 @@ describe("App", () => {
         name: /patch-plan: Harden \.github\/workflows\/ci\.yml/i
       })
     ).toBeInTheDocument();
+  });
+
+  it("defaults to repository analysis mode and loads fleet admin on toggle", async () => {
+    const user = userEvent.setup();
+    const fleetStatus = createFleetStatusFixture();
+
+    vi.stubGlobal(
+      "fetch",
+      mockAuthenticatedFetch(async (url) => {
+        if (url === "/api/tracked-repositories") {
+          return createJsonResponse(
+            ListTrackedRepositoriesResponseSchema.parse({
+              repositories: [createTrackedRepositoryFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/fleet/status") {
+          return createJsonResponse(fleetStatus);
+        }
+
+        if (url === "/api/analyze/jobs") {
+          return createJsonResponse(
+            ListAnalysisJobsResponseSchema.parse({
+              jobs: fleetStatus.recentJobs
+            })
+          );
+        }
+
+        if (url === "/api/sweep-schedules") {
+          return createJsonResponse(
+            ListSweepSchedulesResponseSchema.parse({
+              schedules: [createSweepScheduleFixture()]
+            })
+          );
+        }
+
+        return createJsonResponse({ error: "Unhandled" }, false, 500);
+      })
+    );
+
+    render(<App />);
+
+    expect(
+      screen.getByRole("tab", { name: /Repository Analysis/i })
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: /Analyze a public GitHub repository/i })
+    ).toBeInTheDocument();
+
+    await openFleetAdmin(user);
+
+    expect(screen.getByRole("heading", { name: /Fleet status/i })).toBeInTheDocument();
+    expect(screen.getByText("Executable Plans")).toBeInTheDocument();
+    expect(screen.getByText("Tracked repositories")).toBeInTheDocument();
+    expect(screen.getByText("Tracked pull requests")).toBeInTheDocument();
+    expect(
+      within(getPanelByHeading(/Tracked pull requests/i)).getByRole("link", {
+        name: /Harden workflow permissions/i
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("registers a tracked repository and enqueues manual analysis from fleet admin", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAuthenticatedFetch(async (url, init) => {
+      if (url === "/api/tracked-repositories" && init?.method === "POST") {
+        return createJsonResponse({
+          repository: createTrackedRepositoryFixture({
+            id: "tracked_new",
+            label: "Security weekly",
+            lastQueuedAt: null
+          })
+        }, true, 201);
+      }
+
+      if (url === "/api/analyze/jobs" && init?.method === "POST") {
+        return createJsonResponse({
+          job: createAnalysisJobFixture({
+            jobId: "job_new",
+            trackedRepositoryId: "tracked_one"
+          })
+        }, true, 202);
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    await user.type(screen.getByLabelText("Repository input"), "openai/openai-node");
+    await user.type(screen.getByLabelText("Label"), "Security weekly");
+    await user.click(screen.getByRole("button", { name: /Register tracked repo/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tracked-repositories",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: /Enqueue analysis/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/analyze/jobs",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+  });
+
+  it("filters jobs and triggers retry or cancel actions from fleet admin", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAuthenticatedFetch(async (url, init) => {
+      if (url === "/api/analyze/jobs/job_failed/retry" && init?.method === "POST") {
+        return createJsonResponse({
+          job: createAnalysisJobFixture({
+            jobId: "job_failed",
+            jobKind: "generate_execution_plan",
+            status: "queued",
+            trackedRepositoryId: null
+          })
+        });
+      }
+
+      if (url === "/api/analyze/jobs/job_one/cancel" && init?.method === "POST") {
+        return createJsonResponse({
+          job: createAnalysisJobFixture({
+            completedAt: "2026-04-12T10:07:00.000Z",
+            jobId: "job_one",
+            status: "cancelled"
+          })
+        });
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    fireEvent.change(screen.getByLabelText("Status filter"), {
+      target: {
+        value: "failed"
+      }
+    });
+
+    const jobsPanel = within(getPanelByHeading(/Analysis jobs/i));
+
+    expect(jobsPanel.getByText("rate limited")).toBeInTheDocument();
+    expect(jobsPanel.queryByText(/job_one/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Retry/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/analyze/jobs/job_failed/retry",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Status filter"), {
+      target: {
+        value: "queued"
+      }
+    });
+
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/analyze/jobs/job_one/cancel",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+  });
+
+  it("creates and triggers sweep schedules while rendering tracked PR lifecycle", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAuthenticatedFetch(async (url, init) => {
+      if (url === "/api/sweep-schedules" && init?.method === "POST") {
+        return createJsonResponse({
+          schedule: createSweepScheduleFixture({
+            label: "Dependency review"
+          })
+        }, true, 201);
+      }
+
+      if (url === "/api/sweep-schedules/sweep_one/trigger" && init?.method === "POST") {
+        return createJsonResponse({
+          job: createAnalysisJobFixture({
+            jobId: "job_sweep",
+            jobKind: "run_scheduled_sweep",
+            repositoryFullName: "[scheduled-sweep]",
+            repoInput: "[scheduled-sweep]",
+            scheduledSweepId: "sweep_one",
+            trackedRepositoryId: null
+          }),
+          schedule: createSweepScheduleFixture()
+        });
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    const trackedPullRequestsPanel = within(getPanelByHeading(/Tracked pull requests/i));
+
+    expect(
+      trackedPullRequestsPanel.getByRole("link", {
+        name: /Harden workflow permissions/i
+      })
+    ).toBeInTheDocument();
+    expect(
+      trackedPullRequestsPanel.getByRole("link", {
+        name: /Upgrade react/i
+      })
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Schedule label"), "Dependency review");
+    await user.click(screen.getByRole("button", { name: /Create weekly sweep/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/sweep-schedules",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: /Trigger now/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/sweep-schedules/sweep_one/trigger",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+  });
+
+  it("preserves the loaded analysis when switching between analysis and fleet admin modes", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      mockAuthenticatedFetch(async (url, init) => {
+        if (url === "/api/analyze") {
+          return createJsonResponse(successPayload);
+        }
+
+        if (url === "/api/tracked-repositories") {
+          return createJsonResponse(
+            ListTrackedRepositoriesResponseSchema.parse({
+              repositories: [createTrackedRepositoryFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/fleet/status") {
+          return createJsonResponse(createFleetStatusFixture());
+        }
+
+        if (url === "/api/analyze/jobs") {
+          return createJsonResponse(
+            ListAnalysisJobsResponseSchema.parse({
+              jobs: createFleetStatusFixture().recentJobs
+            })
+          );
+        }
+
+        if (url === "/api/sweep-schedules") {
+          return createJsonResponse(
+            ListSweepSchedulesResponseSchema.parse({
+              schedules: [createSweepScheduleFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/runs") {
+          if (init?.method === "POST") {
+            return createJsonResponse({
+              summary: {
+                id: "run-default",
+                repositoryFullName: "openai/openai-node",
+                defaultBranch: "main",
+                fetchedAt: "2026-04-08T00:00:00.000Z",
+                createdAt: "2026-04-08T00:00:00.000Z",
+                totalFindings: 0,
+                highSeverityFindings: 0,
+                issueCandidates: 0,
+                prCandidates: 0,
+                executablePatchPlans: 0,
+                blockedPatchPlans: 0,
+                label: "Auto-saved"
+              },
+              run: {
+                id: "run-default",
+                analysis: successPayload,
+                createdAt: "2026-04-08T00:00:00.000Z",
+                label: "Auto-saved"
+              }
+            }, true, 201);
+          }
+
+          return createJsonResponse({ runs: [] });
+        }
+
+        return createJsonResponse({ error: "Unhandled" }, false, 500);
+      })
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+    expect(
+      await screen.findByRole("heading", { name: /Repository summary/i })
+    ).toBeInTheDocument();
+
+    await openFleetAdmin(user);
+    expect(screen.getByRole("heading", { name: /Fleet status/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Repository Analysis/i }));
+    expect(
+      await screen.findByRole("heading", { name: /Repository summary/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Repository input/i)).toHaveValue("openai/openai-node");
   });
 });

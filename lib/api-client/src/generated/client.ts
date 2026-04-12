@@ -2,18 +2,34 @@
 import type {
   AnalyzeRepoRequest,
   AnalyzeRepoResponse,
+  CancelAnalysisJobResponse,
   CompareAnalysisRunsRequest,
   CompareAnalysisRunsResponse,
+  CreateSweepScheduleRequest,
+  CreateSweepScheduleResponse,
+  CreateTrackedRepositoryRequest,
+  CreateTrackedRepositoryResponse,
+  EnqueueAnalysisJobRequest,
+  EnqueueAnalysisJobResponse,
+  EnqueueExecutionPlanJobRequest,
+  EnqueueExecutionPlanJobResponse,
   ExecutionExecuteRequest,
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
   ExecutionPlanRequest,
   ExecutionPlanResponse,
   ExecutionResult,
+  FleetStatusResponse,
+  GetAnalysisJobResponse,
   GetAnalysisRunResponse,
+  ListAnalysisJobsResponse,
   ListAnalysisRunsResponse,
+  ListSweepSchedulesResponse,
+  ListTrackedRepositoriesResponse,
+  RetryAnalysisJobResponse,
   SaveAnalysisRunRequest,
-  SaveAnalysisRunResponse
+  SaveAnalysisRunResponse,
+  TriggerSweepScheduleResponse
 } from "@repo-guardian/shared-types";
 
 export type RepoGuardianApiRequestOptions = {
@@ -108,6 +124,47 @@ export async function analyzeRepository(requestBody: AnalyzeRepoRequest, options
   });
 }
 
+export async function listAnalysisJobs(options: RepoGuardianApiRequestOptions = {}): Promise<ListAnalysisJobsResponse> {
+  return requestJson<ListAnalysisJobsResponse>({
+    method: "GET",
+    path: `/api/analyze/jobs`,
+    options
+  });
+}
+
+export async function enqueueAnalysisJob(requestBody: EnqueueAnalysisJobRequest, options: RepoGuardianApiRequestOptions = {}): Promise<EnqueueAnalysisJobResponse> {
+  return requestJson<EnqueueAnalysisJobResponse>({
+    method: "POST",
+    path: `/api/analyze/jobs`,
+    body: requestBody,
+    options
+  });
+}
+
+export async function getAnalysisJob(jobId: string, options: RepoGuardianApiRequestOptions = {}): Promise<GetAnalysisJobResponse> {
+  return requestJson<GetAnalysisJobResponse>({
+    method: "GET",
+    path: `/api/analyze/jobs/${encodeURIComponent(jobId)}`,
+    options
+  });
+}
+
+export async function cancelAnalysisJob(jobId: string, options: RepoGuardianApiRequestOptions = {}): Promise<CancelAnalysisJobResponse> {
+  return requestJson<CancelAnalysisJobResponse>({
+    method: "POST",
+    path: `/api/analyze/jobs/${encodeURIComponent(jobId)}/cancel`,
+    options
+  });
+}
+
+export async function retryAnalysisJob(jobId: string, options: RepoGuardianApiRequestOptions = {}): Promise<RetryAnalysisJobResponse> {
+  return requestJson<RetryAnalysisJobResponse>({
+    method: "POST",
+    path: `/api/analyze/jobs/${encodeURIComponent(jobId)}/retry`,
+    options
+  });
+}
+
 export async function executeExecutionPlan(requestBody: ExecutionExecuteRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionResult> {
   return requestJson<ExecutionResult>({
     method: "POST",
@@ -126,6 +183,15 @@ export async function createExecutionPlan(requestBody: ExecutionPlanRequest, opt
   });
 }
 
+export async function enqueueExecutionPlanJob(requestBody: EnqueueExecutionPlanJobRequest, options: RepoGuardianApiRequestOptions = {}): Promise<EnqueueExecutionPlanJobResponse> {
+  return requestJson<EnqueueExecutionPlanJobResponse>({
+    method: "POST",
+    path: `/api/execution/plan/jobs`,
+    body: requestBody,
+    options
+  });
+}
+
 export async function getExecutionPlan(planId: string, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionPlanDetailResponse> {
   return requestJson<ExecutionPlanDetailResponse>({
     method: "GET",
@@ -138,6 +204,14 @@ export async function listExecutionPlanEvents(planId: string, options: RepoGuard
   return requestJson<ExecutionPlanEventsResponse>({
     method: "GET",
     path: `/api/execution/plans/${encodeURIComponent(planId)}/events`,
+    options
+  });
+}
+
+export async function getFleetStatus(options: RepoGuardianApiRequestOptions = {}): Promise<FleetStatusResponse> {
+  return requestJson<FleetStatusResponse>({
+    method: "GET",
+    path: `/api/fleet/status`,
     options
   });
 }
@@ -171,6 +245,48 @@ export async function compareAnalysisRuns(requestBody: CompareAnalysisRunsReques
   return requestJson<CompareAnalysisRunsResponse>({
     method: "POST",
     path: `/api/runs/compare`,
+    body: requestBody,
+    options
+  });
+}
+
+export async function listSweepSchedules(options: RepoGuardianApiRequestOptions = {}): Promise<ListSweepSchedulesResponse> {
+  return requestJson<ListSweepSchedulesResponse>({
+    method: "GET",
+    path: `/api/sweep-schedules`,
+    options
+  });
+}
+
+export async function createSweepSchedule(requestBody: CreateSweepScheduleRequest, options: RepoGuardianApiRequestOptions = {}): Promise<CreateSweepScheduleResponse> {
+  return requestJson<CreateSweepScheduleResponse>({
+    method: "POST",
+    path: `/api/sweep-schedules`,
+    body: requestBody,
+    options
+  });
+}
+
+export async function triggerSweepSchedule(scheduleId: string, options: RepoGuardianApiRequestOptions = {}): Promise<TriggerSweepScheduleResponse> {
+  return requestJson<TriggerSweepScheduleResponse>({
+    method: "POST",
+    path: `/api/sweep-schedules/${encodeURIComponent(scheduleId)}/trigger`,
+    options
+  });
+}
+
+export async function listTrackedRepositories(options: RepoGuardianApiRequestOptions = {}): Promise<ListTrackedRepositoriesResponse> {
+  return requestJson<ListTrackedRepositoriesResponse>({
+    method: "GET",
+    path: `/api/tracked-repositories`,
+    options
+  });
+}
+
+export async function createTrackedRepository(requestBody: CreateTrackedRepositoryRequest, options: RepoGuardianApiRequestOptions = {}): Promise<CreateTrackedRepositoryResponse> {
+  return requestJson<CreateTrackedRepositoryResponse>({
+    method: "POST",
+    path: `/api/tracked-repositories`,
     body: requestBody,
     options
   });

@@ -1,15 +1,23 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type {
+  AnalysisJob,
   AnalyzeRepoResponse,
   CompareAnalysisRunsResponse,
   ExecutionPlanResponse,
   ExecutionResult,
-  SavedAnalysisRunSummary
+  FleetStatusResponse,
+  FleetTrackedRepositoryStatus,
+  SavedAnalysisRunSummary,
+  SweepSchedule,
+  TrackedRepository
 } from "@repo-guardian/shared-types";
+import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
+import { AppModeToggle } from "./components/AppModeToggle";
 import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
+import { FleetOverviewPanel } from "./components/FleetOverviewPanel";
 import { GuardianGraphPanel } from "./components/GuardianGraphPanel";
 import { IssueCandidatesPanel } from "./components/IssueCandidatesPanel";
 import { PageShell } from "./components/PageShell";
@@ -19,7 +27,10 @@ import { RepoInputForm } from "./components/RepoInputForm";
 import { RepositorySummaryPanel } from "./components/RepositorySummaryPanel";
 import { SavedRunsPanel } from "./components/SavedRunsPanel";
 import { StatusBadge } from "./components/StatusBadge";
+import { SweepSchedulesPanel } from "./components/SweepSchedulesPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
+import { TrackedPullRequestsPanel } from "./components/TrackedPullRequestsPanel";
+import { TrackedRepositoriesPanel } from "./components/TrackedRepositoriesPanel";
 import { PartialAnalysisPanel, WarningsPanel } from "./components/WarningsPanel";
 import {
   buildTraceabilityMapSummary,
@@ -41,10 +52,20 @@ import {
   AnalyzeRepoClientError,
   analyzeRepository
 } from "./lib/api-client";
+import { requestExecutionPlan, requestExecutionExecute } from "./lib/execution-client";
 import {
-  requestExecutionPlan,
-  requestExecutionExecute
-} from "./lib/execution-client";
+  cancelAnalysisJob,
+  createSweepSchedule,
+  createTrackedRepository,
+  enqueueTrackedRepositoryAnalysis,
+  FleetClientError,
+  getFleetStatus,
+  listAnalysisJobs,
+  listSweepSchedules,
+  listTrackedRepositories,
+  retryAnalysisJob,
+  triggerSweepSchedule
+} from "./lib/fleet-client";
 import {
   compareSavedAnalysisRuns,
   getSavedAnalysisRun,
@@ -53,7 +74,82 @@ import {
   SavedRunsClientError
 } from "./lib/runs-client";
 
+type AppMode = "analysis" | "fleet-admin";
+
+type FleetAdminSnapshot = {
+  analysisJobs: AnalysisJob[];
+  fleetStatus: FleetStatusResponse;
+  sweepSchedules: SweepSchedule[];
+  trackedRepositories: TrackedRepository[];
+};
+
+async function loadFleetAdminSnapshot(): Promise<FleetAdminSnapshot> {
+  const [trackedRepositories, fleetStatus, analysisJobs, sweepSchedules] = await Promise.all([
+    listTrackedRepositories(),
+    getFleetStatus(),
+    listAnalysisJobs(),
+    listSweepSchedules()
+  ]);
+
+  return {
+    analysisJobs,
+    fleetStatus,
+    sweepSchedules,
+    trackedRepositories
+  };
+}
+
+function createFallbackTrackedRepositoryStatus(
+  trackedRepository: TrackedRepository
+): FleetTrackedRepositoryStatus {
+  return {
+    latestAnalysisJob: null,
+    latestPlanId: null,
+    latestPlanStatus: null,
+    latestRun: null,
+    patchPlanCounts: {
+      blocked: 0,
+      executable: 0,
+      stale: 0
+    },
+    stale: true,
+    trackedRepository
+  };
+}
+
+function mergeTrackedRepositoryStatuses(input: {
+  fleetStatus: FleetStatusResponse | null;
+  trackedRepositories: TrackedRepository[];
+}): FleetTrackedRepositoryStatus[] {
+  const fleetStatuses = input.fleetStatus?.trackedRepositories ?? [];
+  const statusesById = new Map(
+    fleetStatuses.map((entry) => [entry.trackedRepository.id, entry] as const)
+  );
+  const merged: FleetTrackedRepositoryStatus[] = [];
+
+  const baseRepositories =
+    input.trackedRepositories.length > 0
+      ? input.trackedRepositories
+      : fleetStatuses.map((entry) => entry.trackedRepository);
+
+  for (const trackedRepository of baseRepositories) {
+    merged.push(
+      statusesById.get(trackedRepository.id) ??
+        createFallbackTrackedRepositoryStatus(trackedRepository)
+    );
+  }
+
+  for (const entry of fleetStatuses) {
+    if (!merged.some((candidate) => candidate.trackedRepository.id === entry.trackedRepository.id)) {
+      merged.push(entry);
+    }
+  }
+
+  return merged;
+}
+
 function App() {
+  const [appMode, setAppMode] = useState<AppMode>("analysis");
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [approvalGranted, setApprovalGranted] = useState(false);
   const [candidateTypeFilter, setCandidateTypeFilter] =
@@ -87,17 +183,58 @@ function App() {
   const [selectedIssueCandidateIds, setSelectedIssueCandidateIds] = useState<
     string[]
   >([]);
-  const [selectedPRCandidateIds, setSelectedPRCandidateIds] = useState<string[]>(
-    []
-  );
+  const [selectedPRCandidateIds, setSelectedPRCandidateIds] = useState<string[]>([]);
   const [targetRunId, setTargetRunId] = useState("");
 
-  const statusLabel = isLoading
-    ? "Analyzing snapshot"
-    : analysis
-      ? "Analysis ready"
-      : "Ready for intake";
-  const statusTone = analysis ? "active" : isLoading ? "warning" : "muted";
+  const [analysisJobs, setAnalysisJobs] = useState<AnalysisJob[]>([]);
+  const [fleetStatus, setFleetStatus] = useState<FleetStatusResponse | null>(null);
+  const [fleetErrorMessage, setFleetErrorMessage] = useState<string | null>(null);
+  const [isFleetLoading, setIsFleetLoading] = useState(false);
+  const [isCreatingSweepSchedule, setIsCreatingSweepSchedule] = useState(false);
+  const [isCreatingTrackedRepository, setIsCreatingTrackedRepository] =
+    useState(false);
+  const [jobsErrorMessage, setJobsErrorMessage] = useState<string | null>(null);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+  const [pendingSweepScheduleId, setPendingSweepScheduleId] = useState<string | null>(
+    null
+  );
+  const [pendingTrackedRepositoryId, setPendingTrackedRepositoryId] = useState<
+    string | null
+  >(null);
+  const [sweepSchedules, setSweepSchedules] = useState<SweepSchedule[]>([]);
+  const [sweepSchedulesErrorMessage, setSweepSchedulesErrorMessage] = useState<
+    string | null
+  >(null);
+  const [trackedRepositories, setTrackedRepositories] = useState<TrackedRepository[]>(
+    []
+  );
+  const [trackedRepositoriesErrorMessage, setTrackedRepositoriesErrorMessage] =
+    useState<string | null>(null);
+
+  const statusLabel =
+    appMode === "analysis"
+      ? isLoading
+        ? "Analyzing snapshot"
+        : analysis
+          ? "Analysis ready"
+          : "Ready for intake"
+      : isFleetLoading
+        ? "Refreshing fleet"
+        : fleetStatus
+          ? "Fleet admin ready"
+          : "Fleet admin idle";
+  const statusTone =
+    appMode === "analysis"
+      ? analysis
+        ? "active"
+        : isLoading
+          ? "warning"
+          : "muted"
+      : fleetStatus
+        ? "active"
+        : isFleetLoading
+          ? "warning"
+          : "muted";
   const helperText = isLoading
     ? "Fetching the repository snapshot, recursive tree, and ecosystem signals."
     : analysis
@@ -123,6 +260,10 @@ function App() {
   const traceabilityMapSummary = analysis
     ? buildTraceabilityMapSummary(traceability)
     : [];
+  const trackedRepositoryStatuses = mergeTrackedRepositoryStatuses({
+    fleetStatus,
+    trackedRepositories
+  });
 
   function resetExecutionState() {
     setApprovalGranted(false);
@@ -147,6 +288,13 @@ function App() {
         ? currentRunId
         : (nextRuns[0]?.id ?? "")
     );
+  }
+
+  function applyFleetAdminSnapshot(snapshot: FleetAdminSnapshot) {
+    setAnalysisJobs(snapshot.analysisJobs);
+    setFleetStatus(snapshot.fleetStatus);
+    setSweepSchedules(snapshot.sweepSchedules);
+    setTrackedRepositories(snapshot.trackedRepositories);
   }
 
   async function handleRefreshSavedRuns() {
@@ -287,8 +435,6 @@ function App() {
     setIsExecutionPlanLoading(true);
 
     try {
-      // NOTE: We MUST have a saved run ID for execution planning.
-      // If we don't have targetRunId, we will save the run right now automatically.
       let runIdToUse = targetRunId;
       if (!runIdToUse) {
         const response = await saveAnalysisRun({
@@ -383,157 +529,401 @@ function App() {
     }
   }
 
+  async function handleRefreshFleetAdmin() {
+    setFleetErrorMessage(null);
+    setIsFleetLoading(true);
+
+    try {
+      applyFleetAdminSnapshot(await loadFleetAdminSnapshot());
+    } catch (error) {
+      setFleetErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not load fleet admin data."
+      );
+    } finally {
+      setIsFleetLoading(false);
+    }
+  }
+
+  async function handleCreateTrackedRepository(input: {
+    label?: string | null;
+    repoInput: string;
+  }) {
+    setTrackedRepositoriesErrorMessage(null);
+    setIsCreatingTrackedRepository(true);
+
+    try {
+      await createTrackedRepository(input);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setTrackedRepositoriesErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not register the tracked repository."
+      );
+    } finally {
+      setIsCreatingTrackedRepository(false);
+    }
+  }
+
+  async function handleEnqueueTrackedRepositoryAnalysis(trackedRepositoryId: string) {
+    setTrackedRepositoriesErrorMessage(null);
+    setPendingTrackedRepositoryId(trackedRepositoryId);
+
+    try {
+      await enqueueTrackedRepositoryAnalysis(trackedRepositoryId);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setTrackedRepositoriesErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not enqueue the tracked repository analysis."
+      );
+    } finally {
+      setPendingTrackedRepositoryId(null);
+    }
+  }
+
+  async function handleCancelJob(jobId: string) {
+    setJobsErrorMessage(null);
+    setPendingJobId(jobId);
+
+    try {
+      await cancelAnalysisJob(jobId);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setJobsErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not cancel the analysis job."
+      );
+    } finally {
+      setPendingJobId(null);
+    }
+  }
+
+  async function handleRetryJob(jobId: string) {
+    setJobsErrorMessage(null);
+    setPendingJobId(jobId);
+
+    try {
+      await retryAnalysisJob(jobId);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setJobsErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not retry the analysis job."
+      );
+    } finally {
+      setPendingJobId(null);
+    }
+  }
+
+  async function handleCreateSweepSchedule(input: { label: string }) {
+    setSweepSchedulesErrorMessage(null);
+    setIsCreatingSweepSchedule(true);
+
+    try {
+      await createSweepSchedule({
+        cadence: "weekly",
+        label: input.label,
+        selectionStrategy: "all_executable_prs"
+      });
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setSweepSchedulesErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not create the sweep schedule."
+      );
+    } finally {
+      setIsCreatingSweepSchedule(false);
+    }
+  }
+
+  async function handleTriggerSweepSchedule(scheduleId: string) {
+    setSweepSchedulesErrorMessage(null);
+    setPendingSweepScheduleId(scheduleId);
+
+    try {
+      await triggerSweepSchedule(scheduleId);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setSweepSchedulesErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not trigger the sweep schedule."
+      );
+    } finally {
+      setPendingSweepScheduleId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (appMode !== "fleet-admin" || fleetStatus) {
+      return;
+    }
+
+    let cancelled = false;
+    setFleetErrorMessage(null);
+    setIsFleetLoading(true);
+
+    void loadFleetAdminSnapshot()
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        applyFleetAdminSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setFleetErrorMessage(
+          error instanceof FleetClientError
+            ? error.message
+            : "Repo Guardian could not load fleet admin data."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsFleetLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appMode, fleetStatus]);
+
+  const heroAside =
+    appMode === "analysis" ? (
+      <div className="hero-stack">
+        <StatusBadge label={statusLabel} tone={statusTone} />
+        <p className="aside-copy">
+          Analysis stays supervised. Repo Guardian can surface issue and PR
+          write-back readiness, preview dry-run execution plans, and only write to
+          GitHub after explicit approval for selected actions.
+        </p>
+        {analysis ? (
+          <p className="aside-copy aside-copy-muted">
+            Latest snapshot: {formatTimestamp(analysis.fetchedAt)}
+          </p>
+        ) : null}
+      </div>
+    ) : (
+      <div className="hero-stack">
+        <StatusBadge label={statusLabel} tone={statusTone} />
+        <p className="aside-copy">
+          Fleet Admin keeps tracked repositories, queue activity, schedule-driven
+          planning, and remediation PR lifecycle visible without introducing any
+          unattended GitHub writes.
+        </p>
+        {fleetStatus ? (
+          <p className="aside-copy aside-copy-muted">
+            Snapshot updated {formatTimestamp(fleetStatus.generatedAt)}.
+          </p>
+        ) : (
+          <p className="aside-copy aside-copy-muted">
+            Load a fleet snapshot to inspect queue and schedule health.
+          </p>
+        )}
+      </div>
+    );
+
   return (
     <PageShell
-      aside={
-        <div className="hero-stack">
-          <StatusBadge label={statusLabel} tone={statusTone} />
-          <p className="aside-copy">
-            Analysis stays supervised. Repo Guardian can surface issue and PR
-            write-back readiness, preview dry-run execution plans, and only write to
-            GitHub after explicit approval for selected actions.
-          </p>
-          {analysis ? (
-            <p className="aside-copy aside-copy-muted">
-              Latest snapshot: {formatTimestamp(analysis.fetchedAt)}
-            </p>
-          ) : null}
-        </div>
-      }
-      eyebrow="Approval-Gated Analysis"
+      aside={heroAside}
+      eyebrow={appMode === "analysis" ? "Approval-Gated Analysis" : "Fleet Admin"}
       heading="Repo Guardian"
-      summary="A supervised GitHub repository triage assistant that inspects public repositories, drafts findings and remediation candidates, and surfaces approval-gated GitHub write-back readiness before any execution step."
+      summary={
+        appMode === "analysis"
+          ? "A supervised GitHub repository triage assistant that inspects public repositories, drafts findings and remediation candidates, and surfaces approval-gated GitHub write-back readiness before any execution step."
+          : "Operational controls for tracked repositories, async queue visibility, scheduled plan-only sweeps, and remediation pull-request lifecycle reporting."
+      }
+      toolbar={<AppModeToggle mode={appMode} onChange={setAppMode} />}
     >
-      <Panel
-        className="panel-wide"
-        eyebrow="Repository Intake"
-        footer={<StatusBadge label={statusLabel} tone={statusTone} />}
-        title="Analyze a public GitHub repository"
-      >
-        <RepoInputForm
-          errorMessage={errorMessage}
-          helperText={helperText}
-          isLoading={isLoading}
-          onChange={setRepoInput}
-          onSubmit={handleSubmit}
-          value={repoInput}
-        />
-      </Panel>
-
-      <SavedRunsPanel
-        analysis={analysis}
-        baseRunId={baseRunId}
-        errorMessage={savedRunsErrorMessage}
-        isComparing={isCompareLoading}
-        isLoading={isSavedRunsLoading}
-        isOpening={isOpeningRun}
-        isSaving={isSavingRun}
-        onBaseRunChange={setBaseRunId}
-        onCompareRuns={handleCompareSavedRuns}
-        onOpenRun={handleOpenSavedRun}
-        onRefreshRuns={handleRefreshSavedRuns}
-        onSaveCurrentRun={handleSaveCurrentRun}
-        onTargetRunChange={setTargetRunId}
-        runs={savedRuns}
-        targetRunId={targetRunId}
-      />
-      <CompareRunsPanel comparison={compareResult} />
-
-      {!hasSubmitted ? (
-        <Panel
-          className="panel-wide"
-          eyebrow="Empty State"
-          title="Start with one repository snapshot"
-        >
-          <div className="empty-state">
-            <p className="empty-copy">
-              Repo Guardian fetches the default branch, analyzes dependency and
-              workflow risk signals, drafts issue and PR candidates, and shows
-              approval-gated write-back readiness without performing any GitHub
-              write actions.
-            </p>
-            <ul className="tag-list">
-              <li>Repository summary, tree coverage, and notable paths</li>
-              <li>Detected manifests, lockfiles, workflow files, and ecosystems</li>
-              <li>
-                Structured dependency and workflow findings with candidate
-                remediation paths
-              </li>
-              <li>
-                Pre-approval PR write-back readiness for supported issue and PR
-                slices
-              </li>
-            </ul>
-          </div>
-        </Panel>
-      ) : null}
-
-      {analysis ? (
+      {appMode === "analysis" ? (
         <>
-          <PartialAnalysisPanel isPartial={analysis.isPartial} />
-          <RepositorySummaryPanel analysis={analysis} />
-          <GuardianGraphPanel analysis={analysis} />
-          {writeBackReadinessSummary ? (
-            <TraceabilityPanel
-              candidateTypeFilter={candidateTypeFilter}
-              candidateTypeFilterOptions={candidateTypeFilterOptions}
-              eligibilityFilter={eligibilityFilter}
-              onCandidateTypeFilterChange={setCandidateTypeFilter}
-              onEligibilityFilterChange={setEligibilityFilter}
-              traceability={traceability}
-              traceabilityMapSummary={traceabilityMapSummary}
-              visiblePatchPlans={visiblePatchPlans}
-              writeBackReadinessSummary={writeBackReadinessSummary}
+          <Panel
+            className="panel-wide"
+            eyebrow="Repository Intake"
+            footer={<StatusBadge label={statusLabel} tone={statusTone} />}
+            title="Analyze a public GitHub repository"
+          >
+            <RepoInputForm
+              errorMessage={errorMessage}
+              helperText={helperText}
+              isLoading={isLoading}
+              onChange={setRepoInput}
+              onSubmit={handleSubmit}
+              value={repoInput}
             />
+          </Panel>
+
+          <SavedRunsPanel
+            analysis={analysis}
+            baseRunId={baseRunId}
+            errorMessage={savedRunsErrorMessage}
+            isComparing={isCompareLoading}
+            isLoading={isSavedRunsLoading}
+            isOpening={isOpeningRun}
+            isSaving={isSavingRun}
+            onBaseRunChange={setBaseRunId}
+            onCompareRuns={handleCompareSavedRuns}
+            onOpenRun={handleOpenSavedRun}
+            onRefreshRuns={handleRefreshSavedRuns}
+            onSaveCurrentRun={handleSaveCurrentRun}
+            onTargetRunChange={setTargetRunId}
+            runs={savedRuns}
+            targetRunId={targetRunId}
+          />
+          <CompareRunsPanel comparison={compareResult} />
+
+          {!hasSubmitted ? (
+            <Panel
+              className="panel-wide"
+              eyebrow="Empty State"
+              title="Start with one repository snapshot"
+            >
+              <div className="empty-state">
+                <p className="empty-copy">
+                  Repo Guardian fetches the default branch, analyzes dependency and
+                  workflow risk signals, drafts issue and PR candidates, and shows
+                  approval-gated write-back readiness without performing any GitHub
+                  write actions.
+                </p>
+                <ul className="tag-list">
+                  <li>Repository summary, tree coverage, and notable paths</li>
+                  <li>Detected manifests, lockfiles, workflow files, and ecosystems</li>
+                  <li>
+                    Structured dependency and workflow findings with candidate
+                    remediation paths
+                  </li>
+                  <li>
+                    Pre-approval PR write-back readiness for supported issue and PR
+                    slices
+                  </li>
+                </ul>
+              </div>
+            </Panel>
           ) : null}
-          <IssueCandidatesPanel
-            candidates={analysis.issueCandidates}
-            onToggleCandidate={handleIssueCandidateSelection}
-            selectedCandidateIds={selectedIssueCandidateIds}
-          />
-          <PRCandidatesPanel
-            candidates={analysis.prCandidates}
-            onToggleCandidate={handlePRCandidateSelection}
-            patchPlans={analysis.prPatchPlans}
-            selectedCandidateIds={selectedPRCandidateIds}
-          />
-          <ExecutionPlannerPanel
-            approvalGranted={approvalGranted}
-            executionErrorMessage={executionErrorMessage}
-            executionPlan={executionPlan}
-            isSubmittingPlan={isExecutionPlanLoading}
-            isSubmittingExecute={isExecutionExecuteLoading}
-            onApprovalChange={setApprovalGranted}
-            onRequestPlan={handleRequestPlan}
-            onRequestExecute={handleRequestExecute}
-            selectedIssueCount={selectedIssueCandidateIds.length}
-            selectedPRCount={selectedPRCandidateIds.length}
-          />
-          <ExecutionResultsPanel
-            result={
-              executionResult ||
-              (executionPlan
-                ? {
-                    executionId: executionPlan.planId,
-                    mode: "dry_run" as const,
-                    status: "planned" as const,
-                    approvalStatus: "required" as const,
-                    approvalRequired: true,
-                    approvalNotes: ["Dry-run plan generated; approval required for execution."],
-                    startedAt: new Date().toISOString(),
-                    completedAt: new Date().toISOString(),
-                    summary: executionPlan.summary,
-                    actions: executionPlan.actions,
-                    errors: [],
-                    warnings: []
-                  }
-                : null)
-            }
-          />
-          <EcosystemPanel analysis={analysis} />
-          <WarningsPanel analysis={analysis} />
+
+          {analysis ? (
+            <>
+              <PartialAnalysisPanel isPartial={analysis.isPartial} />
+              <RepositorySummaryPanel analysis={analysis} />
+              <GuardianGraphPanel analysis={analysis} />
+              {writeBackReadinessSummary ? (
+                <TraceabilityPanel
+                  candidateTypeFilter={candidateTypeFilter}
+                  candidateTypeFilterOptions={candidateTypeFilterOptions}
+                  eligibilityFilter={eligibilityFilter}
+                  onCandidateTypeFilterChange={setCandidateTypeFilter}
+                  onEligibilityFilterChange={setEligibilityFilter}
+                  traceability={traceability}
+                  traceabilityMapSummary={traceabilityMapSummary}
+                  visiblePatchPlans={visiblePatchPlans}
+                  writeBackReadinessSummary={writeBackReadinessSummary}
+                />
+              ) : null}
+              <IssueCandidatesPanel
+                candidates={analysis.issueCandidates}
+                onToggleCandidate={handleIssueCandidateSelection}
+                selectedCandidateIds={selectedIssueCandidateIds}
+              />
+              <PRCandidatesPanel
+                candidates={analysis.prCandidates}
+                onToggleCandidate={handlePRCandidateSelection}
+                patchPlans={analysis.prPatchPlans}
+                selectedCandidateIds={selectedPRCandidateIds}
+              />
+              <ExecutionPlannerPanel
+                approvalGranted={approvalGranted}
+                executionErrorMessage={executionErrorMessage}
+                executionPlan={executionPlan}
+                isSubmittingPlan={isExecutionPlanLoading}
+                isSubmittingExecute={isExecutionExecuteLoading}
+                onApprovalChange={setApprovalGranted}
+                onRequestPlan={handleRequestPlan}
+                onRequestExecute={handleRequestExecute}
+                selectedIssueCount={selectedIssueCandidateIds.length}
+                selectedPRCount={selectedPRCandidateIds.length}
+              />
+              <ExecutionResultsPanel
+                result={
+                  executionResult ||
+                  (executionPlan
+                    ? {
+                        executionId: executionPlan.planId,
+                        mode: "dry_run" as const,
+                        status: "planned" as const,
+                        approvalStatus: "required" as const,
+                        approvalRequired: true,
+                        approvalNotes: [
+                          "Dry-run plan generated; approval required for execution."
+                        ],
+                        startedAt: new Date().toISOString(),
+                        completedAt: new Date().toISOString(),
+                        summary: executionPlan.summary,
+                        actions: executionPlan.actions,
+                        errors: [],
+                        warnings: []
+                      }
+                    : null)
+                }
+              />
+              <EcosystemPanel analysis={analysis} />
+              <WarningsPanel analysis={analysis} />
+            </>
+          ) : null}
         </>
-      ) : null}
+      ) : (
+        <>
+          <FleetOverviewPanel
+            errorMessage={fleetErrorMessage}
+            fleetStatus={fleetStatus}
+            isLoading={isFleetLoading}
+            onRefresh={handleRefreshFleetAdmin}
+          />
+          <TrackedRepositoriesPanel
+            errorMessage={trackedRepositoriesErrorMessage}
+            isCreating={isCreatingTrackedRepository}
+            isLoading={isFleetLoading}
+            onCreateRepository={handleCreateTrackedRepository}
+            onEnqueueAnalysis={handleEnqueueTrackedRepositoryAnalysis}
+            onRefresh={handleRefreshFleetAdmin}
+            pendingTrackedRepositoryId={pendingTrackedRepositoryId}
+            repositories={trackedRepositoryStatuses}
+          />
+          <AnalysisJobsPanel
+            errorMessage={jobsErrorMessage}
+            isLoading={isFleetLoading}
+            jobs={analysisJobs}
+            onCancelJob={handleCancelJob}
+            onRefresh={handleRefreshFleetAdmin}
+            onRetryJob={handleRetryJob}
+            pendingJobId={pendingJobId}
+          />
+          <SweepSchedulesPanel
+            errorMessage={sweepSchedulesErrorMessage}
+            isCreating={isCreatingSweepSchedule}
+            isLoading={isFleetLoading}
+            onCreateSchedule={handleCreateSweepSchedule}
+            onRefresh={handleRefreshFleetAdmin}
+            onTriggerSchedule={handleTriggerSweepSchedule}
+            pendingScheduleId={pendingSweepScheduleId}
+            schedules={sweepSchedules}
+          />
+          <TrackedPullRequestsPanel
+            pullRequests={fleetStatus?.trackedPullRequests ?? []}
+          />
+        </>
+      )}
     </PageShell>
   );
 }
