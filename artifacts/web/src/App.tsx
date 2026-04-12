@@ -315,9 +315,7 @@ function App() {
       setApprovalGranted(false);
     } catch (error) {
       setExecutionErrorMessage(
-        error instanceof ExecutionClientError
-          ? error.message
-          : "Repo Guardian could not complete the execution plan request."
+        (error as any)?.message || "Repo Guardian could not complete the execution plan request."
       );
     } finally {
       setIsExecutionPlanLoading(false);
@@ -347,9 +345,7 @@ function App() {
       setExecutionResult(result);
     } catch (error) {
       setExecutionErrorMessage(
-        error instanceof ExecutionClientError
-          ? error.message
-          : "Repo Guardian could not execute the approved plan."
+        (error as any)?.message || "Repo Guardian could not execute the approved plan."
       );
     } finally {
       setIsExecutionExecuteLoading(false);
@@ -510,7 +506,27 @@ function App() {
             selectedIssueCount={selectedIssueCandidateIds.length}
             selectedPRCount={selectedPRCandidateIds.length}
           />
-          <ExecutionResultsPanel result={executionResult} />
+          <ExecutionResultsPanel
+            result={
+              executionResult ||
+              (executionPlan
+                ? {
+                    executionId: executionPlan.planId,
+                    mode: "dry_run" as const,
+                    status: "planned" as const,
+                    approvalStatus: "required" as const,
+                    approvalRequired: true,
+                    approvalNotes: ["Dry-run plan generated; approval required for execution."],
+                    startedAt: new Date().toISOString(),
+                    completedAt: new Date().toISOString(),
+                    summary: executionPlan.summary,
+                    actions: executionPlan.actions,
+                    errors: [],
+                    warnings: []
+                  }
+                : null)
+            }
+          />
           <EcosystemPanel analysis={analysis} />
           <WarningsPanel analysis={analysis} />
         </>

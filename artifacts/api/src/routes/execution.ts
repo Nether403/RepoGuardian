@@ -19,7 +19,7 @@ import {
 import { FileAnalysisRunStore } from "@repo-guardian/runs";
 import { env } from "../lib/env.js";
 import { requireAuth } from "../middleware/auth.js";
-import { defaultPlanStore } from "../lib/plan-store.js";
+import { defaultPlanStore, type FilePlanStore } from "../lib/plan-store.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
 
 function getRunStore() {
@@ -35,10 +35,15 @@ function hashActions(actions: unknown[]) {
 }
 
 export function createExecutionRouter(
-  dependencies: ExecutionServiceDependencies
+  dependencies: ExecutionServiceDependencies,
+  stores: {
+    runStore?: FileAnalysisRunStore;
+    planStore?: FilePlanStore;
+  } = {}
 ): ExpressRouter {
   const executionRouter: ExpressRouter = Router();
-  const runStore = getRunStore();
+  const runStore = stores.runStore ?? getRunStore();
+  const planStore = stores.planStore ?? defaultPlanStore;
 
   executionRouter.post("/execution/plan", requireAuth, async (request, response, next) => {
     const parsedRequest = ExecutionPlanRequestSchema.safeParse(request.body);
@@ -68,13 +73,12 @@ export function createExecutionRouter(
       const result = await createExecutionPlanResult(planInput, dependencies);
       const planHash = hashActions(result.actions);
       const planId = `plan_${crypto.randomBytes(8).toString("hex")}`;
-      const actorUserId = "usr_authenticated";
-      const token = mintApprovalToken(planId, planHash, actorUserId, 15);
+      const token = mintApprovalToken(planId, planHash, "usr_authenticated", 15);
       
       const storedPlan = {
         planId,
         planHash,
-        actorUserId,
+        actorUserId: "usr_authenticated", // Left for backward compatibility if PlanStore schema expects it
         analysisRunId: parsedRequest.data.analysisRunId,
         repositoryFullName: run.run.analysis.repository.fullName,
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
@@ -87,7 +91,7 @@ export function createExecutionRouter(
         expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
       };
 
-      await defaultPlanStore.savePlan(storedPlan);
+      await planStore.savePlan(storedPlan);
 
       const planResponse: ExecutionPlanResponse = {
         planId,
@@ -103,8 +107,7 @@ export function createExecutionRouter(
         actions: result.actions,
         approval: {
           required: true,
-          confirmationText: "I approve this GitHub write-back plan.",
-          actorMustMatchPlanner: true
+          confirmationText: "I approve this GitHub write-back plan."
         }
       };
 
@@ -143,14 +146,14 @@ export function createExecutionRouter(
         return;
       }
 
-      const plan = await defaultPlanStore.getPlan(parsedRequest.data.planId);
+      const plan = await planStore.getPlan(parsedRequest.data.planId);
       if (!plan) {
         response.status(404).json({ error: "Plan not found." });
         return;
       }
 
       if (plan.status !== "planned") {
-        response.status(400).json({ error: "Plan is no longer active." });
+        response.status(409).json({ error: "Plan is already executing or no longer active." });
         return;
       }
 
@@ -166,7 +169,11 @@ export function createExecutionRouter(
         return;
       }
 
-      await defaultPlanStore.updatePlanStatus(plan.planId, "executing");
+      const transitioned = await planStore.transitionPlanStatus(plan.planId, "planned", "executing");
+      if (!transitioned) {
+         response.status(409).json({ error: "Plan is already executing or no longer active." });
+         return;
+      }
       
       const startedAt = new Date().toISOString();
       const actions = plan.normalizedExecutionPayload.actions;
@@ -181,15 +188,15 @@ export function createExecutionRouter(
 
       try {
         await executeApprovedActions(planInput, actions, dependencies);
-        await defaultPlanStore.updatePlanStatus(plan.planId, "completed");
+        await planStore.transitionPlanStatus(plan.planId, "executing", "completed");
       } catch (executionError) {
-        await defaultPlanStore.updatePlanStatus(plan.planId, "failed");
+        await planStore.transitionPlanStatus(plan.planId, "executing", "failed");
         next(executionError);
         return;
       }
 
       const summary = {
-        totalSelections: actions.length,
+        totalSelections: plan.selectedIssueCandidateIds.length + plan.selectedPRCandidateIds.length,
         issueSelections: plan.selectedIssueCandidateIds.length,
         prSelections: plan.selectedPRCandidateIds.length,
         totalActions: actions.length,

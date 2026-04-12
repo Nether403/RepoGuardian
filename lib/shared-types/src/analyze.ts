@@ -632,8 +632,7 @@ export const ExecutionExecuteRequestSchema = z.object({
 
 export const ApprovalRequirementSchema = z.object({
   required: z.boolean(),
-  confirmationText: z.string().min(1),
-  actorMustMatchPlanner: z.boolean()
+  confirmationText: z.string().min(1)
 });
 
 export const ExecutionActionPlanSchema = z.object({

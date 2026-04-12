@@ -230,6 +230,7 @@ describe("runs routes", () => {
     const app = await createTestApp();
     const baseline = await request(app)
       .post("/api/runs")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
         analysis: createAnalysis({
           findingId: "finding:old"
@@ -238,6 +239,7 @@ describe("runs routes", () => {
       });
     const target = await request(app)
       .post("/api/runs")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
         analysis: createAnalysis({
           findingId: "finding:new"
@@ -251,12 +253,12 @@ describe("runs routes", () => {
     );
     expect(target.status).toBe(201);
 
-    const list = await request(app).get("/api/runs");
+    const list = await request(app).get("/api/runs").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
     expect(list.status).toBe(200);
     expect(ListAnalysisRunsResponseSchema.safeParse(list.body).success).toBe(true);
     expect(list.body.runs).toHaveLength(2);
 
-    const reopened = await request(app).get(`/api/runs/${baseline.body.run.id}`);
+    const reopened = await request(app).get(`/api/runs/${baseline.body.run.id}`).set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
     expect(reopened.status).toBe(200);
     expect(GetAnalysisRunResponseSchema.safeParse(reopened.body).success).toBe(
       true
@@ -265,6 +267,7 @@ describe("runs routes", () => {
 
     const comparison = await request(app)
       .post("/api/runs/compare")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
         baseRunId: baseline.body.run.id,
         targetRunId: target.body.run.id
@@ -280,7 +283,7 @@ describe("runs routes", () => {
 
   it("returns 404 when reopening a missing run", async () => {
     const app = await createTestApp();
-    const response = await request(app).get("/api/runs/missing-run");
+    const response = await request(app).get("/api/runs/missing-run").set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({

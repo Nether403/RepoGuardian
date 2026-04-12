@@ -10,6 +10,7 @@ import {
   executeExecutionPlan,
   RepoGuardianApiError
 } from "@repo-guardian/api-client";
+import { getApiOptions } from "./api-options";
 
 export class ExecutionClientError extends Error {
   readonly details: unknown;
@@ -42,7 +43,7 @@ export async function requestExecutionPlan(input: {
   }
 
   try {
-    return await createExecutionPlan(requestBody);
+    return await createExecutionPlan(requestBody, getApiOptions());
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
       throw new ExecutionClientError(error.message, error.status, error.details, { cause: error });
@@ -72,7 +73,7 @@ export async function requestExecutionExecute(input: {
   }
 
   try {
-    return ExecutionResultSchema.parse(await executeExecutionPlan(requestBody));
+    return ExecutionResultSchema.parse(await executeExecutionPlan(requestBody, getApiOptions()));
   } catch (error) {
     if (error instanceof RepoGuardianApiError) {
       throw new ExecutionClientError(error.message, error.status, error.details, { cause: error });

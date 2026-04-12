@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import type { ExecutionPlanResponse, ExecutionActionPlan } from "@repo-guardian/shared-types";
+import type { ExecutionActionPlan } from "@repo-guardian/shared-types";
 import { env } from "./env.js";
 
 export type StoredPlan = {
@@ -22,8 +22,9 @@ export type StoredPlan = {
 export class FilePlanStore {
   private readonly rootDir: string;
 
-  constructor() {
+  constructor(options: { rootDir?: string } = {}) {
     this.rootDir =
+      options.rootDir ??
       env.REPO_GUARDIAN_PLAN_STORE_DIR ??
       join(process.cwd(), ".repo-guardian", "plans");
   }
@@ -40,9 +41,14 @@ export class FilePlanStore {
     return join(this.rootDir, `${planId}.json`);
   }
 
+  private inMemoryLocks = new Map<string, Promise<void>>();
+
   public async savePlan(plan: StoredPlan): Promise<void> {
     await this.ensureDir();
-    await fs.writeFile(this.getFilePath(plan.planId), JSON.stringify(plan, null, 2), "utf8");
+    const filePath = this.getFilePath(plan.planId);
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    await fs.writeFile(tempPath, JSON.stringify(plan, null, 2), "utf8");
+    await fs.rename(tempPath, filePath);
   }
 
   public async getPlan(planId: string): Promise<StoredPlan | null> {
@@ -54,11 +60,38 @@ export class FilePlanStore {
     }
   }
 
-  public async updatePlanStatus(planId: string, status: StoredPlan["status"]): Promise<void> {
-    const plan = await this.getPlan(planId);
-    if (!plan) throw new Error("Plan not found");
-    plan.status = status;
-    await this.savePlan(plan);
+  public async transitionPlanStatus(
+    planId: string,
+    expectedStatus: StoredPlan["status"],
+    nextStatus: StoredPlan["status"]
+  ): Promise<boolean> {
+    // 1. In-process mutex check (for the exact same Node process)
+    const existingLock = this.inMemoryLocks.get(planId);
+    if (existingLock) {
+      await existingLock; // Wait for the previous transition to finish
+    }
+
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.inMemoryLocks.set(planId, lockPromise);
+
+    try {
+      // 2. Read and verify state
+      const plan = await this.getPlan(planId);
+      if (!plan || plan.status !== expectedStatus) {
+        return false;
+      }
+
+      // 3. Mutate and atomic write
+      plan.status = nextStatus;
+      await this.savePlan(plan);
+      return true;
+    } finally {
+      this.inMemoryLocks.delete(planId);
+      releaseLock!();
+    }
   }
 }
 
