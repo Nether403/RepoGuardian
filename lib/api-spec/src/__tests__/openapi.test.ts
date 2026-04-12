@@ -27,7 +27,9 @@ describe("Repo Guardian OpenAPI contract", () => {
       "createExecutionPlan",
       "executeExecutionPlan",
       "getAnalysisRun",
+      "getExecutionPlan",
       "listAnalysisRuns",
+      "listExecutionPlanEvents",
       "saveAnalysisRun"
     ]);
   });

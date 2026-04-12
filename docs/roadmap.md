@@ -2,11 +2,13 @@
 
 ## Current status
 
-Repo Guardian is currently a post-`6F` alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model:
+Repo Guardian is currently a post-`7A` alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model:
 
 - `POST /api/analyze`
 - `POST /api/execution/plan` (Planning)
 - `POST /api/execution/execute` (Execution)
+- `GET /api/execution/plans/{planId}`
+- `GET /api/execution/plans/{planId}/events`
 - `GET /api/runs`
 - `POST /api/runs`
 - `GET /api/runs/{runId}`
@@ -19,7 +21,7 @@ The current platform focus is still bounded, deterministic, and approval-gated:
 - deterministic repository analysis across the currently supported ecosystems
 - deterministic patch planning for bounded issue and PR candidate slices
 - explicit approval before any GitHub write-capable execution step
-- local saved-run history and compare mode for supervised review workflows
+- durable saved-run history, plan detail reads, and execution audit history for supervised review workflows
 
 ## Current priorities
 
@@ -28,10 +30,10 @@ The next work should harden Repo Guardian into a durable product foundation rath
 Immediate priorities:
 
 - preserve stability of the current two-phase execution contract
-- replace local file-backed plans and saved runs with durable persistence
-- make execution history, action outcomes, and auditability first-class
+- validate and harden the new durable execution backbone
 - prepare the platform for asynchronous fleet-scale analysis and planning
 - keep deterministic write-back bounded while the product foundation matures
+- move next into queue-backed orchestration rather than broader write-back
 
 ## Next milestones
 

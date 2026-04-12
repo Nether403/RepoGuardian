@@ -607,6 +607,15 @@ export const ExecutionStatusSchema = z.enum([
   "failed"
 ]);
 
+export const ExecutionPlanLifecycleStatusSchema = z.enum([
+  "planned",
+  "executing",
+  "completed",
+  "failed",
+  "expired",
+  "cancelled"
+]);
+
 export const ExecutionPlanningContextSchema = z.object({
   codeReviewFindings: z.array(CodeReviewFindingSchema).default([]),
   dependencyFindings: z.array(DependencyFindingSchema).default([]),
@@ -674,6 +683,8 @@ export const ExecutionSummarySchema = z.object({
   approvalRequiredActions: z.number().int().nonnegative()
 });
 
+export const ExecutionResultSummarySchema = ExecutionSummarySchema;
+
 export const ExecutionResultSchema = z.object({
   executionId: z.string().min(1),
   mode: ExecutionModeSchema,
@@ -698,6 +709,74 @@ export const ExecutionPlanResponseSchema = z.object({
   summary: ExecutionSummarySchema,
   actions: z.array(ExecutionActionPlanSchema),
   approval: ApprovalRequirementSchema
+});
+
+export const PersistedExecutionActionSchema = ExecutionActionPlanSchema.extend({
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable()
+});
+
+export const ExecutionPlanDetailApprovalSchema = z.object({
+  required: z.boolean(),
+  confirmationText: z.string().min(1),
+  status: ApprovalStatusSchema,
+  notes: z.array(z.string().min(1)),
+  verifiedAt: z.string().datetime().nullable()
+});
+
+export const ExecutionPlanDetailResponseSchema = z.object({
+  planId: z.string().min(1),
+  planHash: z.string().min(1),
+  analysisRunId: z.string().min(1),
+  repository: RepositoryMetadataSchema.pick({
+    owner: true,
+    repo: true,
+    defaultBranch: true,
+    fullName: true
+  }),
+  actorUserId: z.string().min(1).nullable(),
+  selectedIssueCandidateIds: z.array(z.string().min(1)),
+  selectedPRCandidateIds: z.array(z.string().min(1)),
+  status: ExecutionPlanLifecycleStatusSchema,
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  failedAt: z.string().datetime().nullable(),
+  cancelledAt: z.string().datetime().nullable(),
+  executionId: z.string().min(1).nullable(),
+  executionResultStatus: z.enum(["completed", "failed"]).nullable(),
+  executionSummary: ExecutionResultSummarySchema.nullable(),
+  approval: ExecutionPlanDetailApprovalSchema,
+  actions: z.array(PersistedExecutionActionSchema)
+});
+
+export const ExecutionPlanStatusEventTypeSchema = z.enum([
+  "plan_created",
+  "plan_expired",
+  "execution_started",
+  "action_started",
+  "action_succeeded",
+  "action_failed",
+  "execution_completed",
+  "execution_failed"
+]);
+
+export const ExecutionPlanStatusEventSchema = z.object({
+  eventId: z.string().min(1),
+  planId: z.string().min(1),
+  executionId: z.string().min(1).nullable(),
+  actionId: z.string().min(1).nullable(),
+  eventType: ExecutionPlanStatusEventTypeSchema,
+  repositoryFullName: z.string().min(3),
+  actorUserId: z.string().min(1).nullable(),
+  details: z.record(z.unknown()),
+  createdAt: z.string().datetime()
+});
+
+export const ExecutionPlanEventsResponseSchema = z.object({
+  planId: z.string().min(1),
+  events: z.array(ExecutionPlanStatusEventSchema)
 });
 
 export const AnalyzeRepoResponseSchema = z.object({
@@ -735,7 +814,12 @@ export const SavedAnalysisRunSummarySchema = z.object({
   issueCandidates: z.number().int().nonnegative(),
   prCandidates: z.number().int().nonnegative(),
   executablePatchPlans: z.number().int().nonnegative(),
-  blockedPatchPlans: z.number().int().nonnegative()
+  blockedPatchPlans: z.number().int().nonnegative(),
+  execution: z.object({
+    latestPlanId: z.string().min(1),
+    latestPlanStatus: ExecutionPlanLifecycleStatusSchema,
+    latestExecutionCompletedAt: z.string().datetime().nullable()
+  }).optional()
 });
 
 export const SavedAnalysisRunSchema = z.object({
@@ -1015,6 +1099,9 @@ export type ExecutionActionType = z.infer<typeof ExecutionActionTypeSchema>;
 export type ExecutionTargetType = z.infer<typeof ExecutionTargetTypeSchema>;
 export type ExecutionEligibility = z.infer<typeof ExecutionEligibilitySchema>;
 export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
+export type ExecutionPlanLifecycleStatus = z.infer<
+  typeof ExecutionPlanLifecycleStatusSchema
+>;
 export type ExecutionPlanningContext = z.infer<
   typeof ExecutionPlanningContextSchema
 >;
@@ -1024,7 +1111,26 @@ export type ApprovalRequirement = z.infer<typeof ApprovalRequirementSchema>;
 export type ExecutionPlanResponse = z.infer<typeof ExecutionPlanResponseSchema>;
 export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
+export type ExecutionResultSummary = z.infer<typeof ExecutionResultSummarySchema>;
 export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;
+export type PersistedExecutionAction = z.infer<
+  typeof PersistedExecutionActionSchema
+>;
+export type ExecutionPlanDetailApproval = z.infer<
+  typeof ExecutionPlanDetailApprovalSchema
+>;
+export type ExecutionPlanDetailResponse = z.infer<
+  typeof ExecutionPlanDetailResponseSchema
+>;
+export type ExecutionPlanStatusEventType = z.infer<
+  typeof ExecutionPlanStatusEventTypeSchema
+>;
+export type ExecutionPlanStatusEvent = z.infer<
+  typeof ExecutionPlanStatusEventSchema
+>;
+export type ExecutionPlanEventsResponse = z.infer<
+  typeof ExecutionPlanEventsResponseSchema
+>;
 export type AnalyzeRepoResponse = z.infer<typeof AnalyzeRepoResponseSchema>;
 export type SavedAnalysisRunSummary = z.infer<
   typeof SavedAnalysisRunSummarySchema
@@ -1052,3 +1158,8 @@ export type CompareEntitySetDelta = z.infer<
 export type CompareAnalysisRunsResponse = z.infer<
   typeof CompareAnalysisRunsResponseSchema
 >;
+
+export const ExecutionPlanLifecycleStatusValues =
+  ExecutionPlanLifecycleStatusSchema.options;
+export const ExecutionPlanStatusEventTypeValues =
+  ExecutionPlanStatusEventTypeSchema.options;

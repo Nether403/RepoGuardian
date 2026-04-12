@@ -5,7 +5,7 @@ const healthRouter: ExpressRouter = Router();
 healthRouter.get("/health", (_request, response) => {
   response.json({
     service: "repo-guardian-api",
-    stage: "milestone-5b-writeback",
+    stage: "milestone-7a-durable-backbone",
     status: "ok",
     timestamp: new Date().toISOString()
   });

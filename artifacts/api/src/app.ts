@@ -21,7 +21,7 @@ app.use("/api", apiRouter);
 app.get("/", (_request: Request, response: Response) => {
   response.json({
     name: "Repo Guardian API",
-    stage: "milestone-5b-writeback",
+    stage: "milestone-7a-durable-backbone",
     status: "ready"
   });
 });

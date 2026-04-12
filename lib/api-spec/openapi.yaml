@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Repo Guardian API
   version: 0.1.0
-  description: Canonical post-6F alpha contract for supervised repository analysis, security-hardened two-phase execution planning, and local saved analysis runs. The public route surface is `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
+  description: Canonical Milestone 7A contract for supervised repository analysis, security-hardened two-phase execution planning, durable execution history, and saved analysis runs. The public route surface remains `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`, with additive read models under `/api/execution/plans/*`. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
 servers:
   - url: /
 paths:
@@ -79,10 +79,64 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "401":
           $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/execution/plans/{planId}:
+    get:
+      operationId: getExecutionPlan
+      summary: Read the durable execution plan detail and lifecycle state
+      x-repo-guardian-response-type: ExecutionPlanDetailResponse
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Durable execution plan detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionPlanDetailResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/execution/plans/{planId}/events:
+    get:
+      operationId: listExecutionPlanEvents
+      summary: Read ordered audit events for a durable execution plan
+      x-repo-guardian-response-type: ExecutionPlanEventsResponse
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Durable execution plan audit events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionPlanEventsResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
   /api/runs:
     get:
       operationId: listAnalysisRuns
-      summary: List locally saved analysis runs
+      summary: List durably saved analysis runs
       x-repo-guardian-response-type: ListAnalysisRunsResponse
       responses:
         "200":
@@ -93,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ListAnalysisRunsResponse"
     post:
       operationId: saveAnalysisRun
-      summary: Save the current analysis payload as a local run
+      summary: Save the current analysis payload as a durable run
       x-repo-guardian-request-type: SaveAnalysisRunRequest
       x-repo-guardian-response-type: SaveAnalysisRunResponse
       requestBody:
@@ -114,7 +168,7 @@ paths:
   /api/runs/{runId}:
     get:
       operationId: getAnalysisRun
-      summary: Reopen a locally saved analysis run
+      summary: Reopen a durably saved analysis run
       x-repo-guardian-response-type: GetAnalysisRunResponse
       parameters:
         - name: runId
@@ -137,7 +191,7 @@ paths:
   /api/runs/compare:
     post:
       operationId: compareAnalysisRuns
-      summary: Compare two locally saved analysis runs
+      summary: Compare two durably saved analysis runs
       x-repo-guardian-request-type: CompareAnalysisRunsRequest
       x-repo-guardian-response-type: CompareAnalysisRunsResponse
       requestBody:
@@ -204,6 +258,14 @@ components:
       type: object
       description: Runtime schema is owned by ExecutionResultSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionResultSchema
+    ExecutionPlanDetailResponse:
+      type: object
+      description: Runtime schema is owned by ExecutionPlanDetailResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionPlanDetailResponseSchema
+    ExecutionPlanEventsResponse:
+      type: object
+      description: Runtime schema is owned by ExecutionPlanEventsResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionPlanEventsResponseSchema
     SaveAnalysisRunRequest:
       type: object
       description: Runtime schema is owned by SaveAnalysisRunRequestSchema in @repo-guardian/shared-types.

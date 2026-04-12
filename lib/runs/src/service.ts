@@ -117,10 +117,14 @@ function sanitizeRunSegment(value: string): string {
   return sanitized.length > 0 ? sanitized : "analysis";
 }
 
-function createRunId(analysis: AnalyzeRepoResponse, createdAt: string): string {
+export function createRunId(
+  analysis: AnalyzeRepoResponse,
+  createdAt: string,
+  uuidFactory: () => string = randomUUID
+): string {
   const repository = sanitizeRunSegment(analysis.repository.fullName);
   const timestamp = createdAt.replace(/[^0-9]/gu, "").slice(0, 14);
-  const suffix = randomUUID().slice(0, 8);
+  const suffix = uuidFactory().slice(0, 8);
 
   return `${repository}-${timestamp}-${suffix}`;
 }

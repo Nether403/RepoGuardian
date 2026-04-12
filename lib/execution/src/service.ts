@@ -66,6 +66,11 @@ export type ExecutionServiceDependencies = {
   };
 };
 
+export type ExecutionLifecycleCallbacks = {
+  onActionCompleted?: (action: ExecutionActionPlan) => Promise<void> | void;
+  onActionStarted?: (action: ExecutionActionPlan) => Promise<void> | void;
+};
+
 function isWriteAction(actionType: ExecutionActionPlan["actionType"]): boolean {
   return (
     actionType === "create_issue" ||
@@ -202,6 +207,7 @@ function getPatchPlanMap(analysis: ExecutionPlanningContext): Map<string, PRPatc
 async function executeIssueActions(input: {
   actions: ExecutionActionPlan[];
   analysis: ExecutionPlanningContext;
+  callbacks?: ExecutionLifecycleCallbacks;
   selectedIssueCandidateIds: string[];
   writeClient: NonNullable<ExecutionServiceDependencies["writeClient"]>;
 }): Promise<void> {
@@ -217,6 +223,7 @@ async function executeIssueActions(input: {
 
     try {
       markAttempt(action);
+      await input.callbacks?.onActionStarted?.(action);
       const result = await input.writeClient.createIssue({
         body: buildIssueBody(candidate),
         repository: input.analysis.repository,
@@ -226,9 +233,11 @@ async function executeIssueActions(input: {
       action.issueNumber = result.issueNumber;
       action.issueUrl = result.issueUrl;
       action.succeeded = true;
+      await input.callbacks?.onActionCompleted?.(action);
     } catch (error) {
       action.errorMessage = getExecutionErrorMessage(error);
       action.reason = action.errorMessage;
+      await input.callbacks?.onActionCompleted?.(action);
     }
   }
 }
@@ -236,6 +245,7 @@ async function executeIssueActions(input: {
 async function executePRActions(input: {
   actions: ExecutionActionPlan[];
   analysis: ExecutionPlanningContext;
+  callbacks?: ExecutionLifecycleCallbacks;
   readClient: NonNullable<ExecutionServiceDependencies["readClient"]>;
   selectedPRCandidateIds: string[];
   writeClient: NonNullable<ExecutionServiceDependencies["writeClient"]>;
@@ -280,6 +290,7 @@ async function executePRActions(input: {
 
     try {
       markAttempt(prepareAction);
+      await input.callbacks?.onActionStarted?.(prepareAction);
       synthesizedPatch = await synthesizePRCandidatePatch({
         analysis: input.analysis,
         candidate,
@@ -289,11 +300,13 @@ async function executePRActions(input: {
       branchName = synthesizedPatch.branchName;
       prepareAction.branchName = branchName;
       prepareAction.succeeded = true;
+      await input.callbacks?.onActionCompleted?.(prepareAction);
     } catch (error) {
       const message = getExecutionErrorMessage(error);
 
       prepareAction.errorMessage = message;
       prepareAction.reason = message;
+      await input.callbacks?.onActionCompleted?.(prepareAction);
       setBlocked(branchAction, `Patch synthesis failed: ${message}`);
       setBlocked(commitAction, `Patch synthesis failed: ${message}`);
       setBlocked(prAction, `Patch synthesis failed: ${message}`);
@@ -302,6 +315,7 @@ async function executePRActions(input: {
 
     try {
       markAttempt(branchAction);
+      await input.callbacks?.onActionStarted?.(branchAction);
       const branchResult = await input.writeClient.createBranchFromDefaultBranch({
         branchName,
         repository: input.analysis.repository
@@ -310,12 +324,14 @@ async function executePRActions(input: {
       branchAction.branchName = branchName;
       branchAction.commitSha = branchResult.baseCommitSha;
       branchAction.succeeded = true;
+      await input.callbacks?.onActionCompleted?.(branchAction);
     } catch (error) {
       const message = getExecutionErrorMessage(error);
 
       branchAction.branchName = branchName;
       branchAction.errorMessage = message;
       branchAction.reason = message;
+      await input.callbacks?.onActionCompleted?.(branchAction);
       setBlocked(commitAction, `Branch creation failed: ${message}`);
       setBlocked(prAction, `Branch creation failed: ${message}`);
       continue;
@@ -323,6 +339,7 @@ async function executePRActions(input: {
 
     try {
       markAttempt(commitAction);
+      await input.callbacks?.onActionStarted?.(commitAction);
       const commitResult = await input.writeClient.commitFileChanges({
         branchName,
         commitMessage: synthesizedPatch.commitMessage,
@@ -333,18 +350,21 @@ async function executePRActions(input: {
       commitAction.branchName = branchName;
       commitAction.commitSha = commitResult.commitSha;
       commitAction.succeeded = true;
+      await input.callbacks?.onActionCompleted?.(commitAction);
     } catch (error) {
       const message = getExecutionErrorMessage(error);
 
       commitAction.branchName = branchName;
       commitAction.errorMessage = message;
       commitAction.reason = message;
+      await input.callbacks?.onActionCompleted?.(commitAction);
       setBlocked(prAction, `Patch commit failed: ${message}`);
       continue;
     }
 
     try {
       markAttempt(prAction);
+      await input.callbacks?.onActionStarted?.(prAction);
       const pullRequestResult = await input.writeClient.openPullRequest({
         baseBranch: input.analysis.repository.defaultBranch,
         body: synthesizedPatch.pullRequestBody,
@@ -356,12 +376,14 @@ async function executePRActions(input: {
       prAction.pullRequestNumber = pullRequestResult.pullRequestNumber;
       prAction.pullRequestUrl = pullRequestResult.pullRequestUrl;
       prAction.succeeded = true;
+      await input.callbacks?.onActionCompleted?.(prAction);
     } catch (error) {
       const message = getExecutionErrorMessage(error);
 
       prAction.branchName = branchName;
       prAction.errorMessage = message;
       prAction.reason = message;
+      await input.callbacks?.onActionCompleted?.(prAction);
     }
   }
 }
@@ -369,7 +391,8 @@ async function executePRActions(input: {
 export async function executeApprovedActions(
   input: ExecutionPlanInput,
   actions: ExecutionActionPlan[],
-  dependencies: ExecutionServiceDependencies
+  dependencies: ExecutionServiceDependencies,
+  callbacks?: ExecutionLifecycleCallbacks
 ): Promise<void> {
   if (!dependencies.writeClient) {
     throw new Error("GitHub write client is required for execute_approved mode.");
@@ -378,6 +401,7 @@ export async function executeApprovedActions(
   await executeIssueActions({
     actions,
     analysis: input.analysis,
+    callbacks,
     selectedIssueCandidateIds: input.selectedIssueCandidateIds,
     writeClient: dependencies.writeClient
   });
@@ -393,6 +417,7 @@ export async function executeApprovedActions(
   await executePRActions({
     actions,
     analysis: input.analysis,
+    callbacks,
     readClient: dependencies.readClient,
     selectedPRCandidateIds: input.selectedPRCandidateIds,
     writeClient: dependencies.writeClient

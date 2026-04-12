@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "db:migrate": "tsx src/scripts/db-migrate.ts",
+    "db:import-legacy": "tsx src/scripts/db-import-legacy.ts",
     "lint": "eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -19,6 +21,7 @@
     "@repo-guardian/github": "workspace:*",
     "@repo-guardian/issues": "workspace:*",
     "@repo-guardian/patches": "workspace:*",
+    "@repo-guardian/persistence": "workspace:*",
     "@repo-guardian/prs": "workspace:*",
     "@repo-guardian/review": "workspace:*",
     "@repo-guardian/runs": "workspace:*",

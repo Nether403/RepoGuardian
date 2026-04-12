@@ -1,10 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  type ExecutionActionPlan,
+  type ExecutionPlanDetailResponse,
+  type ExecutionPlanEventsResponse,
+  type ExecutionPlanResponse,
   ExecutionResultSchema,
   ExecutionPlanResponseSchema,
   type AnalyzeRepoResponse,
@@ -12,12 +13,12 @@ import {
   type DependencyFinding,
   type IssueCandidate,
   type PRCandidate,
-  type PRPatchPlan
+  type PRPatchPlan,
+  type SavedAnalysisRun
 } from "@repo-guardian/shared-types";
-import { FileAnalysisRunStore } from "@repo-guardian/runs";
-import { FilePlanStore } from "../lib/plan-store.js";
+import { PersistenceError } from "@repo-guardian/persistence";
+import { createAnalysisRunSummary } from "@repo-guardian/runs";
 import { createExecutionRouter } from "../routes/execution.js";
-import fsPromises from "node:fs/promises";
 
 function createIssueCandidate(
   overrides: Partial<IssueCandidate> = {}
@@ -464,57 +465,380 @@ function createPackageLockContent(lockfileVersion = 3): string {
   )}\n`;
 }
 
-const tempDirs: string[] = [];
+type TestApp = {
+  app: express.Express;
+  saveRun: (analysis: AnalyzeRepoResponse) => string;
+};
 
-beforeEach(async () => {
-  const p1 = await mkdtemp(join(tmpdir(), "plan-store-"));
-  const p2 = await mkdtemp(join(tmpdir(), "run-store-"));
-  process.env.REPO_GUARDIAN_PLAN_STORE_DIR = p1;
-  process.env.REPO_GUARDIAN_RUN_STORE_DIR = p2;
-  tempDirs.push(p1, p2);
+type StoredPlanState = {
+  actions: ExecutionActionPlan[];
+  detail: ExecutionPlanDetailResponse;
+  events: ExecutionPlanEventsResponse["events"];
+  executionSummary: ExecutionPlanResponse["summary"] | null;
+};
+
+beforeEach(() => {
+  vi.useRealTimers();
 });
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((d) => rm(d, { force: true, recursive: true }))
-  );
-  delete process.env.REPO_GUARDIAN_PLAN_STORE_DIR;
-  delete process.env.REPO_GUARDIAN_RUN_STORE_DIR;
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
-function createTestApp(dependencies: Parameters<typeof createExecutionRouter>[0]) {
+function createTestApp(
+  dependencies: Parameters<typeof createExecutionRouter>[0]
+): TestApp {
   const app = express();
+  const runs = new Map<string, SavedAnalysisRun>();
+  const plans = new Map<string, StoredPlanState>();
+  let executionCounter = 0;
+
   app.use(express.json());
+  app.use(
+    "/api",
+    createExecutionRouter(dependencies, {
+      planRepository: {
+        async claimExecution(input) {
+          const state = plans.get(input.planId);
 
-  const planStore = new FilePlanStore({
-    rootDir: process.env.REPO_GUARDIAN_PLAN_STORE_DIR!
-  });
-  const runStore = new FileAnalysisRunStore({
-    rootDir: process.env.REPO_GUARDIAN_RUN_STORE_DIR!
-  });
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
 
-  app.use("/api", createExecutionRouter(dependencies, { planStore, runStore }));
+          if (
+            state.detail.status === "planned" &&
+            new Date(state.detail.expiresAt) < new Date()
+          ) {
+            state.detail = {
+              ...state.detail,
+              status: "expired"
+            };
+            state.events.push({
+              actionId: null,
+              actorUserId: input.actorUserId,
+              createdAt: new Date().toISOString(),
+              details: {
+                previousStatus: "planned",
+                status: "expired"
+              },
+              eventId: `evt_${Date.now()}`,
+              eventType: "plan_expired",
+              executionId: null,
+              planId: input.planId,
+              repositoryFullName: state.detail.repository.fullName
+            });
+          }
 
-  return app;
+          if (state.detail.status !== "planned") {
+            throw new PersistenceError(
+              "conflict",
+              "Plan is already executing or no longer active."
+            );
+          }
+
+          executionCounter += 1;
+          const executionId = `exec_test_${executionCounter}`;
+          state.detail = {
+            ...state.detail,
+            approval: {
+              ...state.detail.approval,
+              notes: ["Explicit approval verified via token."],
+              status: "granted",
+              verifiedAt: new Date().toISOString()
+            },
+            executionId,
+            startedAt: new Date().toISOString(),
+            status: "executing"
+          };
+          state.events.push({
+            actionId: null,
+            actorUserId: input.actorUserId,
+            createdAt: new Date().toISOString(),
+            details: {
+              executionId,
+              status: "executing"
+            },
+            eventId: `evt_${Date.now()}_${executionCounter}`,
+            eventType: "execution_started",
+            executionId,
+            planId: input.planId,
+            repositoryFullName: state.detail.repository.fullName
+          });
+
+          return {
+            actions: state.actions,
+            analysisRunId: state.detail.analysisRunId,
+            executionId,
+            planHash: state.detail.planHash,
+            planId: state.detail.planId,
+            repositoryFullName: state.detail.repository.fullName,
+            selectedIssueCandidateIds: state.detail.selectedIssueCandidateIds,
+            selectedPRCandidateIds: state.detail.selectedPRCandidateIds
+          };
+        },
+        async finalizeExecution(input) {
+          const state = plans.get(input.planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          state.executionSummary = input.result.summary;
+          state.detail = {
+            ...state.detail,
+            completedAt:
+              input.result.status === "completed"
+                ? input.result.completedAt
+                : state.detail.completedAt,
+            executionId: input.executionId,
+            executionResultStatus:
+              input.result.status === "completed" || input.result.status === "failed"
+                ? input.result.status
+                : null,
+            executionSummary: input.result.summary,
+            failedAt:
+              input.result.status === "failed"
+                ? input.result.completedAt
+                : state.detail.failedAt,
+            status: input.result.status === "completed" ? "completed" : "failed"
+          };
+          state.events.push({
+            actionId: null,
+            actorUserId: input.actorUserId,
+            createdAt: input.result.completedAt,
+            details: {
+              errors: input.result.errors,
+              status: state.detail.status,
+              warnings: input.result.warnings
+            },
+            eventId: `evt_${Date.now()}_${executionCounter}_done`,
+            eventType:
+              input.result.status === "completed"
+                ? "execution_completed"
+                : "execution_failed",
+            executionId: input.executionId,
+            planId: input.planId,
+            repositoryFullName: input.repositoryFullName
+          });
+        },
+        async getPlanDetail(planId) {
+          const state = plans.get(planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          if (
+            state.detail.status === "planned" &&
+            new Date(state.detail.expiresAt) < new Date()
+          ) {
+            state.detail = {
+              ...state.detail,
+              status: "expired"
+            };
+          }
+
+          return state.detail;
+        },
+        async getPlanEvents(planId) {
+          const state = plans.get(planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          return {
+            events: state.events,
+            planId
+          };
+        },
+        async markExecutionFailure(input) {
+          const state = plans.get(input.planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          state.detail = {
+            ...state.detail,
+            executionId: input.executionId,
+            failedAt: new Date().toISOString(),
+            status: "failed"
+          };
+        },
+        async recordActionCompleted(input) {
+          const state = plans.get(input.planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          state.actions = state.actions.map((action) =>
+            action.id === input.action.id ? input.action : action
+          );
+          state.detail = {
+            ...state.detail,
+            actions: state.detail.actions.map((action) =>
+              action.id === input.action.id
+                ? {
+                    ...input.action,
+                    completedAt: new Date().toISOString(),
+                    startedAt:
+                      state.detail.actions.find((candidate) => candidate.id === action.id)
+                        ?.startedAt ?? null
+                  }
+                : action
+            )
+          };
+          state.events.push({
+            actionId: input.action.id,
+            actorUserId: input.actorUserId,
+            createdAt: new Date().toISOString(),
+            details: {
+              actionType: input.action.actionType,
+              errorMessage: input.action.errorMessage,
+              succeeded: input.action.succeeded
+            },
+            eventId: `evt_${Date.now()}_${input.action.id}_done`,
+            eventType: input.action.succeeded ? "action_succeeded" : "action_failed",
+            executionId: input.executionId,
+            planId: input.planId,
+            repositoryFullName: input.repositoryFullName
+          });
+        },
+        async recordActionStarted(input) {
+          const state = plans.get(input.planId);
+
+          if (!state) {
+            throw new PersistenceError("not_found", "Plan not found.");
+          }
+
+          state.detail = {
+            ...state.detail,
+            actions: state.detail.actions.map((action) =>
+              action.id === input.action.id
+                ? {
+                    ...input.action,
+                    startedAt: new Date().toISOString(),
+                    completedAt: action.completedAt
+                  }
+                : action
+            )
+          };
+          state.events.push({
+            actionId: input.action.id,
+            actorUserId: input.actorUserId,
+            createdAt: new Date().toISOString(),
+            details: {
+              actionType: input.action.actionType,
+              eligibility: input.action.eligibility
+            },
+            eventId: `evt_${Date.now()}_${input.action.id}_start`,
+            eventType: "action_started",
+            executionId: input.executionId,
+            planId: input.planId,
+            repositoryFullName: input.repositoryFullName
+          });
+        },
+        async savePlan(input) {
+          const detail: ExecutionPlanDetailResponse = {
+            actions: input.actions.map((action) => ({
+              ...action,
+              completedAt: null,
+              startedAt: null
+            })),
+            actorUserId: input.actorUserId,
+            analysisRunId: input.analysisRunId,
+            approval: {
+              confirmationText: input.approval.confirmationText,
+              notes: ["Awaiting explicit execution approval."],
+              required: input.approval.required,
+              status: "required",
+              verifiedAt: null
+            },
+            cancelledAt: null,
+            completedAt: null,
+            createdAt: input.createdAt,
+            executionId: null,
+            executionResultStatus: null,
+            executionSummary: null,
+            expiresAt: input.expiresAt,
+            failedAt: null,
+            planHash: input.planHash,
+            planId: input.planId,
+            repository: input.repository,
+            selectedIssueCandidateIds: input.selectedIssueCandidateIds,
+            selectedPRCandidateIds: input.selectedPRCandidateIds,
+            startedAt: null,
+            status: "planned"
+          };
+
+          plans.set(input.planId, {
+            actions: input.actions,
+            detail,
+            events: [
+              {
+                actionId: null,
+                actorUserId: input.actorUserId,
+                createdAt: input.createdAt,
+                details: {
+                  selectedIssueCandidateIds: input.selectedIssueCandidateIds,
+                  selectedPRCandidateIds: input.selectedPRCandidateIds,
+                  status: "planned"
+                },
+                eventId: `evt_${input.planId}_created`,
+                eventType: "plan_created",
+                executionId: null,
+                planId: input.planId,
+                repositoryFullName: input.repository.fullName
+              }
+            ],
+            executionSummary: null
+          });
+        }
+      },
+      runRepository: {
+        async getRun(runId) {
+          const run = runs.get(runId);
+
+          if (!run) {
+            throw new PersistenceError("not_found", "Saved analysis run was not found.");
+          }
+
+          return {
+            run,
+            summary: createAnalysisRunSummary(run)
+          };
+        }
+      }
+    })
+  );
+
+  return {
+    app,
+    saveRun(analysis) {
+      const runId = `test_run_${Date.now()}_${runs.size + 1}`;
+      const run: SavedAnalysisRun = {
+        analysis,
+        createdAt: new Date().toISOString(),
+        id: runId,
+        label: "Test"
+      };
+      runs.set(runId, run);
+      return runId;
+    }
+  };
 }
 
 async function runTwoPhaseExecution(
-  app: express.Express,
+  testApp: TestApp,
   analysisData: AnalyzeRepoResponse,
   selectedIssues: string[],
   selectedPRs: string[]
 ) {
-  const runId = "test_run_" + Date.now() + Math.floor(Math.random() * 1000);
-  const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-  const fakeRun = {
-    id: runId,
-    createdAt: new Date().toISOString(),
-    label: "Test",
-    analysis: analysisData
-  };
-  await fsPromises.writeFile(runPath, JSON.stringify(fakeRun));
+  const runId = testApp.saveRun(analysisData);
 
-  const planRes = await request(app)
+  const planRes = await request(testApp.app)
     .post("/api/execution/plan")
     .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
     .send({
@@ -527,7 +851,7 @@ async function runTwoPhaseExecution(
     return planRes;
   }
 
-  const execRes = await request(app)
+  const execRes = await request(testApp.app)
     .post("/api/execution/execute")
     .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
     .send({
@@ -552,21 +876,13 @@ describe("POST /api/execution/plan", () => {
       createIssue: vi.fn(),
       openPullRequest: vi.fn()
     };
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient,
       writeClient
     });
+    const runId = testApp.saveRun(createAnalysisContext());
 
-    const runId = "test_run_" + Date.now();
-    const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-    await fsPromises.writeFile(runPath, JSON.stringify({
-      id: runId,
-      createdAt: new Date().toISOString(),
-      label: "Test",
-      analysis: createAnalysisContext()
-    }));
-
-    const response = await request(app)
+    const response = await request(testApp.app)
       .post("/api/execution/plan")
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
@@ -592,8 +908,55 @@ describe("POST /api/execution/plan", () => {
     expect(ExecutionPlanResponseSchema.safeParse(response.body).success).toBe(true);
   });
 
+  it("reopens persisted plan detail and ordered audit events", async () => {
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        createIssue: vi.fn(),
+        openPullRequest: vi.fn()
+      }
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const planResponse = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+
+    expect(planResponse.status).toBe(200);
+
+    const detailResponse = await request(testApp.app)
+      .get(`/api/execution/plans/${planResponse.body.planId}`)
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+    const eventsResponse = await request(testApp.app)
+      .get(`/api/execution/plans/${planResponse.body.planId}/events`)
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(detailResponse.status).toBe(200);
+    expect(detailResponse.body).toMatchObject({
+      analysisRunId: runId,
+      planId: planResponse.body.planId,
+      status: "planned"
+    });
+    expect(eventsResponse.status).toBe(200);
+    expect(eventsResponse.body.events).toEqual([
+      expect.objectContaining({
+        eventType: "plan_created",
+        planId: planResponse.body.planId
+      })
+    ]);
+  });
+
   it("executes an approved issue creation request", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi.fn()
       },
@@ -609,7 +972,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createAnalysisContext(),
       ["issue:workflow-hardening:.github/workflows/ci.yml"],
       []
@@ -638,7 +1001,7 @@ describe("POST /api/execution/plan", () => {
   });
 
   it("executes an approved workflow PR creation request", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi
           .fn()
@@ -664,7 +1027,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createAnalysisContext(),
       [],
       ["pr:workflow-hardening:.github/workflows/ci.yml"]
@@ -706,7 +1069,7 @@ describe("POST /api/execution/plan", () => {
       branchName: "repo-guardian/contents-write-branch",
       commitSha: "commit-sha-contents"
     });
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi.fn().mockResolvedValue(
           [
@@ -736,7 +1099,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createAnalysisContext(),
       [],
       ["pr:workflow-hardening:.github/workflows/ci.yml"]
@@ -782,7 +1145,7 @@ describe("POST /api/execution/plan", () => {
       branchName: "repo-guardian/inline-contents-write-branch",
       commitSha: "commit-sha-inline"
     });
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi.fn().mockResolvedValue(
           [
@@ -811,7 +1174,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createAnalysisContext(),
       [],
       ["pr:workflow-hardening:.github/workflows/ci.yml"]
@@ -853,7 +1216,7 @@ describe("POST /api/execution/plan", () => {
   });
 
   it("executes an approved dependency PR creation request", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi
           .fn()
@@ -878,7 +1241,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createDependencyAnalysisContext(),
       [],
       ["pr:dependency-upgrade:react"]
@@ -909,7 +1272,7 @@ describe("POST /api/execution/plan", () => {
   });
 
   it("executes an approved dependency PR creation request for package-lock.json v2", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi
           .fn()
@@ -934,7 +1297,7 @@ describe("POST /api/execution/plan", () => {
     });
 
     const response = await runTwoPhaseExecution(
-      app,
+      testApp,
       createDependencyAnalysisContext(),
       [],
       ["pr:dependency-upgrade:react"]
@@ -965,7 +1328,7 @@ describe("POST /api/execution/plan", () => {
   });
 
   it("returns a blocked result when approval is missing", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi.fn()
       },
@@ -977,13 +1340,9 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const runId = "test_run_" + Date.now();
-    const runPath = join(process.env.REPO_GUARDIAN_RUN_STORE_DIR!, `${runId}.json`);
-    await fsPromises.writeFile(runPath, JSON.stringify({
-      id: runId, createdAt: new Date().toISOString(), label: "Test", analysis: createAnalysisContext()
-    }));
+    const runId = testApp.saveRun(createAnalysisContext());
 
-    const planRes = await request(app)
+    const planRes = await request(testApp.app)
       .post("/api/execution/plan")
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
@@ -992,7 +1351,7 @@ describe("POST /api/execution/plan", () => {
         selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
       });
 
-    const response = await request(app)
+    const response = await request(testApp.app)
       .post("/api/execution/execute")
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
@@ -1008,7 +1367,7 @@ describe("POST /api/execution/plan", () => {
   });
 
   it("returns 400 for an invalid execution request", async () => {
-    const app = createTestApp({
+    const testApp = createTestApp({
       readClient: {
         fetchRepositoryFileText: vi.fn()
       },
@@ -1020,7 +1379,7 @@ describe("POST /api/execution/plan", () => {
       }
     });
 
-    const response = await request(app)
+    const response = await request(testApp.app)
       .post("/api/execution/plan")
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
       .send({
@@ -1031,5 +1390,54 @@ describe("POST /api/execution/plan", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBeDefined();
+  });
+
+  it("rejects duplicate execution attempts for the same approved plan", async () => {
+    const createIssue = vi.fn().mockResolvedValue({
+      issueNumber: 42,
+      issueUrl: "https://github.com/openai/openai-node/issues/42"
+    });
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        createIssue,
+        openPullRequest: vi.fn()
+      }
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const planResponse = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+
+    const payload = {
+      approvalToken: planResponse.body.approvalToken,
+      confirm: true as const,
+      confirmationText: "I approve this GitHub write-back plan.",
+      planHash: planResponse.body.planHash,
+      planId: planResponse.body.planId
+    };
+    const [first, second] = await Promise.all([
+      request(testApp.app)
+        .post("/api/execution/execute")
+        .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+        .send(payload),
+      request(testApp.app)
+        .post("/api/execution/execute")
+        .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+        .send(payload)
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    expect(createIssue).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,23 +1,30 @@
-import { join } from "node:path";
 import { type Router as ExpressRouter, Router } from "express";
-import {
-  FileAnalysisRunStore,
-  isAnalysisRunStoreError
-} from "@repo-guardian/runs";
+import type { AnalysisRunRepository } from "@repo-guardian/persistence";
+import { isPersistenceError } from "@repo-guardian/persistence";
+import { isAnalysisRunStoreError } from "@repo-guardian/runs";
 import {
   CompareAnalysisRunsRequestSchema,
   SaveAnalysisRunRequestSchema
 } from "@repo-guardian/shared-types";
-import { env } from "../lib/env.js";
+import { getAnalysisRunRepository } from "../lib/persistence.js";
 import { requireAuth } from "../middleware/auth.js";
 
 type AnalysisRunStore = Pick<
-  FileAnalysisRunStore,
+  AnalysisRunRepository,
   "compareRuns" | "getRun" | "listRuns" | "saveRun"
 >;
 
 function mapRunStoreStatus(error: unknown): number | null {
-  if (!isAnalysisRunStoreError(error)) {
+  if (isAnalysisRunStoreError(error)) {
+    switch (error.code) {
+      case "invalid_run_id":
+        return 400;
+      case "not_found":
+        return 404;
+    }
+  }
+
+  if (!isPersistenceError(error)) {
     return null;
   }
 
@@ -26,6 +33,9 @@ function mapRunStoreStatus(error: unknown): number | null {
       return 400;
     case "not_found":
       return 404;
+    case "conflict":
+    case "invalid_plan_id":
+      return 409;
   }
 
   return null;
@@ -118,10 +128,6 @@ export function createRunsRouter(store: AnalysisRunStore): ExpressRouter {
   return runsRouter;
 }
 
-const defaultRunStore = new FileAnalysisRunStore({
-  rootDir:
-    env.REPO_GUARDIAN_RUN_STORE_DIR ??
-    join(process.cwd(), ".repo-guardian", "runs")
-});
-
-export default createRunsRouter(defaultRunStore);
+export default function createDefaultRunsRouter(): ExpressRouter {
+  return createRunsRouter(getAnalysisRunRepository());
+}

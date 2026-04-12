@@ -1,9 +1,9 @@
 import { type Router as ExpressRouter, Router } from "express";
 import crypto from "node:crypto";
-import { join } from "node:path";
 import {
   createExecutionPlanResult,
   executeApprovedActions,
+  type ExecutionLifecycleCallbacks,
   type ExecutionServiceDependencies
 } from "@repo-guardian/execution";
 import {
@@ -11,39 +11,166 @@ import {
   GitHubWriteClient
 } from "@repo-guardian/github";
 import {
-  ExecutionPlanRequestSchema,
+  type AnalysisRunRepository,
+  type ClaimedExecutionPlan,
+  type ExecutionPlanRepository,
+  isPersistenceError
+} from "@repo-guardian/persistence";
+import {
   ExecutionExecuteRequestSchema,
-  type ExecutionPlanResponse,
+  ExecutionPlanRequestSchema,
+  ExecutionResultSchema,
+  type ExecutionActionPlan,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
-import { FileAnalysisRunStore } from "@repo-guardian/runs";
 import { env } from "../lib/env.js";
-import { requireAuth } from "../middleware/auth.js";
-import { defaultPlanStore, type FilePlanStore } from "../lib/plan-store.js";
+import {
+  getAnalysisRunRepository,
+  getExecutionPlanRepository
+} from "../lib/persistence.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
+import { requireAuth } from "../middleware/auth.js";
 
-function getRunStore() {
-  return new FileAnalysisRunStore({
-    rootDir:
-      env.REPO_GUARDIAN_RUN_STORE_DIR ??
-      join(process.cwd(), ".repo-guardian", "runs")
+type RunRepositoryLike = Pick<
+  AnalysisRunRepository,
+  "getRun"
+>;
+
+type PlanRepositoryLike = Pick<
+  ExecutionPlanRepository,
+  | "claimExecution"
+  | "finalizeExecution"
+  | "getPlanDetail"
+  | "getPlanEvents"
+  | "markExecutionFailure"
+  | "recordActionCompleted"
+  | "recordActionStarted"
+  | "savePlan"
+>;
+
+function hashActions(actions: unknown[]): string {
+  return `sha256:${crypto.createHash("sha256").update(JSON.stringify(actions)).digest("hex")}`;
+}
+
+function buildExecutionSummary(actions: ExecutionActionPlan[], input: {
+  selectedIssueCandidateIds: string[];
+  selectedPRCandidateIds: string[];
+}) {
+  return {
+    approvalRequiredActions: actions.length,
+    blockedActions: actions.filter((action) => action.eligibility === "blocked").length,
+    eligibleActions: actions.filter((action) => action.eligibility === "eligible").length,
+    issueSelections: input.selectedIssueCandidateIds.length,
+    prSelections: input.selectedPRCandidateIds.length,
+    skippedActions: actions.filter((action) => action.eligibility === "ineligible").length,
+    totalActions: actions.length,
+    totalSelections:
+      input.selectedIssueCandidateIds.length + input.selectedPRCandidateIds.length
+  };
+}
+
+function buildExecutionWarnings(actions: ExecutionActionPlan[]): string[] {
+  return [...new Set(actions.filter((action) => action.blocked).map((action) => action.reason))].sort(
+    (left, right) => left.localeCompare(right)
+  );
+}
+
+function buildExecutionErrors(actions: ExecutionActionPlan[]): string[] {
+  return [...new Set(actions.map((action) => action.errorMessage).filter((value): value is string => Boolean(value)))].sort(
+    (left, right) => left.localeCompare(right)
+  );
+}
+
+function buildExecutionResponse(input: {
+  actions: ExecutionActionPlan[];
+  executionId: string;
+  selectedIssueCandidateIds: string[];
+  selectedPRCandidateIds: string[];
+  startedAt: string;
+}): ExecutionResult {
+  const errors = buildExecutionErrors(input.actions);
+  const warnings = buildExecutionWarnings(input.actions);
+
+  return ExecutionResultSchema.parse({
+    actions: input.actions,
+    approvalNotes: ["Explicit approval verified via token."],
+    approvalRequired: true,
+    approvalStatus: "granted",
+    completedAt: new Date().toISOString(),
+    errors,
+    executionId: input.executionId,
+    mode: "execute_approved",
+    startedAt: input.startedAt,
+    status: errors.length > 0 ? "failed" : "completed",
+    summary: buildExecutionSummary(input.actions, {
+      selectedIssueCandidateIds: input.selectedIssueCandidateIds,
+      selectedPRCandidateIds: input.selectedPRCandidateIds
+    }),
+    warnings
   });
 }
 
-function hashActions(actions: unknown[]) {
-  return "sha256:" + crypto.createHash("sha256").update(JSON.stringify(actions)).digest("hex");
+function mapPersistenceError(error: unknown): { body: { error: string }; status: number } | null {
+  if (!isPersistenceError(error)) {
+    return null;
+  }
+
+  switch (error.code) {
+    case "invalid_plan_id":
+    case "invalid_run_id":
+      return { body: { error: error.message }, status: 400 };
+    case "not_found":
+      return { body: { error: error.message }, status: 404 };
+    case "conflict":
+      return { body: { error: error.message }, status: 409 };
+  }
+}
+
+function getSingleParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
+}
+
+function createLifecycleCallbacks(input: {
+  actorUserId: string | null;
+  claimedPlan: ClaimedExecutionPlan;
+  planRepository: PlanRepositoryLike;
+}): ExecutionLifecycleCallbacks {
+  return {
+    onActionCompleted: async (action) => {
+      await input.planRepository.recordActionCompleted({
+        action,
+        actorUserId: input.actorUserId,
+        executionId: input.claimedPlan.executionId,
+        planId: input.claimedPlan.planId,
+        repositoryFullName: input.claimedPlan.repositoryFullName
+      });
+    },
+    onActionStarted: async (action) => {
+      await input.planRepository.recordActionStarted({
+        action,
+        actorUserId: input.actorUserId,
+        executionId: input.claimedPlan.executionId,
+        planId: input.claimedPlan.planId,
+        repositoryFullName: input.claimedPlan.repositoryFullName
+      });
+    }
+  };
 }
 
 export function createExecutionRouter(
   dependencies: ExecutionServiceDependencies,
   stores: {
-    runStore?: FileAnalysisRunStore;
-    planStore?: FilePlanStore;
+    planRepository?: PlanRepositoryLike;
+    runRepository?: RunRepositoryLike;
   } = {}
 ): ExpressRouter {
   const executionRouter: ExpressRouter = Router();
-  const runStore = stores.runStore ?? getRunStore();
-  const planStore = stores.planStore ?? defaultPlanStore;
+  const runRepository = stores.runRepository ?? getAnalysisRunRepository();
+  const planRepository = stores.planRepository ?? getExecutionPlanRepository();
 
   executionRouter.post("/execution/plan", requireAuth, async (request, response, next) => {
     const parsedRequest = ExecutionPlanRequestSchema.safeParse(request.body);
@@ -56,12 +183,7 @@ export function createExecutionRouter(
     }
 
     try {
-      const run = await runStore.getRun(parsedRequest.data.analysisRunId);
-      if (!run) {
-        response.status(404).json({ error: "Analysis run not found" });
-        return;
-      }
-
+      const run = await runRepository.getRun(parsedRequest.data.analysisRunId);
       const planInput = {
         analysis: run.run.analysis,
         approvalGranted: false,
@@ -69,50 +191,61 @@ export function createExecutionRouter(
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
         selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds
       };
-
       const result = await createExecutionPlanResult(planInput, dependencies);
       const planHash = hashActions(result.actions);
       const planId = `plan_${crypto.randomBytes(8).toString("hex")}`;
       const token = mintApprovalToken(planId, planHash, "usr_authenticated", 15);
-      
-      const storedPlan = {
-        planId,
-        planHash,
-        actorUserId: "usr_authenticated", // Left for backward compatibility if PlanStore schema expects it
+      const createdAt = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      await planRepository.savePlan({
+        actions: result.actions,
+        actorUserId: "usr_authenticated",
         analysisRunId: parsedRequest.data.analysisRunId,
-        repositoryFullName: run.run.analysis.repository.fullName,
+        approval: {
+          confirmationText: "I approve this GitHub write-back plan.",
+          required: true
+        },
+        createdAt,
+        expiresAt,
+        planHash,
+        planId,
+        repository: {
+          defaultBranch: run.run.analysis.repository.defaultBranch,
+          fullName: run.run.analysis.repository.fullName,
+          owner: run.run.analysis.repository.owner,
+          repo: run.run.analysis.repository.repo
+        },
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
         selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds,
-        normalizedExecutionPayload: {
-          actions: result.actions
-        },
-        status: "planned" as const,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
-      };
+        summary: result.summary
+      });
 
-      await planStore.savePlan(storedPlan);
-
-      const planResponse: ExecutionPlanResponse = {
-        planId,
-        planHash,
-        approvalToken: token,
-        expiresAt: storedPlan.expiresAt,
-        repository: {
-          owner: run.run.analysis.repository.owner,
-          repo: run.run.analysis.repository.repo,
-          defaultBranch: run.run.analysis.repository.defaultBranch
-        },
-        summary: result.summary,
+      response.json({
         actions: result.actions,
         approval: {
-          required: true,
-          confirmationText: "I approve this GitHub write-back plan."
-        }
-      };
-
-      response.json(planResponse);
+          confirmationText: "I approve this GitHub write-back plan.",
+          required: true
+        },
+        approvalToken: token,
+        expiresAt,
+        planHash,
+        planId,
+        repository: {
+          defaultBranch: run.run.analysis.repository.defaultBranch,
+          owner: run.run.analysis.repository.owner,
+          repo: run.run.analysis.repository.repo
+        },
+        summary: result.summary
+      });
     } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
+        return;
+      }
+
       next(error);
     }
   });
@@ -127,102 +260,133 @@ export function createExecutionRouter(
       return;
     }
 
+    if (parsedRequest.data.confirmationText !== "I approve this GitHub write-back plan.") {
+      response.status(400).json({ error: "Invalid confirmation text." });
+      return;
+    }
+
     try {
-      if (parsedRequest.data.confirmationText !== "I approve this GitHub write-back plan.") {
-        response.status(400).json({ error: "Invalid confirmation text." });
-        return;
-      }
+      const tokenPayload = verifyApprovalToken(parsedRequest.data.approvalToken);
 
-      let payload;
-      try {
-        payload = verifyApprovalToken(parsedRequest.data.approvalToken);
-      } catch (e: unknown) {
-        response.status(401).json({ error: e instanceof Error ? e.message : "Invalid token" });
-        return;
-      }
-
-      if (payload.planId !== parsedRequest.data.planId || payload.planHash !== parsedRequest.data.planHash) {
+      if (
+        tokenPayload.planId !== parsedRequest.data.planId ||
+        tokenPayload.planHash !== parsedRequest.data.planHash
+      ) {
         response.status(400).json({ error: "Token does not match plan details." });
         return;
       }
 
-      const plan = await planStore.getPlan(parsedRequest.data.planId);
-      if (!plan) {
-        response.status(404).json({ error: "Plan not found." });
+      const detail = await planRepository.getPlanDetail(parsedRequest.data.planId);
+
+      if (detail.planHash !== parsedRequest.data.planHash) {
+        response.status(400).json({ error: "Token does not match plan details." });
         return;
       }
 
-      if (plan.status !== "planned") {
-        response.status(409).json({ error: "Plan is already executing or no longer active." });
-        return;
-      }
-
-      const now = new Date();
-      if (new Date(plan.expiresAt) < now) {
+      if (detail.status === "expired") {
         response.status(400).json({ error: "Plan has expired." });
         return;
       }
 
-      const run = await runStore.getRun(plan.analysisRunId);
-      if (!run) {
-        response.status(404).json({ error: "Original analysis run not found." });
+      if (detail.status !== "planned") {
+        response.status(409).json({ error: "Plan is already executing or no longer active." });
         return;
       }
 
-      const transitioned = await planStore.transitionPlanStatus(plan.planId, "planned", "executing");
-      if (!transitioned) {
-         response.status(409).json({ error: "Plan is already executing or no longer active." });
-         return;
-      }
-      
+      const claimedPlan = await planRepository.claimExecution({
+        actorUserId: "usr_authenticated",
+        planId: parsedRequest.data.planId
+      });
+      const run = await runRepository.getRun(claimedPlan.analysisRunId);
       const startedAt = new Date().toISOString();
-      const actions = plan.normalizedExecutionPayload.actions;
-
-      const planInput = {
+      const callbacks = createLifecycleCallbacks({
+        actorUserId: "usr_authenticated",
+        claimedPlan,
+        planRepository
+      });
+      const executionInput = {
         analysis: run.run.analysis,
         approvalGranted: true,
         mode: "execute_approved" as const,
-        selectedIssueCandidateIds: plan.selectedIssueCandidateIds,
-        selectedPRCandidateIds: plan.selectedPRCandidateIds
+        selectedIssueCandidateIds: claimedPlan.selectedIssueCandidateIds,
+        selectedPRCandidateIds: claimedPlan.selectedPRCandidateIds
       };
 
       try {
-        await executeApprovedActions(planInput, actions, dependencies);
-        await planStore.transitionPlanStatus(plan.planId, "executing", "completed");
-      } catch (executionError) {
-        await planStore.transitionPlanStatus(plan.planId, "executing", "failed");
-        next(executionError);
+        await executeApprovedActions(
+          executionInput,
+          claimedPlan.actions,
+          dependencies,
+          callbacks
+        );
+        const result = buildExecutionResponse({
+          actions: claimedPlan.actions,
+          executionId: claimedPlan.executionId,
+          selectedIssueCandidateIds: claimedPlan.selectedIssueCandidateIds,
+          selectedPRCandidateIds: claimedPlan.selectedPRCandidateIds,
+          startedAt
+        });
+        await planRepository.finalizeExecution({
+          actorUserId: "usr_authenticated",
+          executionId: claimedPlan.executionId,
+          planId: claimedPlan.planId,
+          repositoryFullName: claimedPlan.repositoryFullName,
+          result
+        });
+        response.json(result);
+      } catch (error) {
+        await planRepository.markExecutionFailure({
+          actorUserId: "usr_authenticated",
+          errorMessage: error instanceof Error ? error.message : "Unexpected execution failure",
+          executionId: claimedPlan.executionId,
+          planId: claimedPlan.planId,
+          repositoryFullName: claimedPlan.repositoryFullName
+        });
+        next(error);
+      }
+    } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
         return;
       }
 
-      const summary = {
-        totalSelections: plan.selectedIssueCandidateIds.length + plan.selectedPRCandidateIds.length,
-        issueSelections: plan.selectedIssueCandidateIds.length,
-        prSelections: plan.selectedPRCandidateIds.length,
-        totalActions: actions.length,
-        eligibleActions: actions.filter(a => a.eligibility === "eligible").length,
-        blockedActions: actions.filter(a => a.eligibility === "blocked").length,
-        skippedActions: actions.filter(a => a.eligibility !== "eligible" && a.eligibility !== "blocked").length,
-        approvalRequiredActions: actions.length
-      };
+      if (error instanceof Error) {
+        response.status(401).json({ error: error.message });
+        return;
+      }
 
-      const result: ExecutionResult = {
-        executionId: `exec_${crypto.randomBytes(8).toString("hex")}`,
-        mode: "execute_approved",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        status: actions.some(a => a.attempted && !a.succeeded) ? "failed" : "completed",
-        approvalRequired: true,
-        approvalStatus: "granted",
-        approvalNotes: ["Explicit approval verified via token."],
-        actions,
-        warnings: [],
-        errors: [],
-        summary
-      };
+      next(error);
+    }
+  });
 
-      response.json(result);
+  executionRouter.get("/execution/plans/:planId", requireAuth, async (request, response, next) => {
+    try {
+      response.json(await planRepository.getPlanDetail(getSingleParam(request.params.planId)));
     } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  executionRouter.get("/execution/plans/:planId/events", requireAuth, async (request, response, next) => {
+    try {
+      response.json(await planRepository.getPlanEvents(getSingleParam(request.params.planId)));
+    } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
+        return;
+      }
+
       next(error);
     }
   });
@@ -230,10 +394,14 @@ export function createExecutionRouter(
   return executionRouter;
 }
 
-const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
-const writeClient = new GitHubWriteClient({ token: env.GITHUB_TOKEN });
+function createDefaultExecutionRouter(): ExpressRouter {
+  const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
+  const writeClient = new GitHubWriteClient({ token: env.GITHUB_TOKEN });
 
-export default createExecutionRouter({
-  readClient,
-  writeClient
-});
+  return createExecutionRouter({
+    readClient,
+    writeClient
+  });
+}
+
+export default createDefaultExecutionRouter;

@@ -5,6 +5,8 @@ import type {
   CompareAnalysisRunsRequest,
   CompareAnalysisRunsResponse,
   ExecutionExecuteRequest,
+  ExecutionPlanDetailResponse,
+  ExecutionPlanEventsResponse,
   ExecutionPlanRequest,
   ExecutionPlanResponse,
   ExecutionResult,
@@ -120,6 +122,22 @@ export async function createExecutionPlan(requestBody: ExecutionPlanRequest, opt
     method: "POST",
     path: `/api/execution/plan`,
     body: requestBody,
+    options
+  });
+}
+
+export async function getExecutionPlan(planId: string, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionPlanDetailResponse> {
+  return requestJson<ExecutionPlanDetailResponse>({
+    method: "GET",
+    path: `/api/execution/plans/${encodeURIComponent(planId)}`,
+    options
+  });
+}
+
+export async function listExecutionPlanEvents(planId: string, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionPlanEventsResponse> {
+  return requestJson<ExecutionPlanEventsResponse>({
+    method: "GET",
+    path: `/api/execution/plans/${encodeURIComponent(planId)}/events`,
     options
   });
 }
