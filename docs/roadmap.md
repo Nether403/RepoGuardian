@@ -26,8 +26,16 @@ See `docs/milestone-6a.md` for the active milestone guardrails.
 
 ## Next milestone: 6B
 
-`Milestone 6B` is bounded write-back expansion:
+`Milestone 6B` is parser hardening:
 
-- add new deterministic write-back slices only after the contract and analysis surface are aligned
+- harden Gradle DSL coverage before any broader write-back work
+- improve Maven property and version resolution without fabricating findings
+- tighten Bundler declaration handling and keep heuristic cases explicit warnings
+
+## Follow-on milestone: 6C
+
+`Milestone 6C` is bounded write-back expansion:
+
+- add new deterministic write-back slices only after contract alignment, coverage expansion, and parser hardening are complete
 - keep approval-gated execution and explicit write guardrails
 - avoid autonomous maintenance, background jobs, or broad patch synthesis
