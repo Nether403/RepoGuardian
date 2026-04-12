@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Repo Guardian API
   version: 0.1.0
-  description: Canonical Milestone 7A contract for supervised repository analysis, security-hardened two-phase execution planning, durable execution history, and saved analysis runs. The public route surface remains `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`, with additive read models under `/api/execution/plans/*`. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
+  description: Canonical post-7B foundation contract for supervised repository analysis, approval-gated execution planning, durable execution history, saved analysis runs, tracked repositories, and additive asynchronous analysis jobs. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
 servers:
   - url: /
 paths:
@@ -32,6 +32,52 @@ paths:
         "429":
           $ref: "#/components/responses/ErrorResponse"
         "502":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/analyze/jobs:
+    post:
+      operationId: enqueueAnalysisJob
+      summary: Enqueue an asynchronous repository analysis job
+      x-repo-guardian-request-type: EnqueueAnalysisJobRequest
+      x-repo-guardian-response-type: EnqueueAnalysisJobResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnqueueAnalysisJobRequest"
+      responses:
+        "202":
+          description: Analysis job accepted for background processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueAnalysisJobResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/analyze/jobs/{jobId}:
+    get:
+      operationId: getAnalysisJob
+      summary: Read the current state of an asynchronous analysis job
+      x-repo-guardian-response-type: GetAnalysisJobResponse
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Analysis job detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetAnalysisJobResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
           $ref: "#/components/responses/ErrorResponse"
   /api/execution/plan:
     post:
@@ -211,6 +257,38 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/tracked-repositories:
+    get:
+      operationId: listTrackedRepositories
+      summary: List tracked repositories enrolled for repeat analysis
+      x-repo-guardian-response-type: ListTrackedRepositoriesResponse
+      responses:
+        "200":
+          description: Tracked repositories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTrackedRepositoriesResponse"
+    post:
+      operationId: createTrackedRepository
+      summary: Register a tracked repository for repeat analysis
+      x-repo-guardian-request-type: CreateTrackedRepositoryRequest
+      x-repo-guardian-response-type: CreateTrackedRepositoryResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrackedRepositoryRequest"
+      responses:
+        "201":
+          description: Created tracked repository.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTrackedRepositoryResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
 components:
   responses:
     ErrorResponse:
@@ -242,6 +320,38 @@ components:
       type: object
       description: Runtime schema is owned by AnalyzeRepoResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: AnalyzeRepoResponseSchema
+    TrackedRepository:
+      type: object
+      description: Runtime schema is owned by TrackedRepositorySchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: TrackedRepositorySchema
+    CreateTrackedRepositoryRequest:
+      type: object
+      description: Runtime schema is owned by CreateTrackedRepositoryRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateTrackedRepositoryRequestSchema
+    CreateTrackedRepositoryResponse:
+      type: object
+      description: Runtime schema is owned by CreateTrackedRepositoryResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateTrackedRepositoryResponseSchema
+    ListTrackedRepositoriesResponse:
+      type: object
+      description: Runtime schema is owned by ListTrackedRepositoriesResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListTrackedRepositoriesResponseSchema
+    AnalysisJob:
+      type: object
+      description: Runtime schema is owned by AnalysisJobSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: AnalysisJobSchema
+    EnqueueAnalysisJobRequest:
+      type: object
+      description: Runtime schema is owned by EnqueueAnalysisJobRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: EnqueueAnalysisJobRequestSchema
+    EnqueueAnalysisJobResponse:
+      type: object
+      description: Runtime schema is owned by EnqueueAnalysisJobResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: EnqueueAnalysisJobResponseSchema
+    GetAnalysisJobResponse:
+      type: object
+      description: Runtime schema is owned by GetAnalysisJobResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: GetAnalysisJobResponseSchema
     ExecutionPlanRequest:
       type: object
       description: Runtime schema is owned by ExecutionPlanRequestSchema in @repo-guardian/shared-types.

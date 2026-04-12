@@ -116,14 +116,18 @@ function mapPersistenceError(error: unknown): { body: { error: string }; status:
   }
 
   switch (error.code) {
+    case "invalid_job_id":
     case "invalid_plan_id":
     case "invalid_run_id":
+    case "invalid_tracked_repository_id":
       return { body: { error: error.message }, status: 400 };
     case "not_found":
       return { body: { error: error.message }, status: 404 };
     case "conflict":
       return { body: { error: error.message }, status: 409 };
   }
+
+  return null;
 }
 
 function getSingleParam(value: string | string[] | undefined): string {

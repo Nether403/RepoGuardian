@@ -1,14 +1,18 @@
 import { join } from "node:path";
 import {
+  AnalysisJobRepository,
   AnalysisRunRepository,
   ExecutionPlanRepository,
-  PostgresClient
+  PostgresClient,
+  TrackedRepositoryRepository
 } from "@repo-guardian/persistence";
 import { env } from "./env.js";
 
 let client: PostgresClient | null = null;
+let analysisJobRepository: AnalysisJobRepository | null = null;
 let runRepository: AnalysisRunRepository | null = null;
 let planRepository: ExecutionPlanRepository | null = null;
+let trackedRepository: TrackedRepositoryRepository | null = null;
 
 function requireDatabaseUrl(): string {
   if (!env.DATABASE_URL) {
@@ -31,9 +35,19 @@ export function getAnalysisRunRepository(): AnalysisRunRepository {
   return runRepository;
 }
 
+export function getAnalysisJobRepository(): AnalysisJobRepository {
+  analysisJobRepository ??= new AnalysisJobRepository(getPostgresClient());
+  return analysisJobRepository;
+}
+
 export function getExecutionPlanRepository(): ExecutionPlanRepository {
   planRepository ??= new ExecutionPlanRepository(getPostgresClient());
   return planRepository;
+}
+
+export function getTrackedRepositoryRepository(): TrackedRepositoryRepository {
+  trackedRepository ??= new TrackedRepositoryRepository(getPostgresClient());
+  return trackedRepository;
 }
 
 export function getLegacyRunStoreDir(): string {
@@ -47,6 +61,8 @@ export function getLegacyPlanStoreDir(): string {
 export async function resetPersistenceCaches(): Promise<void> {
   await client?.close();
   client = null;
+  analysisJobRepository = null;
   runRepository = null;
   planRepository = null;
+  trackedRepository = null;
 }

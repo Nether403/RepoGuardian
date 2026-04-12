@@ -1,3 +1,4 @@
+export * from "./analysis-jobs.js";
 export * from "./analysis-runs.js";
 export * from "./client.js";
 export * from "./errors.js";
@@ -5,3 +6,4 @@ export * from "./execution-plans.js";
 export * from "./legacy-import.js";
 export * from "./lifecycle.js";
 export * from "./migrations.js";
+export * from "./tracked-repositories.js";

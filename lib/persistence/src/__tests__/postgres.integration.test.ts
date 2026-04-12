@@ -6,6 +6,7 @@ import {
   type SavedAnalysisRun
 } from "@repo-guardian/shared-types";
 import { createAnalysisRunSummary } from "@repo-guardian/runs";
+import { AnalysisJobRepository } from "../analysis-jobs.js";
 import { AnalysisRunRepository } from "../analysis-runs.js";
 import { PostgresClient } from "../client.js";
 import { PersistenceError } from "../errors.js";
@@ -15,6 +16,7 @@ import {
   type StoredExecutionPlan
 } from "../execution-plans.js";
 import { runMigrations } from "../migrations.js";
+import { TrackedRepositoryRepository } from "../tracked-repositories.js";
 import { createIsolatedTestDatabase } from "./postgres-test-database.js";
 
 const describeIf = process.env.TEST_DATABASE_URL ? describe : describe.skip;
@@ -231,6 +233,8 @@ describeIf("Postgres persistence integration", () => {
   let disposeDatabase: () => Promise<void>;
   let runRepository: AnalysisRunRepository;
   let planRepository: ExecutionPlanRepository;
+  let trackedRepositoryRepository: TrackedRepositoryRepository;
+  let analysisJobRepository: AnalysisJobRepository;
 
   beforeAll(async () => {
     const isolatedDatabase = await createIsolatedTestDatabase(
@@ -242,12 +246,14 @@ describeIf("Postgres persistence integration", () => {
     });
     runRepository = new AnalysisRunRepository(client);
     planRepository = new ExecutionPlanRepository(client);
+    trackedRepositoryRepository = new TrackedRepositoryRepository(client);
+    analysisJobRepository = new AnalysisJobRepository(client);
     await runMigrations(client);
   });
 
   beforeEach(async () => {
     await client.query(
-      "TRUNCATE execution_audit_events, execution_attempts, execution_plan_actions, execution_plans, analysis_runs RESTART IDENTITY CASCADE"
+      "TRUNCATE analysis_jobs, tracked_repositories, execution_audit_events, execution_attempts, execution_plan_actions, execution_plans, analysis_runs RESTART IDENTITY CASCADE"
     );
   });
 
@@ -267,7 +273,8 @@ describeIf("Postgres persistence integration", () => {
     try {
       await expect(runMigrations(migrationClient)).resolves.toEqual([
         "0001_execution_backbone.sql",
-        "0002_execution_plan_action_order_unique.sql"
+        "0002_execution_plan_action_order_unique.sql",
+        "0003_analysis_queue_foundation.sql"
       ]);
       await expect(runMigrations(migrationClient)).resolves.toEqual([]);
     } finally {
@@ -297,6 +304,57 @@ describeIf("Postgres persistence integration", () => {
       latestExecutionCompletedAt: null,
       latestPlanId: "plan_integration",
       latestPlanStatus: "planned"
+    });
+  });
+
+  it("persists tracked repositories and analysis jobs for async queueing", async () => {
+    const trackedRepository = await trackedRepositoryRepository.createRepository({
+      canonicalUrl: "https://github.com/openai/openai-node",
+      fullName: "openai/openai-node",
+      label: "Weekly dependency review",
+      owner: "openai",
+      repo: "openai-node"
+    });
+
+    const job = await analysisJobRepository.enqueueJob({
+      label: trackedRepository.label,
+      repoInput: trackedRepository.fullName,
+      repositoryFullName: trackedRepository.fullName,
+      requestedByUserId: "usr_authenticated",
+      trackedRepositoryId: trackedRepository.id
+    });
+
+    expect(job).toMatchObject({
+      attemptCount: 0,
+      repositoryFullName: "openai/openai-node",
+      status: "queued",
+      trackedRepositoryId: trackedRepository.id
+    });
+    expect((await trackedRepositoryRepository.listRepositories())[0]).toMatchObject({
+      fullName: "openai/openai-node",
+      id: trackedRepository.id,
+      lastQueuedAt: expect.any(String)
+    });
+
+    const claimed = await analysisJobRepository.claimNextQueuedJob();
+    expect(claimed).toMatchObject({
+      attemptCount: 1,
+      jobId: job.jobId,
+      status: "running"
+    });
+
+    const run = createRun("async-run");
+    await runRepository.upsertRun(run);
+    const completed = await analysisJobRepository.completeJob({
+      jobId: job.jobId,
+      runId: run.id
+    });
+
+    expect(completed).toMatchObject({
+      completedAt: expect.any(String),
+      jobId: job.jobId,
+      runId: run.id,
+      status: "completed"
     });
   });
 

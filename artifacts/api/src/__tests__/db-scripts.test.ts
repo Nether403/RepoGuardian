@@ -196,7 +196,8 @@ describeIf("database scripts", () => {
     const first = await runDatabaseMigrations();
     expect(first).toEqual([
       "0001_execution_backbone.sql",
-      "0002_execution_plan_action_order_unique.sql"
+      "0002_execution_plan_action_order_unique.sql",
+      "0003_analysis_queue_foundation.sql"
     ]);
 
     await resetPersistenceCaches();

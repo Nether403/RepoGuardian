@@ -25,11 +25,15 @@ describe("Repo Guardian OpenAPI contract", () => {
       "analyzeRepository",
       "compareAnalysisRuns",
       "createExecutionPlan",
+      "createTrackedRepository",
+      "enqueueAnalysisJob",
       "executeExecutionPlan",
+      "getAnalysisJob",
       "getAnalysisRun",
       "getExecutionPlan",
       "listAnalysisRuns",
       "listExecutionPlanEvents",
+      "listTrackedRepositories",
       "saveAnalysisRun"
     ]);
   });

@@ -848,6 +848,81 @@ export const GetAnalysisRunResponseSchema = z.object({
   summary: SavedAnalysisRunSummarySchema
 });
 
+export const TrackedRepositorySchema = z.object({
+  id: z.string().min(1),
+  owner: z.string().min(1),
+  repo: z.string().min(1),
+  fullName: z.string().min(3),
+  canonicalUrl: z.string().url(),
+  label: z.string().min(1).max(120).nullable(),
+  isActive: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  lastQueuedAt: z.string().datetime().nullable()
+});
+
+export const CreateTrackedRepositoryRequestSchema = z.object({
+  label: z.string().trim().min(1).max(120).nullable().optional(),
+  repoInput: z.string().trim().min(1, "Repository input is required")
+});
+
+export const CreateTrackedRepositoryResponseSchema = z.object({
+  repository: TrackedRepositorySchema
+});
+
+export const ListTrackedRepositoriesResponseSchema = z.object({
+  repositories: z.array(TrackedRepositorySchema)
+});
+
+export const AnalysisJobKindSchema = z.enum(["analyze_repository"]);
+
+export const AnalysisJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+
+export const AnalysisJobSchema = z.object({
+  jobId: z.string().min(1),
+  jobKind: AnalysisJobKindSchema,
+  status: AnalysisJobStatusSchema,
+  repoInput: z.string().min(1),
+  repositoryFullName: z.string().min(3),
+  trackedRepositoryId: z.string().min(1).nullable(),
+  requestedByUserId: z.string().min(1).nullable(),
+  label: z.string().min(1).max(120).nullable(),
+  attemptCount: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().positive(),
+  runId: z.string().min(1).nullable(),
+  errorMessage: z.string().min(1).nullable(),
+  queuedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  failedAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime()
+});
+
+export const EnqueueAnalysisJobRequestSchema = z
+  .object({
+    label: z.string().trim().min(1).max(120).nullable().optional(),
+    repoInput: z.string().trim().min(1).optional(),
+    trackedRepositoryId: z.string().trim().min(1).optional()
+  })
+  .refine((value) => Boolean(value.repoInput || value.trackedRepositoryId), {
+    message: "repoInput or trackedRepositoryId is required",
+    path: ["repoInput"]
+  });
+
+export const EnqueueAnalysisJobResponseSchema = z.object({
+  job: AnalysisJobSchema
+});
+
+export const GetAnalysisJobResponseSchema = z.object({
+  job: AnalysisJobSchema
+});
+
 export const CompareAnalysisRunsRequestSchema = z.object({
   baseRunId: z.string().min(1),
   targetRunId: z.string().min(1)
@@ -1148,6 +1223,26 @@ export type ListAnalysisRunsResponse = z.infer<
 export type GetAnalysisRunResponse = z.infer<
   typeof GetAnalysisRunResponseSchema
 >;
+export type TrackedRepository = z.infer<typeof TrackedRepositorySchema>;
+export type CreateTrackedRepositoryRequest = z.infer<
+  typeof CreateTrackedRepositoryRequestSchema
+>;
+export type CreateTrackedRepositoryResponse = z.infer<
+  typeof CreateTrackedRepositoryResponseSchema
+>;
+export type ListTrackedRepositoriesResponse = z.infer<
+  typeof ListTrackedRepositoriesResponseSchema
+>;
+export type AnalysisJobKind = z.infer<typeof AnalysisJobKindSchema>;
+export type AnalysisJobStatus = z.infer<typeof AnalysisJobStatusSchema>;
+export type AnalysisJob = z.infer<typeof AnalysisJobSchema>;
+export type EnqueueAnalysisJobRequest = z.infer<
+  typeof EnqueueAnalysisJobRequestSchema
+>;
+export type EnqueueAnalysisJobResponse = z.infer<
+  typeof EnqueueAnalysisJobResponseSchema
+>;
+export type GetAnalysisJobResponse = z.infer<typeof GetAnalysisJobResponseSchema>;
 export type CompareAnalysisRunsRequest = z.infer<
   typeof CompareAnalysisRunsRequestSchema
 >;
@@ -1163,3 +1258,4 @@ export const ExecutionPlanLifecycleStatusValues =
   ExecutionPlanLifecycleStatusSchema.options;
 export const ExecutionPlanStatusEventTypeValues =
   ExecutionPlanStatusEventTypeSchema.options;
+export const AnalysisJobStatusValues = AnalysisJobStatusSchema.options;

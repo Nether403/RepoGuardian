@@ -1,6 +1,8 @@
 export type PersistenceErrorCode =
   | "invalid_run_id"
   | "invalid_plan_id"
+  | "invalid_job_id"
+  | "invalid_tracked_repository_id"
   | "not_found"
   | "conflict";
 

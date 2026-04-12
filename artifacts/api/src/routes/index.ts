@@ -7,6 +7,7 @@ import {
 } from "express";
 import analyzeRouter from "./analyze.js";
 import createDefaultExecutionRouter from "./execution.js";
+import createDefaultFleetRouter from "./fleet.js";
 import createDefaultRunsRouter from "./runs.js";
 
 function createLazyRouter(factory: () => ExpressRouter): ExpressRouter {
@@ -29,6 +30,7 @@ const apiRouter: ExpressRouter = Router();
 
 apiRouter.use(analyzeRouter);
 apiRouter.use(createLazyRouter(createDefaultExecutionRouter));
+apiRouter.use(createLazyRouter(createDefaultFleetRouter));
 apiRouter.use(createLazyRouter(createDefaultRunsRouter));
 
 export default apiRouter;
