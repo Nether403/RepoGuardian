@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`7A` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, 5B, 6A, 6B, 6C, 6D, 6E, 6F, and 7A durability slices across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, durable saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, security-hardened two-phase execution planning, durable execution audit history, approved GitHub Issue creation, approved real PR write-back for a tightly bounded workflow-hardening path, and approved deterministic dependency write-back for root `package.json` (npm/yarn), `package-lock.json` (v2/v3), `go.mod`, `Cargo.toml`, `requirements.txt`, `pyproject.toml`, `pom.xml`, and `build.gradle`/`build.gradle.kts` paths.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`7B` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, 5B, 6A, 6B, 6C, 6D, 6E, 6F, 7A, and 7B slices across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, durable saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, security-hardened two-phase execution planning, durable execution audit history, approved GitHub Issue creation, approved real PR write-back for tightly bounded deterministic paths, asynchronous tracked-repository analysis jobs, sweep scheduling, fleet status reporting, tracked remediation PR lifecycle persistence, and Fleet Admin timeline drill-downs with typed event detail.
 
 ## Current scope
 
@@ -21,8 +21,12 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - `GET /api/execution/plans/{planId}` and `GET /api/execution/plans/{planId}/events` for durable execution state and audit history
 - real GitHub Issue creation and bounded Pull Request write-back for supported deterministic slices
 - Vite + React UI for analysis, candidate selection, two-phase execution previews, and results
+- Fleet Admin mode for tracked repositories, fleet status, async job control, sweep schedules, and tracked PR visibility
+- repository history and cursor-native timeline reads for Fleet Admin drill-downs
+- on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
 - Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode
+- Postgres-backed tracked repositories, async analysis jobs, sweep schedules, PR lifecycle records, and repository activity/timeline state
 - `lib/api-spec/openapi.yaml` as the API contract
 - generated `@repo-guardian/api-client` and shared typed schemas
 
@@ -66,8 +70,39 @@ pnpm run test
 pnpm run build
 ```
 
+## Fleet APIs and UI
+
+The supervised analysis flow remains the default web mode, and the current alpha also includes a Fleet Admin mode for multi-repository operations.
+
+Implemented fleet surfaces:
+
+- `GET /api/tracked-repositories`
+- `POST /api/tracked-repositories`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/history`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/activity`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
+- `GET /api/fleet/status`
+- `GET /api/analyze/jobs`
+- `POST /api/analyze/jobs`
+- `GET /api/analyze/jobs/{jobId}`
+- `POST /api/analyze/jobs/{jobId}/retry`
+- `POST /api/analyze/jobs/{jobId}/cancel`
+- `GET /api/sweep-schedules`
+- `POST /api/sweep-schedules`
+- `POST /api/sweep-schedules/{scheduleId}/trigger`
+
+Current 7B behavior:
+
+- tracked repositories can be registered and manually queued for analysis
+- weekly sweep schedules can enqueue plan-only review passes
+- fleet status reports recent jobs, executable plans, blocked plans, stale plans, and tracked PR lifecycle
+- repository history and timeline reads stay read-only and supervised
+- timeline pages support filters, sorting, saved inspector state, cursor-native paging, and on-demand event expansion
+- GitHub writes remain approval-gated through the execution plan and execute routes; scheduled work does not perform unattended writes
+
 ## Roadmap
 
-The current state reflects **Milestone 7A** (Durable Execution Backbone). The platform now persists runs, plans, and execution audit history durably while keeping the supervised execution contract stable.
+The current state reflects **Milestone 7B** (Fleet Queueing and Scheduled Planning). The platform now layers tracked repositories, async analysis jobs, sweep scheduling, fleet status, and Fleet Admin timeline drill-downs on top of the durable execution backbone while keeping write execution supervised.
 
-The next goals are queue-backed fleet analysis, scheduled planning, and installation-aware access boundaries. See `docs/roadmap.md`.
+The next goals are installation-aware GitHub access, tenant scopes, and actor-aware approval boundaries. See `docs/roadmap.md`.

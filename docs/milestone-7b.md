@@ -1,35 +1,45 @@
 # Milestone 7B: Fleet Queueing and Scheduled Planning
 
-Milestone 7B builds asynchronous orchestration on top of the durable execution backbone so Repo Guardian can analyze and plan across multiple repositories without turning request/response routes into long-running job handlers.
+Milestone 7B is now implemented. It adds asynchronous orchestration, tracked repositories, fleet reporting, and Fleet Admin drill-downs on top of the durable execution backbone so Repo Guardian can supervise multiple repositories without turning request/response routes into long-running handlers.
 
-Goals:
+Implemented backend capabilities:
 
-- add background queue-backed analysis and planning jobs for multi-repository operation
-- introduce a tracked-repository model for repositories that should participate in repeat analysis
-- support scheduled plan-only sweeps such as weekly dependency review runs
-- expose fleet-level status for recent analyses, executable patch plans, blocked plans, and failed jobs
-- persist PR lifecycle status so opened remediation PRs can be tracked through merge or closure
-- keep scheduled work bounded to analysis and plan generation unless a later policy layer explicitly enables more
+- durable tracked repository registration and listing
+- durable async analysis jobs with list, read, retry, and cancel flows
+- async execution-plan job support for plan generation outside the request thread
+- weekly sweep schedules for plan-only tracked-repository review passes
+- fleet status reporting for latest repository state, patch-plan counts, recent jobs, and tracked PR lifecycle
+- persisted tracked remediation PR lifecycle state
+- tracked-repository history aggregation for runs, jobs, plans, and tracked PRs
+- dedicated activity and timeline reads for repository-level fleet inspection
+- cursor-native timeline paging with server-side filtering and sorting
+- on-demand timeline event expansion without inflating default timeline payloads
 
-Guardrails:
+Implemented web/admin capabilities:
 
-- do not enable unattended GitHub write execution in this milestone
-- do not auto-merge pull requests
-- do not broaden deterministic patch synthesis scope beyond the existing bounded write-back slices
-- do not introduce semantic code migration or LLM-driven code rewrite behavior
-- keep approval required for every write-capable execution path
-- keep queue semantics explicit, observable, and retry-safe rather than “best effort” background magic
+- Fleet Admin mode inside the existing single-page app
+- tracked repository registration and manual analysis enqueue
+- job operations for refresh, retry, and cancel
+- sweep schedule creation and manual triggering
+- tracked PR visibility and fleet summary metrics
+- shared inspector panel for repository, job, run, and plan drill-downs
+- repository timeline filters, saved filter state, sorting presets, and paging
+- typed timeline detail rendering for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 
-Acceptance criteria:
+Guardrails that still apply:
 
-- analysis and execution-plan generation can run asynchronously outside the request thread
-- a scheduled sweep can analyze multiple tracked repositories and persist plan-only results without manual per-repo triggering
-- fleet status can show the latest known run outcome per tracked repository
-- fleet status can show how many patch plans are executable, blocked, or stale across tracked repositories
-- failed jobs, retries, and cancellations are visible and queryable
-- merge/closed state for Repo Guardian-opened PRs is persisted and reflected in fleet reporting
-- long-running repo analysis no longer depends on keeping the initiating HTTP request open
-- scheduled jobs do not perform GitHub writes unless a later milestone explicitly expands policy controls
+- GitHub write execution remains approval-gated through `POST /api/execution/plan` and `POST /api/execution/execute`
+- scheduled work is limited to analysis and plan generation
+- there is no unattended GitHub issue or PR write path
+- deterministic patch synthesis scope remains bounded to the existing supported write-back slices
+- queue and timeline state remain explicit, queryable, and retry-safe rather than opaque background behavior
+
+Known limitations of the current 7B implementation:
+
+- the worker and scheduler are still in-process rather than separate durable multi-instance services
+- sweep cadence is currently weekly
+- timeline compatibility routes still exist alongside the newer cursor-native timeline route
+- some legacy or unknown activity records still fall back to a generic timeline detail variant
 
 Follow-on milestone:
 

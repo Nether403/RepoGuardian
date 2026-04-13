@@ -2,7 +2,7 @@
 
 ## Current status
 
-Repo Guardian is currently a post-`7A` alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model:
+Repo Guardian is currently a post-`7B` alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration layered alongside it:
 
 - `POST /api/analyze`
 - `POST /api/execution/plan` (Planning)
@@ -13,6 +13,20 @@ Repo Guardian is currently a post-`7A` alpha. The implemented contract is center
 - `POST /api/runs`
 - `GET /api/runs/{runId}`
 - `POST /api/runs/compare`
+- `GET /api/tracked-repositories`
+- `POST /api/tracked-repositories`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/history`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
+- `GET /api/fleet/status`
+- `GET /api/analyze/jobs`
+- `POST /api/analyze/jobs`
+- `GET /api/analyze/jobs/{jobId}`
+- `POST /api/analyze/jobs/{jobId}/retry`
+- `POST /api/analyze/jobs/{jobId}/cancel`
+- `GET /api/sweep-schedules`
+- `POST /api/sweep-schedules`
+- `POST /api/sweep-schedules/{scheduleId}/trigger`
 
 All routes currently require `Authorization: Bearer <API_SECRET_KEY>`.
 
@@ -22,18 +36,21 @@ The current platform focus is still bounded, deterministic, and approval-gated:
 - deterministic patch planning for bounded issue and PR candidate slices
 - explicit approval before any GitHub write-capable execution step
 - durable saved-run history, plan detail reads, and execution audit history for supervised review workflows
+- tracked repositories, async analysis jobs, and sweep schedules for multi-repository oversight
+- Fleet Admin web surfaces for fleet status, job control, schedule control, and repository timeline drill-downs
+- cursor-native repository timelines with on-demand typed event detail expansion
 
 ## Current priorities
 
-The next work should harden Repo Guardian into a durable product foundation rather than broaden the write surface prematurely.
+The next work should turn the current durable single-tenant alpha into a safer installation-aware product foundation rather than broaden the write surface prematurely.
 
 Immediate priorities:
 
 - preserve stability of the current two-phase execution contract
-- validate and harden the new durable execution backbone
-- prepare the platform for asynchronous fleet-scale analysis and planning
+- validate and harden the new fleet queueing and timeline surfaces
+- move from shared-secret assumptions to installation-aware GitHub access
 - keep deterministic write-back bounded while the product foundation matures
-- move next into queue-backed orchestration rather than broader write-back
+- move next into tenant and actor boundaries rather than broader write-back
 
 ## Next milestones
 
@@ -51,7 +68,7 @@ Focus:
 
 This milestone does **not** expand write-back categories, scheduling, or tenancy.
 
-### Milestone 7B: Fleet Queueing and Scheduled Planning
+### Milestone 7B: Fleet Queueing and Scheduled Planning [COMPLETE]
 
 Milestone 7B builds asynchronous orchestration on top of the durable execution backbone.
 
@@ -62,6 +79,8 @@ Focus:
 - scheduled plan-only sweeps such as recurring dependency review runs
 - fleet-level status for recent analyses, blocked plans, executable plans, and failed jobs
 - persisted PR lifecycle tracking for Repo Guardian-opened remediation PRs
+- Fleet Admin inspector drill-downs for jobs, runs, plans, tracked repositories, and tracked PR context
+- cursor-native repository timelines with filterable, expandable activity events
 
 This milestone keeps write execution supervised and approval-gated. It does **not** enable unattended GitHub writes.
 

@@ -9,10 +9,11 @@ It accepts a GitHub repository URL or `owner/repo` slug, analyzes dependency and
 This product is not an autonomous maintainer. It is an engineering assistant with explicit user approval before write actions.
 
 Current implementation status:
-- post-`6F` alpha, not a finished V1
-- canonical routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
+- post-`7B` alpha, not a finished V1
+- canonical supervised analysis and execution routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
 - security-hardened two-phase execution model with mandatory `Authorization` headers
 - GitHub write-back expansion for all supported ecosystems (now including Gradle and Yarn)
+- Fleet Admin and fleet-operations reads are implemented for tracked repositories, async jobs, sweep schedules, and repository timelines
 
 ---
 
@@ -59,11 +60,14 @@ A user pastes a GitHub repo and gets:
 - execution logging
 - confidence and evidence for every finding
 - local saved analysis runs and compare mode for reopening prior reports without re-analyzing live
+- tracked repositories, async analysis jobs, and scheduled plan-only sweeps
+- fleet-level status and tracked remediation PR lifecycle visibility
+- Fleet Admin inspector reads for job, run, plan, repository history, and repository timeline detail
 
 ### Out of scope
 - autonomous background fixing
 - auto-merge
-- portfolio-wide analytics
+- portfolio-wide analytics beyond the current tracked-repository fleet surfaces
 - organization-wide governance
 - billing and subscriptions
 - enterprise RBAC
@@ -296,7 +300,7 @@ Repo Guardian should be a pnpm workspace monorepo.
 
 ## 13. API shape for the current alpha contract
 
-Canonical routes:
+Canonical supervised routes:
 - `POST /api/analyze`
 - `POST /api/execution/plan`
 - `POST /api/execution/execute`
@@ -305,6 +309,23 @@ Canonical routes:
 - `GET /api/runs/{runId}`
 - `POST /api/runs/compare`
 
+Fleet operations routes:
+- `GET /api/tracked-repositories`
+- `POST /api/tracked-repositories`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/history`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/activity`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
+- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
+- `GET /api/fleet/status`
+- `GET /api/analyze/jobs`
+- `POST /api/analyze/jobs`
+- `GET /api/analyze/jobs/{jobId}`
+- `POST /api/analyze/jobs/{jobId}/retry`
+- `POST /api/analyze/jobs/{jobId}/cancel`
+- `GET /api/sweep-schedules`
+- `POST /api/sweep-schedules`
+- `POST /api/sweep-schedules/{scheduleId}/trigger`
+
 Contract rules:
 - `POST /api/analyze` returns the shared `AnalyzeRepoResponse` payload directly.
 - `AnalyzeRepoResponse` stays backward-compatible while dependency coverage expands.
@@ -312,6 +333,8 @@ Contract rules:
 - `plan` creates a short-lived approval token and hashes the actions; it performs no write-back.
 - `execute` requires the token, a matching hash, and an explicit confirmation string; it performs the actual GitHub writes.
 - All canonical routes require `Authorization: Bearer <API_SECRET_KEY>`.
+- Fleet operations routes also require `Authorization: Bearer <API_SECRET_KEY>` in the current alpha.
+- Scheduled and async fleet routes are read-only or plan-generation-only with respect to unattended operation; they do not perform GitHub writes.
 - the older split write routes such as `/api/issues/create` and `/api/prs/create` are not part of the canonical contract.
 
 ---
@@ -321,6 +344,7 @@ Contract rules:
 Main views should include:
 - repository intake
 - analysis state
+- Fleet Admin mode
 - repository summary
 - saved analysis runs and compare results
 - ecosystems
@@ -329,6 +353,11 @@ Main views should include:
 - candidate Issues
 - candidate PRs
 - execution logs
+- tracked repositories
+- fleet status
+- async job status and controls
+- sweep schedule controls
+- repository history and timeline inspection
 
 UI style:
 - clean and readable
@@ -366,7 +395,7 @@ Use for:
 ### Milestone 1-5 [COMPLETE]
 Initial foundation and basic write-back slices.
 
-### Milestone 6A
+### Milestone 6A [COMPLETE]
 - align documents and OpenAPI with implemented contract
 - keep `/api/analyze`, `/api/execution/plan`, and `/api/runs*` canonical
 
@@ -376,13 +405,29 @@ Initial foundation and basic write-back slices.
 - implemented two-phase execution security model (`plan` -> `execute`)
 - added mandatory API-key authentication for all analytical and execution routes
 
+### Milestone 7A (Durable Execution Backbone) [COMPLETE]
+- moved run, plan, and execution persistence to Postgres
+- added durable execution plan detail and audit-event reads
+- kept the supervised execution contract stable while replacing file-backed state
+
+### Milestone 7B (Fleet Queueing and Scheduled Planning) [COMPLETE]
+- added tracked repositories, async analysis jobs, sweep schedules, and fleet status
+- added tracked remediation PR lifecycle persistence
+- added Fleet Admin web surfaces for multi-repository supervision
+- added tracked-repository history plus filterable repository activity and timeline reads
+- added cursor-native timeline paging and on-demand event expansion
+- added typed timeline detail rendering for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
+
 ---
 
-## 17. Acceptance criteria for Milestone 6F [PASSED]
+## 17. Acceptance criteria for Milestone 7B [PASSED]
 
-Milestone 6F is complete when:
-- deterministic GitHub write-back accurately processes `build.gradle`, `build.gradle.kts`, and Yarn `package.json` targets
-- Gradle DSL variable interpolations are explicitly blocked
-- Yarn write-back updates `package.json` only
-- existing API routes safely gate these updates
+Milestone 7B is complete when:
+- analysis and execution-plan generation can run asynchronously outside the request thread
+- tracked repositories can be registered and queried
+- scheduled sweeps can enqueue plan-only review work without unattended GitHub writes
+- fleet status can summarize repository freshness, patch-plan counts, recent jobs, and tracked PR lifecycle
+- failed jobs, retries, and cancellations are visible and queryable
+- repository-level history and timeline reads support Fleet Admin drill-downs
+- timeline reads support filtering, sorting, paging, and on-demand detail expansion
 - lint, typecheck, test, and build pass
