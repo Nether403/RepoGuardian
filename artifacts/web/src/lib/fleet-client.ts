@@ -13,11 +13,13 @@ import {
   ListAnalysisJobsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
+  RepositoryActivityEventSchema,
   RepositoryTimelinePageSchema,
   RetryAnalysisJobResponseSchema,
   RepositoryActivityFeedSchema,
   type RepositoryActivityKind,
   type RepositoryActivityFeed,
+  type RepositoryActivityEvent,
   type RepositoryTimelineExpansionMode,
   type RepositoryTimelinePage,
   TrackedRepositoryHistoryResponseSchema,
@@ -42,6 +44,7 @@ import {
   getTrackedRepositoryHistory as requestGetTrackedRepositoryHistory,
   getTrackedRepositoryActivity as requestGetTrackedRepositoryActivity,
   getTrackedRepositoryTimeline as requestGetTrackedRepositoryTimeline,
+  getTrackedRepositoryTimelineEvent as requestGetTrackedRepositoryTimelineEvent,
   listAnalysisJobs as requestListAnalysisJobs,
   listExecutionPlanEvents as requestListExecutionPlanEvents,
   listSweepSchedules as requestListSweepSchedules,
@@ -382,6 +385,31 @@ export async function getTrackedRepositoryTimeline(
     throw toFleetClientError(
       error,
       "Repo Guardian could not load the tracked repository timeline"
+    );
+  }
+}
+
+export async function getTrackedRepositoryTimelineEvent(
+  trackedRepositoryId: string,
+  activityId: string,
+  options?: {
+    activityExpansionMode?: RepositoryTimelineExpansionMode;
+  }
+): Promise<RepositoryActivityEvent> {
+  try {
+    const response = await requestGetTrackedRepositoryTimelineEvent(
+      trackedRepositoryId,
+      activityId,
+      {
+        expand: options?.activityExpansionMode
+      },
+      getApiOptions()
+    );
+    return RepositoryActivityEventSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(
+      error,
+      "Repo Guardian could not load the tracked repository timeline event"
     );
   }
 }

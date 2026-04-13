@@ -211,6 +211,8 @@ function createRepositoryActivity(overrides: Record<string, unknown> = {}) {
     actionId: null,
     activityId: "run:run_one",
     detail: {
+      actorUserId: null,
+      auditDetails: null,
       auditEventType: null,
       blockedPatchPlanCount: 0,
       branchName: null,
@@ -253,6 +255,7 @@ function createTestApp(
   app.use(
     createFleetRouter({
       repositoryActivityStore: {
+        getActivityByRepositoryFullName: vi.fn().mockResolvedValue(createRepositoryActivity()),
         listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
           appliedCursor: null,
           appliedCursorDirection: "next",
@@ -622,6 +625,8 @@ describe("fleet routes", () => {
         createRepositoryActivity({
           activityId: "plan:plan_one",
           detail: {
+            actorUserId: null,
+            auditDetails: null,
             auditEventType: null,
             blockedPatchPlanCount: null,
             branchName: null,
@@ -724,6 +729,7 @@ describe("fleet routes", () => {
         ])
       },
       repositoryActivityStore: {
+        getActivityByRepositoryFullName: vi.fn(),
         listActivitiesByRepositoryFullName,
         listTimelineByRepositoryFullName: vi.fn()
       },
@@ -808,6 +814,7 @@ describe("fleet routes", () => {
         listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
       repositoryActivityStore: {
+        getActivityByRepositoryFullName: vi.fn(),
         listActivitiesByRepositoryFullName,
         listTimelineByRepositoryFullName: vi.fn()
       },
@@ -884,6 +891,7 @@ describe("fleet routes", () => {
         listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
       repositoryActivityStore: {
+        getActivityByRepositoryFullName: vi.fn(),
         listActivitiesByRepositoryFullName: vi.fn(),
         listTimelineByRepositoryFullName
       },
@@ -920,6 +928,85 @@ describe("fleet routes", () => {
       repositoryFullName: "openai/openai-node",
       sortPreset: "oldest_first",
       statuses: ["completed"]
+    });
+  });
+
+  it("returns a tracked repository timeline event with expanded audit detail", async () => {
+    const getActivityByRepositoryFullName = vi.fn().mockResolvedValue(
+      createRepositoryActivity({
+        activityId: "execution-event:event_one",
+        detail: {
+          actorUserId: "operator_one",
+          auditDetails: {
+            phase: "finalize",
+            result: "merged"
+          },
+          auditEventType: "execution_completed",
+          blockedPatchPlanCount: null,
+          branchName: null,
+          candidateSelectionCount: null,
+          executablePatchPlanCount: null,
+          findingCount: null,
+          jobKind: null,
+          label: null,
+          lifecycleStatus: null,
+          relatedActionId: "action_one",
+          relatedExecutionId: "exec_one",
+          relatedJobId: null,
+          relatedPlanId: "plan_one",
+          relatedRunId: null,
+          relatedTrackedPullRequestId: null
+        },
+        executionEventId: "event_one",
+        executionId: "exec_one",
+        kind: "execution_event",
+        planId: "plan_one",
+        runId: null,
+        status: "execution_completed",
+        summary: "Action action_one",
+        title: "Execution Completed"
+      })
+    );
+    const trackedRepository = createTrackedRepository();
+    const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      repositoryActivityStore: {
+        getActivityByRepositoryFullName,
+        listActivitiesByRepositoryFullName: vi.fn(),
+        listTimelineByRepositoryFullName: vi.fn()
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn().mockResolvedValue(trackedRepository),
+        listRepositories: vi.fn().mockResolvedValue([trackedRepository])
+      }
+    });
+
+    const response = await request(app)
+      .get("/tracked-repositories/tracked_one/timeline/execution-event:event_one?expand=detail")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(200);
+    expect(response.body.detail.auditDetails).toEqual({
+      phase: "finalize",
+      result: "merged"
+    });
+    expect(getActivityByRepositoryFullName).toHaveBeenCalledWith({
+      activityId: "execution-event:event_one",
+      expansionMode: "detail",
+      repositoryFullName: "openai/openai-node"
     });
   });
 

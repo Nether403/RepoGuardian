@@ -11,10 +11,13 @@ import {
   type RepositoryTimelinePage
 } from "@repo-guardian/shared-types";
 import type { PostgresClient } from "./client.js";
+import { PersistenceError } from "./errors.js";
 
 type RepositoryActivityRow = QueryResultRow & {
   action_id: string | null;
   activity_id: string;
+  actor_user_id: string | null;
+  audit_details: unknown;
   blocked_patch_plan_count: number | null;
   branch_name: string | null;
   candidate_selection_count: number | null;
@@ -37,6 +40,196 @@ type RepositoryActivityRow = QueryResultRow & {
   title: string;
   tracked_pull_request_id: string | null;
 };
+
+const repositoryEventsCteSql = `WITH repository_events AS (
+    SELECT
+      CONCAT('run:', runs.run_id) AS activity_id,
+      'analysis_run' AS kind,
+      runs.created_at AS occurred_at,
+      'snapshot_saved' AS status,
+      COALESCE(runs.label, runs.run_id) AS title,
+      CONCAT(runs.total_findings, ' findings, ', runs.executable_patch_plans, ' executable patch plans') AS summary,
+      runs.repository_full_name,
+      runs.run_id,
+      NULL::TEXT AS plan_id,
+      NULL::TEXT AS job_id,
+      NULL::TEXT AS tracked_pull_request_id,
+      NULL::TEXT AS execution_event_id,
+      NULL::TEXT AS execution_id,
+      NULL::TEXT AS action_id,
+      NULL::TEXT AS actor_user_id,
+      NULL::JSONB AS audit_details,
+      NULL::TEXT AS pull_request_url,
+      runs.total_findings AS finding_count,
+      runs.executable_patch_plans AS executable_patch_plan_count,
+      runs.blocked_patch_plans AS blocked_patch_plan_count,
+      NULL::INT AS candidate_selection_count,
+      NULL::TEXT AS branch_name,
+      NULL::TEXT AS job_kind,
+      runs.label,
+      NULL::TEXT AS lifecycle_status
+    FROM analysis_runs AS runs
+    WHERE runs.repository_full_name = $1
+
+    UNION ALL
+
+    SELECT
+      CONCAT('job:', jobs.job_id) AS activity_id,
+      'analysis_job' AS kind,
+      COALESCE(jobs.completed_at, jobs.failed_at, jobs.started_at, jobs.queued_at) AS occurred_at,
+      jobs.status,
+      COALESCE(jobs.label, jobs.job_id) AS title,
+      jobs.job_kind AS summary,
+      jobs.repository_full_name,
+      jobs.run_id,
+      jobs.plan_id,
+      jobs.job_id,
+      NULL::TEXT AS tracked_pull_request_id,
+      NULL::TEXT AS execution_event_id,
+      NULL::TEXT AS execution_id,
+      NULL::TEXT AS action_id,
+      NULL::TEXT AS actor_user_id,
+      NULL::JSONB AS audit_details,
+      NULL::TEXT AS pull_request_url,
+      NULL::INT AS finding_count,
+      NULL::INT AS executable_patch_plan_count,
+      NULL::INT AS blocked_patch_plan_count,
+      NULL::INT AS candidate_selection_count,
+      NULL::TEXT AS branch_name,
+      jobs.job_kind,
+      jobs.label,
+      NULL::TEXT AS lifecycle_status
+    FROM analysis_jobs AS jobs
+    WHERE jobs.repository_full_name = $1
+
+    UNION ALL
+
+    SELECT
+      CONCAT('plan:', plans.plan_id) AS activity_id,
+      'execution_plan' AS kind,
+      COALESCE(plans.completed_at, plans.failed_at, plans.cancelled_at, plans.started_at, plans.created_at) AS occurred_at,
+      plans.status,
+      plans.plan_id AS title,
+      CASE
+        WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'totalActions'
+          THEN CONCAT(plans.summary_payload->>'totalActions', ' actions')
+        ELSE NULL
+      END AS summary,
+      plans.repository_full_name,
+      plans.analysis_run_id AS run_id,
+      plans.plan_id,
+      NULL::TEXT AS job_id,
+      NULL::TEXT AS tracked_pull_request_id,
+      NULL::TEXT AS execution_event_id,
+      attempts.execution_id,
+      NULL::TEXT AS action_id,
+      NULL::TEXT AS actor_user_id,
+      NULL::JSONB AS audit_details,
+      NULL::TEXT AS pull_request_url,
+      NULL::INT AS finding_count,
+      NULL::INT AS executable_patch_plan_count,
+      NULL::INT AS blocked_patch_plan_count,
+      (plans.selected_issue_candidate_count + plans.selected_pr_candidate_count) AS candidate_selection_count,
+      NULL::TEXT AS branch_name,
+      NULL::TEXT AS job_kind,
+      NULL::TEXT AS label,
+      NULL::TEXT AS lifecycle_status
+    FROM execution_plans AS plans
+    LEFT JOIN execution_attempts AS attempts
+      ON attempts.plan_id = plans.plan_id
+    WHERE plans.repository_full_name = $1
+
+    UNION ALL
+
+    SELECT
+      CONCAT('execution-event:', audit.event_id) AS activity_id,
+      'execution_event' AS kind,
+      audit.created_at AS occurred_at,
+      audit.event_type AS status,
+      audit.event_type AS title,
+      CASE
+        WHEN audit.action_id IS NOT NULL THEN CONCAT('Action ', audit.action_id)
+        ELSE NULL
+      END AS summary,
+      audit.repository_full_name,
+      NULL::TEXT AS run_id,
+      audit.plan_id,
+      NULL::TEXT AS job_id,
+      NULL::TEXT AS tracked_pull_request_id,
+      audit.event_id AS execution_event_id,
+      audit.execution_id,
+      audit.action_id,
+      audit.actor_user_id,
+      audit.details AS audit_details,
+      NULL::TEXT AS pull_request_url,
+      NULL::INT AS finding_count,
+      NULL::INT AS executable_patch_plan_count,
+      NULL::INT AS blocked_patch_plan_count,
+      NULL::INT AS candidate_selection_count,
+      NULL::TEXT AS branch_name,
+      NULL::TEXT AS job_kind,
+      NULL::TEXT AS label,
+      NULL::TEXT AS lifecycle_status
+    FROM execution_audit_events AS audit
+    WHERE audit.repository_full_name = $1
+
+    UNION ALL
+
+    SELECT
+      CONCAT('pull-request:', prs.tracked_pull_request_id) AS activity_id,
+      'tracked_pull_request' AS kind,
+      COALESCE(prs.merged_at, prs.closed_at, prs.updated_at, prs.created_at) AS occurred_at,
+      prs.lifecycle_status AS status,
+      CONCAT('#', prs.pull_request_number, ' ', prs.title) AS title,
+      prs.branch_name AS summary,
+      prs.repository_full_name,
+      NULL::TEXT AS run_id,
+      prs.plan_id,
+      NULL::TEXT AS job_id,
+      prs.tracked_pull_request_id,
+      NULL::TEXT AS execution_event_id,
+      prs.execution_id,
+      NULL::TEXT AS action_id,
+      NULL::TEXT AS actor_user_id,
+      NULL::JSONB AS audit_details,
+      prs.pull_request_url,
+      NULL::INT AS finding_count,
+      NULL::INT AS executable_patch_plan_count,
+      NULL::INT AS blocked_patch_plan_count,
+      NULL::INT AS candidate_selection_count,
+      prs.branch_name,
+      NULL::TEXT AS job_kind,
+      NULL::TEXT AS label,
+      prs.lifecycle_status
+    FROM tracked_pull_requests AS prs
+    WHERE prs.repository_full_name = $1
+  )`;
+
+const repositoryActivitySelectColumnsSql = `activity_id,
+      kind,
+      occurred_at,
+      status,
+      title,
+      summary,
+      repository_full_name,
+      run_id,
+      plan_id,
+      job_id,
+      tracked_pull_request_id,
+      execution_event_id,
+      execution_id,
+      action_id,
+      actor_user_id,
+      audit_details,
+      pull_request_url,
+      finding_count,
+      executable_patch_plan_count,
+      blocked_patch_plan_count,
+      candidate_selection_count,
+      branch_name,
+      job_kind,
+      label,
+      lifecycle_status`;
 
 const repositoryActivityKinds = [...RepositoryActivityKindSchema.options];
 const repositoryActivitySortPresets = [...RepositoryActivitySortPresetSchema.options];
@@ -109,6 +302,11 @@ function parseRepositoryActivity(row: RepositoryActivityRow): RepositoryActivity
     actionId: row.action_id,
     activityId: row.activity_id,
     detail: {
+      actorUserId: row.actor_user_id,
+      auditDetails:
+        row.audit_details && typeof row.audit_details === "object"
+          ? (row.audit_details as Record<string, unknown>)
+          : null,
       auditEventType: row.kind === "execution_event" ? row.status : null,
       blockedPatchPlanCount: row.blocked_patch_plan_count,
       branchName: row.branch_name,
@@ -218,183 +416,9 @@ export class RepositoryActivityRepository {
         : appliedCursorDirection === "previous"
           ? ">"
           : "<";
-    const queryText = `WITH repository_events AS (
-        SELECT
-          CONCAT('run:', runs.run_id) AS activity_id,
-          'analysis_run' AS kind,
-          runs.created_at AS occurred_at,
-          'snapshot_saved' AS status,
-          COALESCE(runs.label, runs.run_id) AS title,
-          CONCAT(runs.total_findings, ' findings, ', runs.executable_patch_plans, ' executable patch plans') AS summary,
-          runs.repository_full_name,
-          runs.run_id,
-          NULL::TEXT AS plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          NULL::TEXT AS execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          runs.total_findings AS finding_count,
-          runs.executable_patch_plans AS executable_patch_plan_count,
-          runs.blocked_patch_plans AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          runs.label,
-          NULL::TEXT AS lifecycle_status
-        FROM analysis_runs AS runs
-        WHERE runs.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('job:', jobs.job_id) AS activity_id,
-          'analysis_job' AS kind,
-          COALESCE(jobs.completed_at, jobs.failed_at, jobs.started_at, jobs.queued_at) AS occurred_at,
-          jobs.status,
-          COALESCE(jobs.label, jobs.job_id) AS title,
-          jobs.job_kind AS summary,
-          jobs.repository_full_name,
-          jobs.run_id,
-          jobs.plan_id,
-          jobs.job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          NULL::TEXT AS execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          jobs.job_kind,
-          jobs.label,
-          NULL::TEXT AS lifecycle_status
-        FROM analysis_jobs AS jobs
-        WHERE jobs.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('plan:', plans.plan_id) AS activity_id,
-          'execution_plan' AS kind,
-          COALESCE(plans.completed_at, plans.failed_at, plans.cancelled_at, plans.started_at, plans.created_at) AS occurred_at,
-          plans.status,
-          plans.plan_id AS title,
-          CASE
-            WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'totalActions'
-              THEN CONCAT(plans.summary_payload->>'totalActions', ' actions')
-            ELSE NULL
-          END AS summary,
-          plans.repository_full_name,
-          plans.analysis_run_id AS run_id,
-          plans.plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          attempts.execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          (plans.selected_issue_candidate_count + plans.selected_pr_candidate_count) AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          NULL::TEXT AS lifecycle_status
-        FROM execution_plans AS plans
-        LEFT JOIN execution_attempts AS attempts
-          ON attempts.plan_id = plans.plan_id
-        WHERE plans.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('execution-event:', audit.event_id) AS activity_id,
-          'execution_event' AS kind,
-          audit.created_at AS occurred_at,
-          audit.event_type AS status,
-          audit.event_type AS title,
-          CASE
-            WHEN audit.action_id IS NOT NULL THEN CONCAT('Action ', audit.action_id)
-            ELSE NULL
-          END AS summary,
-          audit.repository_full_name,
-          NULL::TEXT AS run_id,
-          audit.plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          audit.event_id AS execution_event_id,
-          audit.execution_id,
-          audit.action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          NULL::TEXT AS lifecycle_status
-        FROM execution_audit_events AS audit
-        WHERE audit.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('pull-request:', prs.tracked_pull_request_id) AS activity_id,
-          'tracked_pull_request' AS kind,
-          COALESCE(prs.merged_at, prs.closed_at, prs.updated_at, prs.created_at) AS occurred_at,
-          prs.lifecycle_status AS status,
-          CONCAT('#', prs.pull_request_number, ' ', prs.title) AS title,
-          prs.branch_name AS summary,
-          prs.repository_full_name,
-          NULL::TEXT AS run_id,
-          prs.plan_id,
-          NULL::TEXT AS job_id,
-          prs.tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          prs.execution_id,
-          NULL::TEXT AS action_id,
-          prs.pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          prs.branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          prs.lifecycle_status
-        FROM tracked_pull_requests AS prs
-        WHERE prs.repository_full_name = $1
-      )
+    const queryText = `${repositoryEventsCteSql}
       SELECT
-        activity_id,
-        kind,
-        occurred_at,
-        status,
-        title,
-        summary,
-        repository_full_name,
-        run_id,
-        plan_id,
-        job_id,
-        tracked_pull_request_id,
-        execution_event_id,
-        execution_id,
-        action_id,
-        pull_request_url,
-        finding_count,
-        executable_patch_plan_count,
-        blocked_patch_plan_count,
-        candidate_selection_count,
-        branch_name,
-        job_kind,
-        label,
-        lifecycle_status
+        ${repositoryActivitySelectColumnsSql}
       FROM repository_events
       WHERE (($2::TEXT[] IS NULL) OR kind = ANY($2::TEXT[]))
         AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
@@ -461,6 +485,35 @@ export class RepositoryActivityRepository {
           : null,
       returnedCount: sortedRows.length
     };
+  }
+
+  async getActivityByRepositoryFullName(input: {
+    activityId: string;
+    expansionMode?: RepositoryTimelineExpansionMode;
+    repositoryFullName: string;
+  }): Promise<RepositoryActivityEvent> {
+    const expansionMode = repositoryTimelineExpansionModes.includes(
+      input.expansionMode ?? "detail"
+    )
+      ? (input.expansionMode ?? "detail")
+      : "detail";
+    const queryText = `${repositoryEventsCteSql}
+      SELECT
+        ${repositoryActivitySelectColumnsSql}
+      FROM repository_events
+      WHERE activity_id = $2
+      LIMIT 1`;
+    const result = await this.client.query<RepositoryActivityRow>(queryText, [
+      input.repositoryFullName,
+      input.activityId
+    ]);
+    const row = result.rows[0];
+
+    if (!row) {
+      throw new PersistenceError("not_found", "Repository activity event was not found.");
+    }
+
+    return parseRepositoryActivityForExpansion(row, expansionMode);
   }
 
   async listActivitiesByRepositoryFullName(input: {
@@ -535,183 +588,9 @@ export class RepositoryActivityRepository {
         : appliedCursorDirection === "previous"
           ? ">"
           : "<";
-    const queryText = `WITH repository_events AS (
-        SELECT
-          CONCAT('run:', runs.run_id) AS activity_id,
-          'analysis_run' AS kind,
-          runs.created_at AS occurred_at,
-          'snapshot_saved' AS status,
-          COALESCE(runs.label, runs.run_id) AS title,
-          CONCAT(runs.total_findings, ' findings, ', runs.executable_patch_plans, ' executable patch plans') AS summary,
-          runs.repository_full_name,
-          runs.run_id,
-          NULL::TEXT AS plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          NULL::TEXT AS execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          runs.total_findings AS finding_count,
-          runs.executable_patch_plans AS executable_patch_plan_count,
-          runs.blocked_patch_plans AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          runs.label,
-          NULL::TEXT AS lifecycle_status
-        FROM analysis_runs AS runs
-        WHERE runs.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('job:', jobs.job_id) AS activity_id,
-          'analysis_job' AS kind,
-          COALESCE(jobs.completed_at, jobs.failed_at, jobs.started_at, jobs.queued_at) AS occurred_at,
-          jobs.status,
-          COALESCE(jobs.label, jobs.job_id) AS title,
-          jobs.job_kind AS summary,
-          jobs.repository_full_name,
-          jobs.run_id,
-          jobs.plan_id,
-          jobs.job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          NULL::TEXT AS execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          jobs.job_kind,
-          jobs.label,
-          NULL::TEXT AS lifecycle_status
-        FROM analysis_jobs AS jobs
-        WHERE jobs.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('plan:', plans.plan_id) AS activity_id,
-          'execution_plan' AS kind,
-          COALESCE(plans.completed_at, plans.failed_at, plans.cancelled_at, plans.started_at, plans.created_at) AS occurred_at,
-          plans.status,
-          plans.plan_id AS title,
-          CASE
-            WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'totalActions'
-              THEN CONCAT(plans.summary_payload->>'totalActions', ' actions')
-            ELSE NULL
-          END AS summary,
-          plans.repository_full_name,
-          plans.analysis_run_id AS run_id,
-          plans.plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          attempts.execution_id,
-          NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          (plans.selected_issue_candidate_count + plans.selected_pr_candidate_count) AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          NULL::TEXT AS lifecycle_status
-        FROM execution_plans AS plans
-        LEFT JOIN execution_attempts AS attempts
-          ON attempts.plan_id = plans.plan_id
-        WHERE plans.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('execution-event:', audit.event_id) AS activity_id,
-          'execution_event' AS kind,
-          audit.created_at AS occurred_at,
-          audit.event_type AS status,
-          audit.event_type AS title,
-          CASE
-            WHEN audit.action_id IS NOT NULL THEN CONCAT('Action ', audit.action_id)
-            ELSE NULL
-          END AS summary,
-          audit.repository_full_name,
-          NULL::TEXT AS run_id,
-          audit.plan_id,
-          NULL::TEXT AS job_id,
-          NULL::TEXT AS tracked_pull_request_id,
-          audit.event_id AS execution_event_id,
-          audit.execution_id,
-          audit.action_id,
-          NULL::TEXT AS pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          NULL::TEXT AS branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          NULL::TEXT AS lifecycle_status
-        FROM execution_audit_events AS audit
-        WHERE audit.repository_full_name = $1
-
-        UNION ALL
-
-        SELECT
-          CONCAT('pull-request:', prs.tracked_pull_request_id) AS activity_id,
-          'tracked_pull_request' AS kind,
-          COALESCE(prs.merged_at, prs.closed_at, prs.updated_at, prs.created_at) AS occurred_at,
-          prs.lifecycle_status AS status,
-          CONCAT('#', prs.pull_request_number, ' ', prs.title) AS title,
-          prs.branch_name AS summary,
-          prs.repository_full_name,
-          NULL::TEXT AS run_id,
-          prs.plan_id,
-          NULL::TEXT AS job_id,
-          prs.tracked_pull_request_id,
-          NULL::TEXT AS execution_event_id,
-          prs.execution_id,
-          NULL::TEXT AS action_id,
-          prs.pull_request_url,
-          NULL::INT AS finding_count,
-          NULL::INT AS executable_patch_plan_count,
-          NULL::INT AS blocked_patch_plan_count,
-          NULL::INT AS candidate_selection_count,
-          prs.branch_name,
-          NULL::TEXT AS job_kind,
-          NULL::TEXT AS label,
-          prs.lifecycle_status
-        FROM tracked_pull_requests AS prs
-        WHERE prs.repository_full_name = $1
-      )
+    const queryText = `${repositoryEventsCteSql}
       SELECT
-        activity_id,
-        kind,
-        occurred_at,
-        status,
-        title,
-        summary,
-        repository_full_name,
-        run_id,
-        plan_id,
-        job_id,
-        tracked_pull_request_id,
-        execution_event_id,
-        execution_id,
-        action_id,
-        pull_request_url,
-        finding_count,
-        executable_patch_plan_count,
-        blocked_patch_plan_count,
-        candidate_selection_count,
-        branch_name,
-        job_kind,
-        label,
-        lifecycle_status
+        ${repositoryActivitySelectColumnsSql}
       FROM repository_events
       WHERE (($2::TEXT[] IS NULL) OR kind = ANY($2::TEXT[]))
         AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))

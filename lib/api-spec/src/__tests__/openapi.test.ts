@@ -38,6 +38,7 @@ describe("Repo Guardian OpenAPI contract", () => {
       "getTrackedRepositoryActivity",
       "getTrackedRepositoryHistory",
       "getTrackedRepositoryTimeline",
+      "getTrackedRepositoryTimelineEvent",
       "listAnalysisJobs",
       "listAnalysisRuns",
       "listExecutionPlanEvents",

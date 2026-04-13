@@ -47,6 +47,7 @@ type FleetInspectorPanelProps = {
   isLoading: boolean;
   jobDetail: AnalysisJob | null;
   onClose: () => void;
+  onExpandRepositoryTimelineEvent: (activityId: string) => void;
   onOpenPlan: (planId: string) => void;
   onOpenRun: (runId: string) => void;
   onRefresh: () => void;
@@ -72,6 +73,8 @@ type FleetInspectorPanelProps = {
   planEvents: ExecutionPlanEventsResponse | null;
   planRunDetail: GetAnalysisRunResponse | null;
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
+  repositoryTimelineEventDetails: Record<string, RepositoryActivityEvent>;
+  repositoryTimelineEventLoading: Record<string, boolean>;
   repositoryTimelinePage: RepositoryTimelinePage | null;
   repositoryTimelineQuery: {
     activityCursor: string | null;
@@ -266,6 +269,7 @@ export function FleetInspectorPanel({
   isLoading,
   jobDetail,
   onClose,
+  onExpandRepositoryTimelineEvent,
   onOpenPlan,
   onOpenRun,
   onRefresh,
@@ -279,6 +283,8 @@ export function FleetInspectorPanel({
   planEvents,
   planRunDetail,
   repositoryHistory,
+  repositoryTimelineEventDetails,
+  repositoryTimelineEventLoading,
   repositoryTimelinePage,
   repositoryTimelineQuery,
   runDetail,
@@ -539,9 +545,9 @@ export function FleetInspectorPanel({
                     setActivityStatusInput("");
                     setActivityOccurredAfterInput("");
                     setActivityOccurredBeforeInput("");
-                    setActivityExpansionModeInput("detail");
+                    setActivityExpansionModeInput("summary");
                     setActivitySortPresetInput("newest_first");
-                    onRepositoryTimelineExpansionChange("detail");
+                    onRepositoryTimelineExpansionChange("summary");
                     onRepositoryTimelineSortChange("newest_first");
                     onRepositoryTimelineFiltersChange({
                       activityOccurredAfter: null,
@@ -583,7 +589,11 @@ export function FleetInspectorPanel({
               {activeRepositoryTimeline && activeRepositoryTimeline.events.length > 0 ? (
                 <div className="fleet-timeline">
                   {activeRepositoryTimeline.events.map((activity) => {
-                    const primaryAction = getPrimaryActivityAction(activity);
+                    const expandedActivity =
+                      repositoryTimelineEventDetails[activity.activityId] ?? activity;
+                    const primaryAction = getPrimaryActivityAction(expandedActivity);
+                    const isEventLoading =
+                      repositoryTimelineEventLoading[activity.activityId] === true;
 
                     return (
                       <article className="fleet-timeline-item" key={activity.activityId}>
@@ -592,42 +602,55 @@ export function FleetInspectorPanel({
                           <div className="trace-card-header">
                             <div>
                               <p className="subsection-label">{formatActivityKind(activity.kind)}</p>
-                              <h3>{activity.title}</h3>
+                              <h3>{expandedActivity.title}</h3>
                             </div>
-                            <StatusBadge label={activity.status} tone={getActivityTone(activity)} />
+                            <StatusBadge
+                              label={expandedActivity.status}
+                              tone={getActivityTone(expandedActivity)}
+                            />
                           </div>
-                          <p className="trace-copy">{formatTimestamp(activity.occurredAt)}</p>
-                          {activity.summary ? (
-                            <p className="trace-copy">{activity.summary}</p>
+                          <p className="trace-copy">{formatTimestamp(expandedActivity.occurredAt)}</p>
+                          {expandedActivity.summary ? (
+                            <p className="trace-copy">{expandedActivity.summary}</p>
                           ) : null}
-                          {activity.detail ? (
+                          {expandedActivity.detail ? (
                             <div className="trace-chip-row">
-                              {activity.detail.findingCount !== null ? (
+                              {expandedActivity.detail.findingCount !== null ? (
                                 <span className="trace-chip trace-chip-muted">
-                                  {activity.detail.findingCount} findings
+                                  {expandedActivity.detail.findingCount} findings
                                 </span>
                               ) : null}
-                              {activity.detail.executablePatchPlanCount !== null ? (
+                              {expandedActivity.detail.executablePatchPlanCount !== null ? (
                                 <span className="trace-chip trace-chip-muted">
-                                  {activity.detail.executablePatchPlanCount} executable
+                                  {expandedActivity.detail.executablePatchPlanCount} executable
                                 </span>
                               ) : null}
-                              {activity.detail.blockedPatchPlanCount !== null ? (
+                              {expandedActivity.detail.blockedPatchPlanCount !== null ? (
                                 <span className="trace-chip trace-chip-muted">
-                                  {activity.detail.blockedPatchPlanCount} blocked
+                                  {expandedActivity.detail.blockedPatchPlanCount} blocked
                                 </span>
                               ) : null}
-                              {activity.detail.branchName ? (
+                              {expandedActivity.detail.branchName ? (
                                 <span className="trace-chip trace-chip-muted">
-                                  {activity.detail.branchName}
+                                  {expandedActivity.detail.branchName}
                                 </span>
                               ) : null}
-                              {activity.detail.jobKind ? (
+                              {expandedActivity.detail.jobKind ? (
                                 <span className="trace-chip trace-chip-muted">
-                                  {activity.detail.jobKind}
+                                  {expandedActivity.detail.jobKind}
+                                </span>
+                              ) : null}
+                              {expandedActivity.detail.actorUserId ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  actor {expandedActivity.detail.actorUserId}
                                 </span>
                               ) : null}
                             </div>
+                          ) : null}
+                          {expandedActivity.detail?.auditDetails ? (
+                            <pre className="trace-pre">
+                              {JSON.stringify(expandedActivity.detail.auditDetails, null, 2)}
+                            </pre>
                           ) : null}
                           <div className="fleet-inline-actions">
                             {primaryAction ? (
@@ -643,10 +666,20 @@ export function FleetInspectorPanel({
                                 {primaryAction.label}
                               </button>
                             ) : null}
-                            {activity.pullRequestUrl ? (
+                            {!expandedActivity.detail ? (
+                              <button
+                                className="secondary-button"
+                                disabled={isEventLoading}
+                                onClick={() => onExpandRepositoryTimelineEvent(activity.activityId)}
+                                type="button"
+                              >
+                                {isEventLoading ? "Loading detail..." : "Load detail"}
+                              </button>
+                            ) : null}
+                            {expandedActivity.pullRequestUrl ? (
                               <a
                                 className="secondary-button fleet-link-button"
-                                href={activity.pullRequestUrl}
+                                href={expandedActivity.pullRequestUrl}
                                 rel="noreferrer"
                                 target="_blank"
                               >

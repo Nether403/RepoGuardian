@@ -1105,6 +1105,8 @@ export const RepositoryTimelineExpansionModeSchema = z.enum([
 ]);
 
 export const RepositoryActivityDetailSchema = z.object({
+  actorUserId: z.string().min(1).nullable(),
+  auditDetails: z.record(z.unknown()).nullable(),
   auditEventType: z.string().min(1).nullable(),
   blockedPatchPlanCount: z.number().int().nonnegative().nullable(),
   branchName: z.string().min(1).nullable(),

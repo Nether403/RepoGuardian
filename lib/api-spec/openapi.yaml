@@ -646,6 +646,40 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}:
+    get:
+      operationId: getTrackedRepositoryTimelineEvent
+      summary: Read a single tracked-repository timeline event with on-demand detail expansion
+      x-repo-guardian-response-type: RepositoryActivityEvent
+      parameters:
+        - name: trackedRepositoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: activityId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: expand
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryTimelineExpansionMode"
+      responses:
+        "200":
+          description: Tracked repository timeline event detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryActivityEvent"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/fleet/status:
     get:
       operationId: getFleetStatus

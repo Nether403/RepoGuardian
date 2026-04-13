@@ -26,6 +26,7 @@ import type {
   ListAnalysisRunsResponse,
   ListSweepSchedulesResponse,
   ListTrackedRepositoriesResponse,
+  RepositoryActivityEvent,
   RepositoryActivityFeed,
   RepositoryTimelinePage,
   RetryAnalysisJobResponse,
@@ -347,6 +348,15 @@ export async function getTrackedRepositoryTimeline(trackedRepositoryId: string, 
   return requestJson<RepositoryTimelinePage>({
     method: "GET",
     path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/timeline`,
+    query,
+    options
+  });
+}
+
+export async function getTrackedRepositoryTimelineEvent(trackedRepositoryId: string, activityId: string, query: { "expand"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<RepositoryActivityEvent> {
+  return requestJson<RepositoryActivityEvent>({
+    method: "GET",
+    path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/timeline/${encodeURIComponent(activityId)}`,
     query,
     options
   });

@@ -1373,6 +1373,18 @@ code {
   color: var(--text-muted);
 }
 
+.trace-pre {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  background: rgba(8, 16, 24, 0.72);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
 .trace-meta-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }

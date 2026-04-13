@@ -1327,6 +1327,11 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           actionId: null,
           activityId: "execution-event:event_one",
           detail: {
+            actorUserId: "operator_one",
+            auditDetails: {
+              phase: "finalize",
+              result: "merged"
+            },
             auditEventType: "execution_completed",
             blockedPatchPlanCount: null,
             branchName: null,
@@ -1361,6 +1366,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           actionId: null,
           activityId: "pull-request:tpr_one",
           detail: {
+            actorUserId: null,
+            auditDetails: null,
             auditEventType: null,
             blockedPatchPlanCount: null,
             branchName: "repo-guardian/test-branch",
@@ -1395,6 +1402,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           actionId: null,
           activityId: "plan:plan_one",
           detail: {
+            actorUserId: null,
+            auditDetails: null,
             auditEventType: null,
             blockedPatchPlanCount: 0,
             branchName: null,
@@ -1429,6 +1438,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           actionId: null,
           activityId: "job:job_one",
           detail: {
+            actorUserId: null,
+            auditDetails: null,
             auditEventType: null,
             blockedPatchPlanCount: null,
             branchName: null,
@@ -1463,6 +1474,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           actionId: null,
           activityId: "run:run_one",
           detail: {
+            actorUserId: null,
+            auditDetails: null,
             auditEventType: null,
             blockedPatchPlanCount: 1,
             branchName: "main",
@@ -3409,6 +3422,10 @@ describe("App", () => {
     async () => {
     const user = userEvent.setup();
     const fetchMock = mockAuthenticatedFetch(async (url) => {
+      if (url === "/api/tracked-repositories/tracked_one/timeline/execution-event%3Aevent_one?expand=detail") {
+        return createJsonResponse(createTrackedRepositoryHistoryFixture().activityFeed.events[0]);
+      }
+
       if (url === "/api/tracked-repositories/tracked_one/history") {
         return createJsonResponse(createTrackedRepositoryHistoryFixture());
       }
@@ -3435,6 +3452,13 @@ describe("App", () => {
                   (activityStatuses.length === 0 ||
                     activityStatuses.includes(event.status))
               );
+        const events =
+          activityExpansionMode === "detail"
+            ? filteredEvents
+            : filteredEvents.map((event) => ({
+                ...event,
+                detail: null
+              }));
 
         return createJsonResponse({
           ...fixture.activityFeed,
@@ -3443,7 +3467,7 @@ describe("App", () => {
           appliedKinds: activityKinds,
           appliedSortPreset: activitySortPreset,
           appliedStatuses: activityStatuses,
-          events: filteredEvents,
+          events,
           expansionMode: activityExpansionMode,
           hasNextPage: false,
           hasPreviousPage: activityCursor !== null,
@@ -3452,7 +3476,7 @@ describe("App", () => {
           occurredAfter: requestUrl.searchParams.get("timelineOccurredAfter"),
           occurredBefore: requestUrl.searchParams.get("timelineOccurredBefore"),
           previousCursor: activityCursor ? "cursor_previous" : null,
-          returnedCount: filteredEvents.length
+          returnedCount: events.length
         });
       }
 
@@ -3523,6 +3547,22 @@ describe("App", () => {
       repositoryInspector.getByRole("button", { name: /execution event/i })
     );
     await screen.findByText(/Execution Completed/i);
+    expect(
+      repositoryInspector.getByRole("button", { name: /Load detail/i })
+    ).toBeInTheDocument();
+    await user.click(repositoryInspector.getByRole("button", { name: /Load detail/i }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tracked-repositories/tracked_one/timeline/execution-event%3Aevent_one?expand=detail",
+        expect.anything()
+      );
+    });
+    await waitFor(() => {
+      expect(
+        repositoryInspector.queryByRole("button", { name: /Load detail/i })
+      ).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText(/actor operator_one/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(
         repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
@@ -3705,6 +3745,13 @@ describe("App", () => {
           occurredBefore: requestUrl.searchParams.get("timelineOccurredBefore"),
           previousCursor: null,
           nextCursor: null,
+          events:
+            (requestUrl.searchParams.get("timelineExpand") ?? "summary") === "detail"
+              ? createTrackedRepositoryHistoryFixture().activityFeed.events
+              : createTrackedRepositoryHistoryFixture().activityFeed.events.map((event) => ({
+                  ...event,
+                  detail: null
+                })),
           returnedCount: createTrackedRepositoryHistoryFixture().activityFeed.events.length
         });
       }

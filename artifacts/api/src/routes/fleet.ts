@@ -16,6 +16,7 @@ import {
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
   RepositoryActivityCursorDirectionSchema,
+  RepositoryActivityEventSchema,
   RepositoryActivityFeedSchema,
   RepositoryActivityKindSchema,
   RepositoryActivitySortPresetSchema,
@@ -67,7 +68,9 @@ type TrackedPullRequestStore = Pick<
 
 type RepositoryActivityStore = Pick<
   RepositoryActivityRepository,
-  "listActivitiesByRepositoryFullName" | "listTimelineByRepositoryFullName"
+  | "getActivityByRepositoryFullName"
+  | "listActivitiesByRepositoryFullName"
+  | "listTimelineByRepositoryFullName"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -188,6 +191,10 @@ const trackedRepositoryTimelineQuerySchema = z.object({
       );
     })
     .pipe(z.array(z.string().min(1)))
+});
+
+const trackedRepositoryTimelineEventQuerySchema = z.object({
+  expand: RepositoryTimelineExpansionModeSchema.optional().default("detail")
 });
 
 function toRepositoryActivityQuery(input: z.infer<typeof trackedRepositoryHistoryQuerySchema>) {
@@ -443,6 +450,47 @@ export function createFleetRouter(input: {
       next(error);
     }
   });
+
+  fleetRouter.get(
+    "/tracked-repositories/:trackedRepositoryId/timeline/:activityId",
+    async (request, response, next) => {
+      try {
+        const parsedQuery = trackedRepositoryTimelineEventQuerySchema.safeParse(request.query);
+
+        if (!parsedQuery.success) {
+          response.status(400).json({
+            error: "Tracked repository timeline event query could not be validated."
+          });
+          return;
+        }
+
+        const trackedRepository = await input.trackedRepositoryStore.getRepository(
+          getSingleParam(request.params.trackedRepositoryId)
+        );
+        const event = await input.repositoryActivityStore.getActivityByRepositoryFullName({
+          activityId: getSingleParam(request.params.activityId),
+          expansionMode: parsedQuery.data.expand,
+          repositoryFullName: trackedRepository.fullName
+        });
+
+        response.json(RepositoryActivityEventSchema.parse(event));
+      } catch (error) {
+        const status = mapPersistenceError(error);
+
+        if (status) {
+          response.status(status).json({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Tracked repository timeline event request failed"
+          });
+          return;
+        }
+
+        next(error);
+      }
+    }
+  );
 
   fleetRouter.post("/analyze/jobs", async (request, response, next) => {
     const parsedRequest = EnqueueAnalysisJobRequestSchema.safeParse(request.body);

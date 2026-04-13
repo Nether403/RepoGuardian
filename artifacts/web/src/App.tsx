@@ -10,6 +10,7 @@ import type {
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
   GetAnalysisRunResponse,
+  RepositoryActivityEvent,
   RepositoryActivityKind,
   RepositoryTimelinePage,
   SavedAnalysisRunSummary,
@@ -76,6 +77,7 @@ import {
   getFleetStatus,
   getTrackedRepositoryHistory,
   getTrackedRepositoryTimeline,
+  getTrackedRepositoryTimelineEvent,
   listAnalysisJobs,
   listExecutionPlanEvents,
   listSweepSchedules,
@@ -132,7 +134,7 @@ const fleetRepositoryActivityStorageKey = "repo-guardian-fleet-activity-query";
 const defaultFleetRepositoryActivityQuery: FleetRepositoryActivityQuery = {
   activityCursor: null,
   activityCursorDirection: "next",
-  activityExpansionMode: "detail",
+  activityExpansionMode: "summary",
   activityKinds: [],
   activityLimit: 20,
   activityOccurredAfter: null,
@@ -177,9 +179,9 @@ function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
         ? (parsed.activityCursorDirection ?? "next")
         : "next",
       activityExpansionMode: fleetRepositoryTimelineExpansionModes.includes(
-        parsed.activityExpansionMode ?? "detail"
+        parsed.activityExpansionMode ?? "summary"
       )
-        ? (parsed.activityExpansionMode ?? "detail")
+        ? (parsed.activityExpansionMode ?? "summary")
         : parsed.activityIncludeDetails === false
           ? "summary"
         : "detail",
@@ -368,6 +370,12 @@ function App() {
   const [repositoryTimelinePagesById, setRepositoryTimelinePagesById] = useState<
     Record<string, RepositoryTimelinePage>
   >({});
+  const [repositoryTimelineEventDetailsById, setRepositoryTimelineEventDetailsById] = useState<
+    Record<string, Record<string, RepositoryActivityEvent>>
+  >({});
+  const [repositoryTimelineEventLoadingById, setRepositoryTimelineEventLoadingById] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
   const [fleetRepositoryActivityQuery, setFleetRepositoryActivityQuery] =
     useState<FleetRepositoryActivityQuery>(loadFleetRepositoryActivityQuery);
   const fleetInspectorRequestIdRef = useRef(0);
@@ -445,6 +453,14 @@ function App() {
     fleetInspectorSelection?.kind === "repository"
       ? repositoryTimelinePagesById[fleetInspectorSelection.id] ?? null
       : null;
+  const selectedRepositoryTimelineEventDetails =
+    fleetInspectorSelection?.kind === "repository"
+      ? repositoryTimelineEventDetailsById[fleetInspectorSelection.id] ?? {}
+      : {};
+  const selectedRepositoryTimelineEventLoading =
+    fleetInspectorSelection?.kind === "repository"
+      ? repositoryTimelineEventLoadingById[fleetInspectorSelection.id] ?? {}
+      : {};
   const selectedRepositoryHistory =
     fleetInspectorSelection?.kind === "repository"
       ? trackedRepositoryHistoriesById[fleetInspectorSelection.id] ?? null
@@ -1153,6 +1169,56 @@ function App() {
     );
   }
 
+  async function handleExpandRepositoryTimelineEvent(activityId: string) {
+    if (fleetInspectorSelection?.kind !== "repository") {
+      return;
+    }
+
+    const trackedRepositoryId = fleetInspectorSelection.id;
+    const cachedEvent = repositoryTimelineEventDetailsById[trackedRepositoryId]?.[activityId];
+
+    if (cachedEvent?.detail) {
+      return;
+    }
+
+    setRepositoryTimelineEventLoadingById((current) => ({
+      ...current,
+      [trackedRepositoryId]: {
+        ...(current[trackedRepositoryId] ?? {}),
+        [activityId]: true
+      }
+    }));
+    setFleetInspectorErrorMessage(null);
+
+    try {
+      const event = await getTrackedRepositoryTimelineEvent(trackedRepositoryId, activityId, {
+        activityExpansionMode: "detail"
+      });
+
+      setRepositoryTimelineEventDetailsById((current) => ({
+        ...current,
+        [trackedRepositoryId]: {
+          ...(current[trackedRepositoryId] ?? {}),
+          [activityId]: event
+        }
+      }));
+    } catch (error) {
+      setFleetInspectorErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not load the selected repository timeline event."
+      );
+    } finally {
+      setRepositoryTimelineEventLoadingById((current) => ({
+        ...current,
+        [trackedRepositoryId]: {
+          ...(current[trackedRepositoryId] ?? {}),
+          [activityId]: false
+        }
+      }));
+    }
+  }
+
   useEffect(() => {
     if (fleetInspectorSelection?.kind !== "repository") {
       return;
@@ -1474,10 +1540,15 @@ function App() {
               onOpenRun={(runId) => void openFleetInspector({ id: runId, kind: "run" })}
               onRefresh={() => void handleRefreshFleetInspector()}
               onRefreshRepositoryTimeline={() => void handleRefreshRepositoryTimeline()}
+              onExpandRepositoryTimelineEvent={(activityId) =>
+                void handleExpandRepositoryTimelineEvent(activityId)
+              }
               planDetail={selectedPlanDetail}
               planEvents={selectedPlanEvents}
               planRunDetail={selectedPlanRunDetail}
               repositoryHistory={selectedRepositoryHistory}
+              repositoryTimelineEventDetails={selectedRepositoryTimelineEventDetails}
+              repositoryTimelineEventLoading={selectedRepositoryTimelineEventLoading}
               repositoryTimelinePage={selectedRepositoryTimeline}
               repositoryTimelineQuery={fleetRepositoryActivityQuery}
               runDetail={selectedRunDetail}
