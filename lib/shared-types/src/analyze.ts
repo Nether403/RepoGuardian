@@ -1104,10 +1104,18 @@ export const RepositoryTimelineExpansionModeSchema = z.enum([
   "detail"
 ]);
 
-export const RepositoryActivityDetailSchema = z.object({
+export const RepositoryExecutionEventTypeSchema = z.enum([
+  "execution_started",
+  "action_started",
+  "action_succeeded",
+  "action_failed",
+  "execution_completed",
+  "execution_failed",
+  "plan_expired"
+]);
+
+const RepositoryActivityDetailBaseSchema = z.object({
   actorUserId: z.string().min(1).nullable(),
-  auditDetails: z.record(z.unknown()).nullable(),
-  auditEventType: z.string().min(1).nullable(),
   blockedPatchPlanCount: z.number().int().nonnegative().nullable(),
   branchName: z.string().min(1).nullable(),
   candidateSelectionCount: z.number().int().nonnegative().nullable(),
@@ -1123,6 +1131,57 @@ export const RepositoryActivityDetailSchema = z.object({
   relatedRunId: z.string().min(1).nullable(),
   relatedTrackedPullRequestId: z.string().min(1).nullable()
 });
+
+export const RepositoryExecutionEventDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    detailType: z.literal("execution_event"),
+    actionType: z.string().min(1).nullable(),
+    errors: z.array(z.string().min(1)).nullable(),
+    eventType: RepositoryExecutionEventTypeSchema,
+    nextStatus: z.string().min(1).nullable(),
+    previousStatus: z.string().min(1).nullable(),
+    rawPayload: z.record(z.unknown()).nullable(),
+    succeeded: z.boolean().nullable(),
+    warnings: z.array(z.string().min(1)).nullable()
+  });
+
+export const RepositoryExecutionPlanActivityDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    approvalStatus: ApprovalStatusSchema.nullable(),
+    blockedActionCount: z.number().int().nonnegative().nullable(),
+    detailType: z.literal("execution_plan"),
+    eligibleActionCount: z.number().int().nonnegative().nullable(),
+    executionResultStatus: z.enum(["completed", "failed"]).nullable(),
+    selectedIssueCandidateCount: z.number().int().nonnegative().nullable(),
+    selectedPRCandidateCount: z.number().int().nonnegative().nullable(),
+    totalActionCount: z.number().int().nonnegative().nullable(),
+    totalSelectionCount: z.number().int().nonnegative().nullable()
+  });
+
+export const RepositoryTrackedPullRequestActivityDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    closedAt: z.string().datetime().nullable(),
+    detailType: z.literal("tracked_pull_request"),
+    lifecycleStatus: TrackedPullRequestLifecycleStatusSchema,
+    mergedAt: z.string().datetime().nullable(),
+    pullRequestNumber: z.number().int().positive(),
+    pullRequestTitle: z.string().min(1),
+    pullRequestUrl: z.string().url().nullable()
+  });
+
+export const RepositoryGenericActivityDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    detailType: z.literal("generic"),
+    rawEventType: z.string().min(1).nullable(),
+    rawPayload: z.record(z.unknown()).nullable()
+  });
+
+export const RepositoryActivityDetailSchema = z.discriminatedUnion("detailType", [
+  RepositoryExecutionEventDetailSchema,
+  RepositoryExecutionPlanActivityDetailSchema,
+  RepositoryTrackedPullRequestActivityDetailSchema,
+  RepositoryGenericActivityDetailSchema
+]);
 
 export const RepositoryActivityEventSchema = z.object({
   actionId: z.string().min(1).nullable(),
@@ -1553,6 +1612,22 @@ export type FleetTrackedRepositoryStatus = z.infer<
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;
+export type RepositoryExecutionEventType = z.infer<
+  typeof RepositoryExecutionEventTypeSchema
+>;
+export type RepositoryExecutionEventDetail = z.infer<
+  typeof RepositoryExecutionEventDetailSchema
+>;
+export type RepositoryExecutionPlanActivityDetail = z.infer<
+  typeof RepositoryExecutionPlanActivityDetailSchema
+>;
+export type RepositoryTrackedPullRequestActivityDetail = z.infer<
+  typeof RepositoryTrackedPullRequestActivityDetailSchema
+>;
+export type RepositoryGenericActivityDetail = z.infer<
+  typeof RepositoryGenericActivityDetailSchema
+>;
+export type RepositoryActivityDetail = z.infer<typeof RepositoryActivityDetailSchema>;
 export type RepositoryActivityEvent = z.infer<typeof RepositoryActivityEventSchema>;
 export type RepositoryActivityFeed = z.infer<typeof RepositoryActivityFeedSchema>;
 export type RepositoryTimelineExpansionMode = z.infer<
