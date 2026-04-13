@@ -44,6 +44,22 @@ function createSweepSchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createTrackedRepository(overrides: Record<string, unknown> = {}) {
+  return {
+    canonicalUrl: "https://github.com/openai/openai-node",
+    createdAt: "2026-04-12T10:00:00.000Z",
+    fullName: "openai/openai-node",
+    id: "tracked_one",
+    isActive: true,
+    label: "Weekly review",
+    lastQueuedAt: "2026-04-12T10:00:00.000Z",
+    owner: "openai",
+    repo: "openai-node",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  };
+}
+
 function createExecutionPlanSummary(overrides: Record<string, unknown> = {}) {
   return {
     analysisRunId: "run_one",
@@ -222,6 +238,7 @@ function createTestApp(
       repositoryActivityStore: {
         listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
           appliedKinds: [],
+          appliedStatuses: [],
           availableKinds: [
             "analysis_job",
             "analysis_run",
@@ -232,6 +249,8 @@ function createTestApp(
           events: [],
           hasNextPage: false,
           hasPreviousPage: false,
+          occurredAfter: null,
+          occurredBefore: null,
           page: 1,
           pageSize: 20,
           totalPages: 0,
@@ -540,6 +559,7 @@ describe("fleet routes", () => {
   it("returns tracked repository history", async () => {
     const listActivitiesByRepositoryFullName = vi.fn().mockResolvedValue({
       appliedKinds: ["execution_plan"],
+      appliedStatuses: ["planned"],
       availableKinds: [
         "analysis_job",
         "analysis_run",
@@ -563,6 +583,8 @@ describe("fleet routes", () => {
       ],
       hasNextPage: true,
       hasPreviousPage: false,
+      occurredAfter: "2026-04-12T10:00:00.000Z",
+      occurredBefore: "2026-04-12T11:00:00.000Z",
       page: 1,
       pageSize: 2,
       totalPages: 3,
@@ -643,7 +665,7 @@ describe("fleet routes", () => {
 
     const response = await request(app)
       .get(
-        "/tracked-repositories/tracked_one/history?activityKinds=execution_plan&activityPage=1&activityPageSize=2"
+        "/tracked-repositories/tracked_one/history?activityKinds=execution_plan&activityStatuses=planned&activityOccurredAfter=2026-04-12T10:00:00.000Z&activityOccurredBefore=2026-04-12T11:00:00.000Z&activityPage=1&activityPageSize=2"
       )
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
@@ -657,6 +679,7 @@ describe("fleet routes", () => {
     expect(response.body.activityFeed.totalEvents).toBe(2);
     expect(response.body.activityFeed.pageSize).toBe(2);
     expect(response.body.activityFeed.appliedKinds).toEqual(["execution_plan"]);
+    expect(response.body.activityFeed.appliedStatuses).toEqual(["planned"]);
     expect(
       response.body.activityFeed.events.some(
         (event: { activityId: string }) => event.activityId === "plan:plan_one"
@@ -665,8 +688,78 @@ describe("fleet routes", () => {
     expect(listActivitiesByRepositoryFullName).toHaveBeenCalledWith({
       kinds: ["execution_plan"],
       limit: 2,
+      occurredAfter: "2026-04-12T10:00:00.000Z",
+      occurredBefore: "2026-04-12T11:00:00.000Z",
       offset: 0,
       repositoryFullName: "openai/openai-node"
+      ,
+      statuses: ["planned"]
+    });
+  });
+
+  it("returns tracked repository activity without loading repository summary context", async () => {
+    const listActivitiesByRepositoryFullName = vi.fn().mockResolvedValue({
+      appliedKinds: [],
+      appliedStatuses: ["completed", "open"],
+      availableKinds: [
+        "analysis_job",
+        "analysis_run",
+        "execution_event",
+        "execution_plan",
+        "tracked_pull_request"
+      ],
+      events: [createRepositoryActivity({ status: "completed" })],
+      hasNextPage: false,
+      hasPreviousPage: true,
+      occurredAfter: "2026-04-10T00:00:00.000Z",
+      occurredBefore: null,
+      page: 2,
+      pageSize: 1,
+      totalEvents: 2,
+      totalPages: 2
+    });
+    const trackedRepository = createTrackedRepository();
+    const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      repositoryActivityStore: {
+        listActivitiesByRepositoryFullName
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn().mockResolvedValue(trackedRepository),
+        listRepositories: vi.fn().mockResolvedValue([trackedRepository])
+      }
+    });
+
+    const response = await request(app)
+      .get(
+        "/tracked-repositories/tracked_one/activity?activityStatuses=completed,open&activityOccurredAfter=2026-04-10T00:00:00.000Z&activityPage=2&activityPageSize=1"
+      )
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(200);
+    expect(response.body.page).toBe(2);
+    expect(response.body.appliedStatuses).toEqual(["completed", "open"]);
+    expect(listActivitiesByRepositoryFullName).toHaveBeenCalledWith({
+      kinds: [],
+      limit: 1,
+      occurredAfter: "2026-04-10T00:00:00.000Z",
+      occurredBefore: null,
+      offset: 1,
+      repositoryFullName: "openai/openai-node",
+      statuses: ["completed", "open"]
     });
   });
 

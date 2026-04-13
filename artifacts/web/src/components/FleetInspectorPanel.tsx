@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type {
   AnalysisJob,
   CodeReviewFinding,
@@ -43,6 +44,12 @@ type FleetInspectorPanelProps = {
   onOpenPlan: (planId: string) => void;
   onOpenRun: (runId: string) => void;
   onRefresh: () => void;
+  onRefreshRepositoryTimeline: () => void;
+  onRepositoryTimelineFiltersChange: (input: {
+    activityOccurredAfter: string | null;
+    activityOccurredBefore: string | null;
+    activityStatuses: string[];
+  }) => void;
   onRepositoryTimelineKindsChange: (activityKinds: RepositoryActivityKind[]) => void;
   onRepositoryTimelinePageChange: (page: number) => void;
   planDetail: ExecutionPlanDetailResponse | null;
@@ -51,7 +58,10 @@ type FleetInspectorPanelProps = {
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
   repositoryTimelineQuery: {
     activityKinds: RepositoryActivityKind[];
+    activityOccurredAfter: string | null;
+    activityOccurredBefore: string | null;
     activityPage: number;
+    activityStatuses: string[];
   };
   runDetail: GetAnalysisRunResponse | null;
   selection: InspectorSelection | null;
@@ -109,6 +119,14 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
 
 function formatActivityKind(kind: RepositoryActivityKind): string {
   return kind.replace(/_/gu, " ");
+}
+
+function toDateTimeLocalValue(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toISOString().slice(0, 16);
 }
 
 function getActivityTone(activity: RepositoryActivityEvent): "active" | "muted" | "up-next" | "warning" {
@@ -224,6 +242,8 @@ export function FleetInspectorPanel({
   onOpenPlan,
   onOpenRun,
   onRefresh,
+  onRefreshRepositoryTimeline,
+  onRepositoryTimelineFiltersChange,
   onRepositoryTimelineKindsChange,
   onRepositoryTimelinePageChange,
   planDetail,
@@ -234,6 +254,26 @@ export function FleetInspectorPanel({
   runDetail,
   selection
 }: FleetInspectorPanelProps) {
+  const [activityStatusInput, setActivityStatusInput] = useState("");
+  const [activityOccurredAfterInput, setActivityOccurredAfterInput] = useState("");
+  const [activityOccurredBeforeInput, setActivityOccurredBeforeInput] = useState("");
+
+  useEffect(() => {
+    setActivityStatusInput(repositoryTimelineQuery.activityStatuses.join(", "));
+    setActivityOccurredAfterInput(
+      toDateTimeLocalValue(repositoryTimelineQuery.activityOccurredAfter)
+    );
+    setActivityOccurredBeforeInput(
+      toDateTimeLocalValue(repositoryTimelineQuery.activityOccurredBefore)
+    );
+  }, [
+    repositoryTimelineQuery.activityOccurredAfter,
+    repositoryTimelineQuery.activityOccurredBefore,
+    repositoryTimelineQuery.activityStatuses,
+    selection?.id,
+    selection?.kind
+  ]);
+
   const planTraceability =
     selection?.kind === "plan" && planDetail
       ? collectPlanTraceability(planDetail, planRunDetail)
@@ -363,6 +403,84 @@ export function FleetInspectorPanel({
             </div>
             <div className="fleet-inspector-block">
               <h3>Repository timeline</h3>
+              <div className="fleet-form-grid">
+                <label className="form-field">
+                  <span>Status filters</span>
+                  <input
+                    onChange={(event) => setActivityStatusInput(event.currentTarget.value)}
+                    placeholder="completed, planned, open"
+                    type="text"
+                    value={activityStatusInput}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Occurred after</span>
+                  <input
+                    onChange={(event) =>
+                      setActivityOccurredAfterInput(event.currentTarget.value)
+                    }
+                    type="datetime-local"
+                    value={activityOccurredAfterInput}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Occurred before</span>
+                  <input
+                    onChange={(event) =>
+                      setActivityOccurredBeforeInput(event.currentTarget.value)
+                    }
+                    type="datetime-local"
+                    value={activityOccurredBeforeInput}
+                  />
+                </label>
+              </div>
+              <div className="fleet-inline-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() =>
+                    onRepositoryTimelineFiltersChange({
+                      activityOccurredAfter:
+                        activityOccurredAfterInput.length > 0
+                          ? new Date(activityOccurredAfterInput).toISOString()
+                          : null,
+                      activityOccurredBefore:
+                        activityOccurredBeforeInput.length > 0
+                          ? new Date(activityOccurredBeforeInput).toISOString()
+                          : null,
+                      activityStatuses: activityStatusInput
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter((item) => item.length > 0)
+                    })
+                  }
+                  type="button"
+                >
+                  Apply filters
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    setActivityStatusInput("");
+                    setActivityOccurredAfterInput("");
+                    setActivityOccurredBeforeInput("");
+                    onRepositoryTimelineFiltersChange({
+                      activityOccurredAfter: null,
+                      activityOccurredBefore: null,
+                      activityStatuses: []
+                    });
+                  }}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={onRefreshRepositoryTimeline}
+                  type="button"
+                >
+                  Refresh timeline
+                </button>
+              </div>
               <div className="trace-chip-row">
                 <button
                   className="secondary-button"

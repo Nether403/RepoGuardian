@@ -26,6 +26,7 @@ import type {
   ListAnalysisRunsResponse,
   ListSweepSchedulesResponse,
   ListTrackedRepositoriesResponse,
+  RepositoryActivityFeed,
   RetryAnalysisJobResponse,
   SaveAnalysisRunRequest,
   SaveAnalysisRunResponse,
@@ -323,7 +324,16 @@ export async function createTrackedRepository(requestBody: CreateTrackedReposito
   });
 }
 
-export async function getTrackedRepositoryHistory(trackedRepositoryId: string, query: { "activityKinds"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPage"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPageSize"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<TrackedRepositoryHistoryResponse> {
+export async function getTrackedRepositoryActivity(trackedRepositoryId: string, query: { "activityKinds"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPage"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPageSize"?: string | number | boolean | readonly (string | number | boolean)[]; "activityStatuses"?: string | number | boolean | readonly (string | number | boolean)[]; "activityOccurredAfter"?: string | number | boolean | readonly (string | number | boolean)[]; "activityOccurredBefore"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<RepositoryActivityFeed> {
+  return requestJson<RepositoryActivityFeed>({
+    method: "GET",
+    path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/activity`,
+    query,
+    options
+  });
+}
+
+export async function getTrackedRepositoryHistory(trackedRepositoryId: string, query: { "activityKinds"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPage"?: string | number | boolean | readonly (string | number | boolean)[]; "activityPageSize"?: string | number | boolean | readonly (string | number | boolean)[]; "activityStatuses"?: string | number | boolean | readonly (string | number | boolean)[]; "activityOccurredAfter"?: string | number | boolean | readonly (string | number | boolean)[]; "activityOccurredBefore"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<TrackedRepositoryHistoryResponse> {
   return requestJson<TrackedRepositoryHistoryResponse>({
     method: "GET",
     path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/history`,

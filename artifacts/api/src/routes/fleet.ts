@@ -15,6 +15,7 @@ import {
   CreateTrackedRepositoryRequestSchema,
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
+  RepositoryActivityFeedSchema,
   RepositoryActivityKindSchema,
   TrackedRepositoryHistoryResponseSchema
 } from "@repo-guardian/shared-types";
@@ -106,8 +107,39 @@ const trackedRepositoryHistoryQuerySchema = z.object({
     })
     .pipe(z.array(RepositoryActivityKindSchema)),
   activityPage: z.coerce.number().int().positive().default(1),
-  activityPageSize: z.coerce.number().int().min(1).max(100).default(20)
+  activityPageSize: z.coerce.number().int().min(1).max(100).default(20),
+  activityOccurredAfter: z.string().datetime().nullable().optional().default(null),
+  activityOccurredBefore: z.string().datetime().nullable().optional().default(null),
+  activityStatuses: z
+    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) {
+        return [];
+      }
+
+      const values = Array.isArray(value) ? value : [value];
+
+      return values.flatMap((entry) =>
+        entry
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      );
+    })
+    .pipe(z.array(z.string().min(1)))
 });
+
+function toRepositoryActivityQuery(input: z.infer<typeof trackedRepositoryHistoryQuerySchema>) {
+  return {
+    kinds: input.activityKinds,
+    limit: input.activityPageSize,
+    occurredAfter: input.activityOccurredAfter,
+    occurredBefore: input.activityOccurredBefore,
+    offset: (input.activityPage - 1) * input.activityPageSize,
+    statuses: input.activityStatuses
+  };
+}
 
 function mapPersistenceError(error: unknown): number | null {
   if (!isPersistenceError(error)) {
@@ -221,10 +253,7 @@ export function createFleetRouter(input: {
         ]);
       const activityFeed =
         await input.repositoryActivityStore.listActivitiesByRepositoryFullName({
-          kinds: parsedQuery.data.activityKinds,
-          limit: parsedQuery.data.activityPageSize,
-          offset:
-            (parsedQuery.data.activityPage - 1) * parsedQuery.data.activityPageSize,
+          ...toRepositoryActivityQuery(parsedQuery.data),
           repositoryFullName: trackedRepository.fullName
         });
       const currentStatus = fleetStatus.trackedRepositories.find(
@@ -261,6 +290,40 @@ export function createFleetRouter(input: {
       if (status) {
         response.status(status).json({
           error: error instanceof Error ? error.message : "Tracked repository history request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/tracked-repositories/:trackedRepositoryId/activity", async (request, response, next) => {
+    try {
+      const parsedQuery = trackedRepositoryHistoryQuerySchema.safeParse(request.query);
+
+      if (!parsedQuery.success) {
+        response.status(400).json({
+          error: "Tracked repository activity query could not be validated."
+        });
+        return;
+      }
+
+      const trackedRepository = await input.trackedRepositoryStore.getRepository(
+        getSingleParam(request.params.trackedRepositoryId)
+      );
+      const activityFeed = await input.repositoryActivityStore.listActivitiesByRepositoryFullName({
+        ...toRepositoryActivityQuery(parsedQuery.data),
+        repositoryFullName: trackedRepository.fullName
+      });
+
+      response.json(RepositoryActivityFeedSchema.parse(activityFeed));
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Tracked repository activity request failed"
         });
         return;
       }

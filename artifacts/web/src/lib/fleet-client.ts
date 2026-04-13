@@ -14,7 +14,9 @@ import {
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   RetryAnalysisJobResponseSchema,
+  RepositoryActivityFeedSchema,
   type RepositoryActivityKind,
+  type RepositoryActivityFeed,
   TrackedRepositoryHistoryResponseSchema,
   TriggerSweepScheduleResponseSchema,
   type AnalysisJob,
@@ -35,6 +37,7 @@ import {
   getExecutionPlan as requestGetExecutionPlan,
   getFleetStatus as requestGetFleetStatus,
   getTrackedRepositoryHistory as requestGetTrackedRepositoryHistory,
+  getTrackedRepositoryActivity as requestGetTrackedRepositoryActivity,
   listAnalysisJobs as requestListAnalysisJobs,
   listExecutionPlanEvents as requestListExecutionPlanEvents,
   listSweepSchedules as requestListSweepSchedules,
@@ -281,6 +284,39 @@ export async function getTrackedRepositoryHistory(
     throw toFleetClientError(
       error,
       "Repo Guardian could not load the tracked repository history"
+    );
+  }
+}
+
+export async function getTrackedRepositoryActivityFeed(
+  trackedRepositoryId: string,
+  options?: {
+    activityKinds?: RepositoryActivityKind[];
+    activityOccurredAfter?: string | null;
+    activityOccurredBefore?: string | null;
+    activityPage?: number;
+    activityPageSize?: number;
+    activityStatuses?: string[];
+  }
+): Promise<RepositoryActivityFeed> {
+  try {
+    const response = await requestGetTrackedRepositoryActivity(
+      trackedRepositoryId,
+      {
+        activityKinds: options?.activityKinds,
+        activityOccurredAfter: options?.activityOccurredAfter ?? undefined,
+        activityOccurredBefore: options?.activityOccurredBefore ?? undefined,
+        activityPage: options?.activityPage,
+        activityPageSize: options?.activityPageSize,
+        activityStatuses: options?.activityStatuses
+      },
+      getApiOptions()
+    );
+    return RepositoryActivityFeedSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(
+      error,
+      "Repo Guardian could not load the tracked repository activity feed"
     );
   }
 }

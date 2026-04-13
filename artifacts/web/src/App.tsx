@@ -10,6 +10,7 @@ import type {
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
   GetAnalysisRunResponse,
+  RepositoryActivityFeed,
   RepositoryActivityKind,
   SavedAnalysisRunSummary,
   SweepSchedule,
@@ -68,6 +69,7 @@ import {
   getAnalysisJob,
   getExecutionPlanDetail,
   getFleetStatus,
+  getTrackedRepositoryActivityFeed,
   getTrackedRepositoryHistory,
   listAnalysisJobs,
   listExecutionPlanEvents,
@@ -100,14 +102,20 @@ type FleetAdminSnapshot = {
 
 type FleetRepositoryActivityQuery = {
   activityKinds: RepositoryActivityKind[];
+  activityOccurredAfter: string | null;
+  activityOccurredBefore: string | null;
   activityPage: number;
   activityPageSize: number;
+  activityStatuses: string[];
 };
 
 const defaultFleetRepositoryActivityQuery: FleetRepositoryActivityQuery = {
   activityKinds: [],
+  activityOccurredAfter: null,
+  activityOccurredBefore: null,
   activityPage: 1,
-  activityPageSize: 20
+  activityPageSize: 20,
+  activityStatuses: []
 };
 
 async function loadFleetAdminSnapshot(): Promise<FleetAdminSnapshot> {
@@ -257,6 +265,9 @@ function App() {
   >({});
   const [trackedRepositoryHistoriesById, setTrackedRepositoryHistoriesById] =
     useState<Record<string, TrackedRepositoryHistoryResponse>>({});
+  const [repositoryActivityFeedsById, setRepositoryActivityFeedsById] = useState<
+    Record<string, RepositoryActivityFeed>
+  >({});
   const [fleetRepositoryActivityQuery, setFleetRepositoryActivityQuery] =
     useState<FleetRepositoryActivityQuery>(defaultFleetRepositoryActivityQuery);
   const fleetInspectorRequestIdRef = useRef(0);
@@ -330,9 +341,26 @@ function App() {
     fleetInspectorSelection?.kind === "plan" && selectedPlanDetail
       ? runDetailsById[selectedPlanDetail.analysisRunId] ?? null
       : null;
+  const selectedRepositoryActivityFeed =
+    fleetInspectorSelection?.kind === "repository"
+      ? repositoryActivityFeedsById[fleetInspectorSelection.id] ??
+        trackedRepositoryHistoriesById[fleetInspectorSelection.id]?.activityFeed ??
+        null
+      : null;
   const selectedRepositoryHistory =
     fleetInspectorSelection?.kind === "repository"
-      ? trackedRepositoryHistoriesById[fleetInspectorSelection.id] ?? null
+      ? (() => {
+          const history = trackedRepositoryHistoriesById[fleetInspectorSelection.id];
+
+          if (!history) {
+            return null;
+          }
+
+          return {
+            ...history,
+            activityFeed: selectedRepositoryActivityFeed ?? history.activityFeed
+          };
+        })()
       : null;
   const selectedRunDetail =
     fleetInspectorSelection?.kind === "run"
@@ -371,27 +399,32 @@ function App() {
     setTrackedRepositories(snapshot.trackedRepositories);
   }
 
-  function repositoryHistoryMatchesQuery(
-    history: TrackedRepositoryHistoryResponse | undefined,
+  function repositoryActivityFeedMatchesQuery(
+    activityFeed: RepositoryActivityFeed | undefined,
     query: FleetRepositoryActivityQuery
   ): boolean {
-    if (!history) {
+    if (!activityFeed) {
       return false;
     }
 
-    if (history.activityFeed.page !== query.activityPage) {
+    if (activityFeed.page !== query.activityPage) {
       return false;
     }
 
-    if (history.activityFeed.pageSize !== query.activityPageSize) {
+    if (activityFeed.pageSize !== query.activityPageSize) {
       return false;
     }
 
-    const appliedKinds = history.activityFeed.appliedKinds;
+    const appliedKinds = activityFeed.appliedKinds;
+    const appliedStatuses = activityFeed.appliedStatuses;
 
     return (
       appliedKinds.length === query.activityKinds.length &&
-      appliedKinds.every((kind, index) => kind === query.activityKinds[index])
+      appliedKinds.every((kind, index) => kind === query.activityKinds[index]) &&
+      appliedStatuses.length === query.activityStatuses.length &&
+      appliedStatuses.every((status, index) => status === query.activityStatuses[index]) &&
+      activityFeed.occurredAfter === query.activityOccurredAfter &&
+      activityFeed.occurredBefore === query.activityOccurredBefore
     );
   }
 
@@ -404,8 +437,10 @@ function App() {
           executionPlanDetailsById[selection.id] && executionPlanEventsById[selection.id]
         );
       case "repository":
-        return repositoryHistoryMatchesQuery(
-          trackedRepositoryHistoriesById[selection.id],
+        return Boolean(trackedRepositoryHistoriesById[selection.id]) &&
+          repositoryActivityFeedMatchesQuery(
+          repositoryActivityFeedsById[selection.id] ??
+            trackedRepositoryHistoriesById[selection.id]?.activityFeed,
           fleetRepositoryActivityQuery
         );
       case "run":
@@ -787,8 +822,10 @@ function App() {
 
     const hasCache =
       selection.kind === "repository"
-        ? repositoryHistoryMatchesQuery(
-            trackedRepositoryHistoriesById[selection.id],
+        ? Boolean(trackedRepositoryHistoriesById[selection.id]) &&
+          repositoryActivityFeedMatchesQuery(
+            repositoryActivityFeedsById[selection.id] ??
+              trackedRepositoryHistoriesById[selection.id]?.activityFeed,
             repositoryQuery
           )
         : hasInspectorCache(selection);
@@ -843,7 +880,10 @@ function App() {
           break;
         }
         case "repository": {
-          const history = await getTrackedRepositoryHistory(selection.id, repositoryQuery);
+          const [history, activityFeed] = await Promise.all([
+            getTrackedRepositoryHistory(selection.id),
+            getTrackedRepositoryActivityFeed(selection.id, repositoryQuery)
+          ]);
 
           if (fleetInspectorRequestIdRef.current !== requestId) {
             return;
@@ -852,6 +892,10 @@ function App() {
           setTrackedRepositoryHistoriesById((current) => ({
             ...current,
             [selection.id]: history
+          }));
+          setRepositoryActivityFeedsById((current) => ({
+            ...current,
+            [selection.id]: activityFeed
           }));
           break;
         }
@@ -897,12 +941,14 @@ function App() {
       return;
     }
 
+    if (fleetInspectorSelection.kind === "repository") {
+      await handleRefreshRepositoryTimeline();
+      return;
+    }
+
     await openFleetInspector(
       fleetInspectorSelection,
-      true,
-      fleetInspectorSelection.kind === "repository"
-        ? fleetRepositoryActivityQuery
-        : undefined
+      true
     );
   }
 
@@ -921,17 +967,96 @@ function App() {
     }));
   }
 
+  function handleRepositoryActivityFiltersChange(input: {
+    activityOccurredAfter: string | null;
+    activityOccurredBefore: string | null;
+    activityStatuses: string[];
+  }) {
+    setFleetRepositoryActivityQuery((current) => ({
+      ...current,
+      activityOccurredAfter: input.activityOccurredAfter,
+      activityOccurredBefore: input.activityOccurredBefore,
+      activityPage: 1,
+      activityStatuses: input.activityStatuses
+    }));
+  }
+
+  async function loadRepositoryActivityFeedForInspector(
+    trackedRepositoryId: string,
+    query: FleetRepositoryActivityQuery,
+    forceRefresh = false
+  ) {
+    const cachedFeed =
+      repositoryActivityFeedsById[trackedRepositoryId] ??
+      trackedRepositoryHistoriesById[trackedRepositoryId]?.activityFeed;
+
+    if (!forceRefresh && repositoryActivityFeedMatchesQuery(cachedFeed, query)) {
+      return;
+    }
+
+    const requestId = fleetInspectorRequestIdRef.current + 1;
+    fleetInspectorRequestIdRef.current = requestId;
+    setIsFleetInspectorLoading(true);
+    setFleetInspectorErrorMessage(null);
+
+    try {
+      const activityFeed = await getTrackedRepositoryActivityFeed(trackedRepositoryId, query);
+
+      if (fleetInspectorRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setRepositoryActivityFeedsById((current) => ({
+        ...current,
+        [trackedRepositoryId]: activityFeed
+      }));
+    } catch (error) {
+      if (fleetInspectorRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setFleetInspectorErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not load the selected repository activity feed."
+      );
+    } finally {
+      if (fleetInspectorRequestIdRef.current === requestId) {
+        setIsFleetInspectorLoading(false);
+      }
+    }
+  }
+
+  async function handleRefreshRepositoryTimeline() {
+    if (fleetInspectorSelection?.kind !== "repository") {
+      return;
+    }
+
+    await loadRepositoryActivityFeedForInspector(
+      fleetInspectorSelection.id,
+      fleetRepositoryActivityQuery,
+      true
+    );
+  }
+
   useEffect(() => {
     if (fleetInspectorSelection?.kind !== "repository") {
       return;
     }
 
-    void openFleetInspector(
-      fleetInspectorSelection,
-      true,
+    if (!trackedRepositoryHistoriesById[fleetInspectorSelection.id]) {
+      return;
+    }
+
+    void loadRepositoryActivityFeedForInspector(
+      fleetInspectorSelection.id,
       fleetRepositoryActivityQuery
     );
-  }, [fleetInspectorSelection, fleetRepositoryActivityQuery]);
+  }, [
+    fleetInspectorSelection,
+    fleetRepositoryActivityQuery,
+    trackedRepositoryHistoriesById
+  ]);
 
   useEffect(() => {
     if (appMode !== "fleet-admin" || fleetStatus) {
@@ -1229,6 +1354,7 @@ function App() {
               }
               onOpenRun={(runId) => void openFleetInspector({ id: runId, kind: "run" })}
               onRefresh={() => void handleRefreshFleetInspector()}
+              onRefreshRepositoryTimeline={() => void handleRefreshRepositoryTimeline()}
               planDetail={selectedPlanDetail}
               planEvents={selectedPlanEvents}
               planRunDetail={selectedPlanRunDetail}
@@ -1236,6 +1362,7 @@ function App() {
               repositoryTimelineQuery={fleetRepositoryActivityQuery}
               runDetail={selectedRunDetail}
               selection={fleetInspectorSelection}
+              onRepositoryTimelineFiltersChange={handleRepositoryActivityFiltersChange}
               onRepositoryTimelineKindsChange={handleRepositoryActivityKindsChange}
               onRepositoryTimelinePageChange={handleRepositoryActivityPageChange}
             />

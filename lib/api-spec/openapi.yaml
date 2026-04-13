@@ -425,6 +425,27 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
+        - name: activityStatuses
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+        - name: activityOccurredAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: activityOccurredBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Tracked repository history.
@@ -432,6 +453,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrackedRepositoryHistoryResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/tracked-repositories/{trackedRepositoryId}/activity:
+    get:
+      operationId: getTrackedRepositoryActivity
+      summary: Read a paged tracked-repository activity feed without reloading repository summary context
+      x-repo-guardian-response-type: RepositoryActivityFeed
+      parameters:
+        - name: trackedRepositoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: activityKinds
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  $ref: "#/components/schemas/RepositoryActivityKind"
+        - name: activityPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: activityPageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: activityStatuses
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+        - name: activityOccurredAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: activityOccurredBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Tracked repository activity feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryActivityFeed"
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "404":

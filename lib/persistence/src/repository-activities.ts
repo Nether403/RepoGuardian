@@ -70,13 +70,19 @@ export class RepositoryActivityRepository {
     kinds?: RepositoryActivityKind[];
     limit?: number;
     offset?: number;
+    occurredAfter?: string | null;
+    occurredBefore?: string | null;
     repositoryFullName: string;
+    statuses?: string[];
   }): Promise<{
     appliedKinds: RepositoryActivityKind[];
+    appliedStatuses: string[];
     availableKinds: RepositoryActivityKind[];
     events: RepositoryActivityEvent[];
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+    occurredAfter: string | null;
+    occurredBefore: string | null;
     page: number;
     pageSize: number;
     totalPages: number;
@@ -88,7 +94,13 @@ export class RepositoryActivityRepository {
     const appliedKinds = (input.kinds ?? []).filter((kind, index, kinds) =>
       repositoryActivityKinds.includes(kind) && kinds.indexOf(kind) === index
     );
+    const appliedStatuses = (input.statuses ?? []).filter(
+      (status, index, statuses) => status.trim().length > 0 && statuses.indexOf(status) === index
+    );
     const kinds = appliedKinds.length > 0 ? appliedKinds : null;
+    const statuses = appliedStatuses.length > 0 ? appliedStatuses : null;
+    const occurredAfter = input.occurredAfter ?? null;
+    const occurredBefore = input.occurredBefore ?? null;
     const queryText = `WITH repository_events AS (
         SELECT
           CONCAT('run:', runs.run_id) AS activity_id,
@@ -220,56 +232,78 @@ export class RepositoryActivityRepository {
         pull_request_url
       FROM repository_events
       WHERE $2::TEXT[] IS NULL OR kind = ANY($2::TEXT[])
+        AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
+        AND ($4::TIMESTAMPTZ IS NULL OR occurred_at >= $4)
+        AND ($5::TIMESTAMPTZ IS NULL OR occurred_at <= $5)
       ORDER BY occurred_at DESC, activity_id DESC
-      LIMIT $3
-      OFFSET $4`;
+      LIMIT $6
+      OFFSET $7`;
     const countQueryText = `WITH repository_events AS (
         SELECT
-          'analysis_run' AS kind
+          'analysis_run' AS kind,
+          runs.created_at AS occurred_at,
+          'snapshot_saved' AS status
         FROM analysis_runs AS runs
         WHERE runs.repository_full_name = $1
 
         UNION ALL
 
         SELECT
-          'analysis_job' AS kind
+          'analysis_job' AS kind,
+          COALESCE(jobs.completed_at, jobs.failed_at, jobs.started_at, jobs.queued_at) AS occurred_at,
+          jobs.status
         FROM analysis_jobs AS jobs
         WHERE jobs.repository_full_name = $1
 
         UNION ALL
 
         SELECT
-          'execution_plan' AS kind
+          'execution_plan' AS kind,
+          COALESCE(plans.completed_at, plans.failed_at, plans.cancelled_at, plans.started_at, plans.created_at) AS occurred_at,
+          plans.status
         FROM execution_plans AS plans
         WHERE plans.repository_full_name = $1
 
         UNION ALL
 
         SELECT
-          'execution_event' AS kind
+          'execution_event' AS kind,
+          audit.created_at AS occurred_at,
+          audit.event_type AS status
         FROM execution_audit_events AS audit
         WHERE audit.repository_full_name = $1
 
         UNION ALL
 
         SELECT
-          'tracked_pull_request' AS kind
+          'tracked_pull_request' AS kind,
+          COALESCE(prs.merged_at, prs.closed_at, prs.updated_at, prs.created_at) AS occurred_at,
+          prs.lifecycle_status AS status
         FROM tracked_pull_requests AS prs
         WHERE prs.repository_full_name = $1
       )
       SELECT COUNT(*)::INT AS total_events
       FROM repository_events
-      WHERE $2::TEXT[] IS NULL OR kind = ANY($2::TEXT[])`;
+      WHERE ($2::TEXT[] IS NULL OR kind = ANY($2::TEXT[]))
+        AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
+        AND ($4::TIMESTAMPTZ IS NULL OR occurred_at >= $4)
+        AND ($5::TIMESTAMPTZ IS NULL OR occurred_at <= $5)`;
     const [result, countResult] = await Promise.all([
       this.client.query<RepositoryActivityRow>(queryText, [
         input.repositoryFullName,
         kinds,
+        statuses,
+        occurredAfter,
+        occurredBefore,
         pageSize,
         offset
       ]),
       this.client.query<{ total_events: number }>(countQueryText, [
         input.repositoryFullName,
-        kinds
+        kinds,
+        statuses,
+        occurredAfter,
+        occurredBefore
       ])
     ]);
     const totalEvents = countResult.rows[0]?.total_events ?? 0;
@@ -277,10 +311,13 @@ export class RepositoryActivityRepository {
 
     return {
       appliedKinds,
+      appliedStatuses,
       availableKinds: repositoryActivityKinds,
       events: result.rows.map(parseRepositoryActivity),
       hasNextPage: offset + result.rows.length < totalEvents,
       hasPreviousPage: offset > 0,
+      occurredAfter,
+      occurredBefore,
       page,
       pageSize,
       totalEvents,

@@ -1109,10 +1109,13 @@ export const RepositoryActivityEventSchema = z.object({
 
 export const RepositoryActivityFeedSchema = z.object({
   appliedKinds: z.array(RepositoryActivityKindSchema),
+  appliedStatuses: z.array(z.string().min(1)),
   availableKinds: z.array(RepositoryActivityKindSchema),
   events: z.array(RepositoryActivityEventSchema),
   hasNextPage: z.boolean(),
   hasPreviousPage: z.boolean(),
+  occurredAfter: z.string().datetime().nullable(),
+  occurredBefore: z.string().datetime().nullable(),
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
   totalPages: z.number().int().nonnegative(),

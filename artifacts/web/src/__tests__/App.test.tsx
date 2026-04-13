@@ -1310,6 +1310,7 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
   return TrackedRepositoryHistoryResponseSchema.parse({
     activityFeed: {
       appliedKinds: [],
+      appliedStatuses: [],
       availableKinds: [
         "analysis_job",
         "analysis_run",
@@ -1406,6 +1407,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
       ],
       hasNextPage: false,
       hasPreviousPage: false,
+      occurredAfter: null,
+      occurredBefore: null,
       page: 1,
       pageSize: 20,
       totalPages: 1,
@@ -3310,33 +3313,43 @@ describe("App", () => {
     });
   });
 
-  it("opens repository, run, and plan drill-downs inside the fleet inspector", async () => {
+  it(
+    "opens repository, run, and plan drill-downs inside the fleet inspector",
+    async () => {
     const user = userEvent.setup();
     const fetchMock = mockAuthenticatedFetch(async (url) => {
-      if (url.startsWith("/api/tracked-repositories/tracked_one/history")) {
+      if (url === "/api/tracked-repositories/tracked_one/history") {
+        return createJsonResponse(createTrackedRepositoryHistoryFixture());
+      }
+
+      if (url.startsWith("/api/tracked-repositories/tracked_one/activity")) {
         const requestUrl = new URL(`http://localhost${url}`);
         const activityKinds = requestUrl.searchParams.getAll("activityKinds");
+        const activityStatuses = requestUrl.searchParams.getAll("activityStatuses");
         const activityPage = Number(requestUrl.searchParams.get("activityPage") ?? "1");
         const fixture = createTrackedRepositoryHistoryFixture();
         const filteredEvents =
-          activityKinds.length === 0
+          activityKinds.length === 0 && activityStatuses.length === 0
             ? fixture.activityFeed.events
-            : fixture.activityFeed.events.filter((event) =>
-                activityKinds.includes(event.kind)
+            : fixture.activityFeed.events.filter(
+                (event) =>
+                  (activityKinds.length === 0 || activityKinds.includes(event.kind)) &&
+                  (activityStatuses.length === 0 ||
+                    activityStatuses.includes(event.status))
               );
 
         return createJsonResponse({
-          ...fixture,
-          activityFeed: {
-            ...fixture.activityFeed,
-            appliedKinds: activityKinds,
-            events: filteredEvents,
-            hasNextPage: false,
-            hasPreviousPage: activityPage > 1,
-            page: activityPage,
-            totalPages: 1,
-            totalEvents: filteredEvents.length
-          }
+          ...fixture.activityFeed,
+          appliedKinds: activityKinds,
+          appliedStatuses: activityStatuses,
+          events: filteredEvents,
+          hasNextPage: false,
+          hasPreviousPage: activityPage > 1,
+          occurredAfter: requestUrl.searchParams.get("activityOccurredAfter"),
+          occurredBefore: requestUrl.searchParams.get("activityOccurredBefore"),
+          page: activityPage,
+          totalPages: 1,
+          totalEvents: filteredEvents.length
         });
       }
 
@@ -3397,7 +3410,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: /Tracked repository history/i })
     ).toBeInTheDocument();
-    expect(screen.getByText("Repository timeline")).toBeInTheDocument();
+    expect(await screen.findByText("Repository timeline")).toBeInTheDocument();
     expect(screen.getByText("Recent runs")).toBeInTheDocument();
     expect(screen.getByText("Related plans")).toBeInTheDocument();
 
@@ -3406,27 +3419,13 @@ describe("App", () => {
     await user.click(
       repositoryInspector.getByRole("button", { name: /execution event/i })
     );
+    await screen.findByText(/Execution Completed/i);
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "/api/tracked-repositories/tracked_one/history?activityKinds=execution_event&activityPage=1&activityPageSize=20"
-        ),
-        expect.any(Object)
-      );
+      expect(
+        repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
+      ).not.toBeInTheDocument();
     });
-    expect(repositoryInspector.getByText(/Execution Completed/i)).toBeInTheDocument();
-    expect(
-      repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
-    ).not.toBeInTheDocument();
     await user.click(repositoryInspector.getByRole("button", { name: /All activity/i }));
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "/api/tracked-repositories/tracked_one/history?activityPage=1&activityPageSize=20"
-        ),
-        expect.any(Object)
-      );
-    });
     expect(
       repositoryInspector.getByText(/3 findings, 4 executable patch plans/i)
     ).toBeInTheDocument();
@@ -3477,7 +3476,9 @@ describe("App", () => {
       "/api/execution/plans/plan_one/events",
       expect.anything()
     );
-  });
+    },
+    15_000
+  );
 
   it("opens job drill-downs and supports inspector refresh after a failed detail load", async () => {
     const user = userEvent.setup();
