@@ -206,6 +206,247 @@ function getPrimaryActivityAction(activity: RepositoryActivityEvent): {
   return null;
 }
 
+function renderTimelineDetailChips(activity: RepositoryActivityEvent) {
+  if (!activity.detail) {
+    return null;
+  }
+
+  return (
+    <div className="trace-chip-row">
+      {activity.detail.findingCount !== null ? (
+        <span className="trace-chip trace-chip-muted">
+          {activity.detail.findingCount} findings
+        </span>
+      ) : null}
+      {activity.detail.executablePatchPlanCount !== null ? (
+        <span className="trace-chip trace-chip-muted">
+          {activity.detail.executablePatchPlanCount} executable
+        </span>
+      ) : null}
+      {activity.detail.blockedPatchPlanCount !== null ? (
+        <span className="trace-chip trace-chip-muted">
+          {activity.detail.blockedPatchPlanCount} blocked
+        </span>
+      ) : null}
+      {activity.detail.branchName ? (
+        <span className="trace-chip trace-chip-muted">{activity.detail.branchName}</span>
+      ) : null}
+      {activity.detail.jobKind ? (
+        <span className="trace-chip trace-chip-muted">{activity.detail.jobKind}</span>
+      ) : null}
+      {activity.detail.actorUserId ? (
+        <span className="trace-chip trace-chip-muted">
+          actor {activity.detail.actorUserId}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function renderTimelineDetailBody(
+  activity: RepositoryActivityEvent,
+  onOpenPlan: (planId: string) => void,
+  onOpenRun: (runId: string) => void
+) {
+  if (!activity.detail) {
+    return null;
+  }
+
+  switch (activity.detail.detailType) {
+    case "analysis_job": {
+      const detail = activity.detail;
+      const linkedRunId = detail.relatedRunId;
+
+      return (
+        <div className="fleet-detail-stack">
+          {detail.jobKind ? <p className="trace-copy">Job kind {detail.jobKind}</p> : null}
+          {detail.queueStage ? (
+            <p className="trace-copy">Queue stage {detail.queueStage}</p>
+          ) : null}
+          {detail.attemptCount !== null || detail.maxAttempts !== null ? (
+            <p className="trace-copy">
+              Attempts {detail.attemptCount ?? 0}
+              {detail.maxAttempts !== null ? ` of ${detail.maxAttempts}` : ""}
+            </p>
+          ) : null}
+          {linkedRunId ? (
+            <div className="fleet-inline-actions">
+              <button
+                className="secondary-button"
+                onClick={() => onOpenRun(linkedRunId)}
+                type="button"
+              >
+                Open linked run
+              </button>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+    case "analysis_run": {
+      const detail = activity.detail;
+      const linkedRunId = detail.relatedRunId;
+
+      return (
+        <div className="fleet-detail-stack">
+          {detail.defaultBranch ? (
+            <p className="trace-copy">Default branch {detail.defaultBranch}</p>
+          ) : null}
+          {detail.totalPatchPlans !== null ? (
+            <p className="trace-copy">Patch plans {detail.totalPatchPlans} total</p>
+          ) : null}
+          {linkedRunId ? (
+            <div className="fleet-inline-actions">
+              <button
+                className="secondary-button"
+                onClick={() => onOpenRun(linkedRunId)}
+                type="button"
+              >
+                Open run
+              </button>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+    case "execution_event": {
+      const detail = activity.detail;
+      const linkedPlanId = detail.relatedPlanId;
+      const linkedRunId = detail.relatedRunId;
+
+      return (
+        <div className="fleet-detail-stack">
+          <p className="trace-copy">
+            Event type {detail.eventType.replace(/_/gu, " ")}
+          </p>
+          {activity.executionId ? (
+            <p className="trace-copy">Execution {activity.executionId}</p>
+          ) : null}
+          {detail.actionType ? (
+            <p className="trace-copy">Action type {detail.actionType}</p>
+          ) : null}
+          {detail.relatedActionId ? (
+            <p className="trace-copy">Action {detail.relatedActionId}</p>
+          ) : null}
+          {detail.previousStatus || detail.nextStatus ? (
+            <p className="trace-copy">
+              Status transition{" "}
+              {[detail.previousStatus, detail.nextStatus]
+                .filter((value): value is string => Boolean(value))
+                .join(" -> ")}
+            </p>
+          ) : null}
+          {detail.succeeded !== null ? (
+            <p className="trace-copy">
+              Outcome {detail.succeeded ? "succeeded" : "failed"}
+            </p>
+          ) : null}
+          {detail.errors && detail.errors.length > 0 ? (
+            <p className="trace-copy">Errors {detail.errors.join("; ")}</p>
+          ) : null}
+          {detail.warnings && detail.warnings.length > 0 ? (
+            <p className="trace-copy">Warnings {detail.warnings.join("; ")}</p>
+          ) : null}
+          <div className="fleet-inline-actions">
+            {linkedPlanId !== null ? (
+              <button
+                className="secondary-button"
+                onClick={() => onOpenPlan(linkedPlanId)}
+                type="button"
+              >
+                Open linked plan
+              </button>
+            ) : null}
+            {linkedRunId !== null ? (
+              <button
+                className="secondary-button"
+                onClick={() => onOpenRun(linkedRunId)}
+                type="button"
+              >
+                Open linked run
+              </button>
+            ) : null}
+          </div>
+          {detail.rawPayload ? (
+            <details className="fleet-raw-detail">
+              <summary>Raw event payload</summary>
+              <pre className="trace-pre">
+                {JSON.stringify(detail.rawPayload, null, 2)}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      );
+    }
+    case "execution_plan": {
+      const detail = activity.detail;
+
+      return (
+        <div className="fleet-detail-stack">
+          {detail.approvalStatus ? (
+            <p className="trace-copy">Approval {detail.approvalStatus}</p>
+          ) : null}
+          {detail.executionResultStatus ? (
+            <p className="trace-copy">Execution result {detail.executionResultStatus}</p>
+          ) : null}
+          {detail.totalSelectionCount !== null ? (
+            <p className="trace-copy">
+              Selections {detail.totalSelectionCount} total
+              {detail.selectedPRCandidateCount !== null
+                ? `, ${detail.selectedPRCandidateCount} PR`
+                : ""}
+              {detail.selectedIssueCandidateCount !== null
+                ? `, ${detail.selectedIssueCandidateCount} issue`
+                : ""}
+            </p>
+          ) : null}
+          {detail.totalActionCount !== null ? (
+            <p className="trace-copy">
+              Actions {detail.totalActionCount} total
+              {detail.eligibleActionCount !== null
+                ? `, ${detail.eligibleActionCount} eligible`
+                : ""}
+              {detail.blockedActionCount !== null
+                ? `, ${detail.blockedActionCount} blocked`
+                : ""}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+    case "tracked_pull_request": {
+      const detail = activity.detail;
+
+      return (
+        <div className="fleet-detail-stack">
+          <p className="trace-copy">
+            PR #{detail.pullRequestNumber} {detail.pullRequestTitle}
+          </p>
+          <p className="trace-copy">Lifecycle {detail.lifecycleStatus}</p>
+          {detail.branchName ? (
+            <p className="trace-copy">Branch {detail.branchName}</p>
+          ) : null}
+          {detail.mergedAt ? (
+            <p className="trace-copy">Merged {formatTimestamp(detail.mergedAt)}</p>
+          ) : null}
+          {detail.closedAt ? (
+            <p className="trace-copy">Closed {formatTimestamp(detail.closedAt)}</p>
+          ) : null}
+        </div>
+      );
+    }
+    case "generic":
+      return activity.detail.rawPayload ? (
+        <details className="fleet-raw-detail">
+          <summary>Raw event payload</summary>
+          <pre className="trace-pre">
+            {JSON.stringify(activity.detail.rawPayload, null, 2)}
+          </pre>
+        </details>
+      ) : null;
+  }
+}
+
 function collectPlanTraceability(planDetail: ExecutionPlanDetailResponse, planRunDetail: GetAnalysisRunResponse | null): {
   findings: Array<CodeReviewFinding | import("@repo-guardian/shared-types").DependencyFinding>;
   issueCandidates: IssueCandidate[];
@@ -613,45 +854,12 @@ export function FleetInspectorPanel({
                           {expandedActivity.summary ? (
                             <p className="trace-copy">{expandedActivity.summary}</p>
                           ) : null}
-                          {expandedActivity.detail ? (
-                            <div className="trace-chip-row">
-                              {expandedActivity.detail.findingCount !== null ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  {expandedActivity.detail.findingCount} findings
-                                </span>
-                              ) : null}
-                              {expandedActivity.detail.executablePatchPlanCount !== null ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  {expandedActivity.detail.executablePatchPlanCount} executable
-                                </span>
-                              ) : null}
-                              {expandedActivity.detail.blockedPatchPlanCount !== null ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  {expandedActivity.detail.blockedPatchPlanCount} blocked
-                                </span>
-                              ) : null}
-                              {expandedActivity.detail.branchName ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  {expandedActivity.detail.branchName}
-                                </span>
-                              ) : null}
-                              {expandedActivity.detail.jobKind ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  {expandedActivity.detail.jobKind}
-                                </span>
-                              ) : null}
-                              {expandedActivity.detail.actorUserId ? (
-                                <span className="trace-chip trace-chip-muted">
-                                  actor {expandedActivity.detail.actorUserId}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {expandedActivity.detail?.auditDetails ? (
-                            <pre className="trace-pre">
-                              {JSON.stringify(expandedActivity.detail.auditDetails, null, 2)}
-                            </pre>
-                          ) : null}
+                          {renderTimelineDetailChips(expandedActivity)}
+                          {renderTimelineDetailBody(
+                            expandedActivity,
+                            onOpenPlan,
+                            onOpenRun
+                          )}
                           <div className="fleet-inline-actions">
                             {primaryAction ? (
                               <button

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AnalyzeRepoResponseSchema,
   CompareAnalysisRunsResponseSchema,
+  RepositoryActivityEventSchema,
   SavedAnalysisRunSummarySchema
 } from "../analyze.js";
 
@@ -250,5 +251,217 @@ describe("analyze schemas", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts typed repository activity detail variants and generic fallbacks", () => {
+    const executionEvent = RepositoryActivityEventSchema.safeParse({
+      actionId: "action_one",
+      activityId: "execution-event:event_one",
+      detail: {
+        actorUserId: "operator_one",
+        actionType: null,
+        blockedPatchPlanCount: null,
+        branchName: null,
+        candidateSelectionCount: null,
+        detailType: "execution_event",
+        errors: [],
+        eventType: "execution_completed",
+        executablePatchPlanCount: null,
+        findingCount: null,
+        jobKind: null,
+        label: null,
+        lifecycleStatus: null,
+        nextStatus: "completed",
+        previousStatus: "executing",
+        rawPayload: {
+          phase: "finalize"
+        },
+        relatedActionId: "action_one",
+        relatedExecutionId: "exec_one",
+        relatedJobId: null,
+        relatedPlanId: "plan_one",
+        relatedRunId: null,
+        relatedTrackedPullRequestId: null,
+        succeeded: true,
+        warnings: []
+      },
+      executionEventId: "event_one",
+      executionId: "exec_one",
+      jobId: null,
+      kind: "execution_event",
+      occurredAt: "2026-04-12T10:08:00.000Z",
+      planId: "plan_one",
+      pullRequestUrl: null,
+      repositoryFullName: "openai/openai-node",
+      runId: null,
+      status: "execution_completed",
+      summary: "Action action_one",
+      title: "Execution Completed",
+      trackedPullRequestId: null
+    });
+
+    const trackedPullRequest = RepositoryActivityEventSchema.safeParse({
+      actionId: null,
+      activityId: "pull-request:tpr_one",
+      detail: {
+        actorUserId: null,
+        blockedPatchPlanCount: null,
+        branchName: "repo-guardian/test-branch",
+        candidateSelectionCount: null,
+        closedAt: null,
+        detailType: "tracked_pull_request",
+        executablePatchPlanCount: null,
+        findingCount: null,
+        jobKind: null,
+        label: "Harden workflow permissions",
+        lifecycleStatus: "open",
+        mergedAt: null,
+        pullRequestNumber: 19,
+        pullRequestTitle: "Harden workflow permissions",
+        pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+        relatedActionId: null,
+        relatedExecutionId: "exec_one",
+        relatedJobId: null,
+        relatedPlanId: "plan_one",
+        relatedRunId: null,
+        relatedTrackedPullRequestId: "tpr_one"
+      },
+      executionEventId: null,
+      executionId: "exec_one",
+      jobId: null,
+      kind: "tracked_pull_request",
+      occurredAt: "2026-04-12T10:08:30.000Z",
+      planId: "plan_one",
+      pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+      repositoryFullName: "openai/openai-node",
+      runId: null,
+      status: "open",
+      summary: "repo-guardian/test-branch",
+      title: "#19 Harden workflow permissions",
+      trackedPullRequestId: "tpr_one"
+    });
+
+    const fallback = RepositoryActivityEventSchema.safeParse({
+      actionId: null,
+      activityId: "job:job_one",
+      detail: {
+        actorUserId: null,
+        blockedPatchPlanCount: null,
+        branchName: null,
+        candidateSelectionCount: null,
+        detailType: "generic",
+        executablePatchPlanCount: null,
+        findingCount: null,
+        jobKind: "analyze_repository",
+        label: "Nightly queue",
+        lifecycleStatus: null,
+        rawEventType: null,
+        rawPayload: {
+          queue: "nightly"
+        },
+        relatedActionId: null,
+        relatedExecutionId: null,
+        relatedJobId: "job_one",
+        relatedPlanId: null,
+        relatedRunId: "run_one",
+        relatedTrackedPullRequestId: null
+      },
+      executionEventId: null,
+      executionId: null,
+      jobId: "job_one",
+      kind: "analysis_job",
+      occurredAt: "2026-04-12T10:04:00.000Z",
+      planId: null,
+      pullRequestUrl: null,
+      repositoryFullName: "openai/openai-node",
+      runId: "run_one",
+      status: "completed",
+      summary: "analyze_repository",
+      title: "Nightly queue",
+      trackedPullRequestId: null
+    });
+
+    const analysisJob = RepositoryActivityEventSchema.safeParse({
+      actionId: null,
+      activityId: "job:job_one",
+      detail: {
+        actorUserId: null,
+        attemptCount: 1,
+        blockedPatchPlanCount: null,
+        branchName: null,
+        candidateSelectionCount: null,
+        detailType: "analysis_job",
+        executablePatchPlanCount: null,
+        findingCount: null,
+        jobKind: "analyze_repository",
+        label: "Nightly queue",
+        lifecycleStatus: null,
+        maxAttempts: 3,
+        queueStage: "finished",
+        relatedActionId: null,
+        relatedExecutionId: null,
+        relatedJobId: "job_one",
+        relatedPlanId: null,
+        relatedRunId: "run_one",
+        relatedTrackedPullRequestId: null
+      },
+      executionEventId: null,
+      executionId: null,
+      jobId: "job_one",
+      kind: "analysis_job",
+      occurredAt: "2026-04-12T10:04:00.000Z",
+      planId: null,
+      pullRequestUrl: null,
+      repositoryFullName: "openai/openai-node",
+      runId: "run_one",
+      status: "completed",
+      summary: "analyze_repository",
+      title: "Nightly queue",
+      trackedPullRequestId: null
+    });
+
+    const analysisRun = RepositoryActivityEventSchema.safeParse({
+      actionId: null,
+      activityId: "run:run_one",
+      detail: {
+        actorUserId: null,
+        blockedPatchPlanCount: 1,
+        branchName: "main",
+        candidateSelectionCount: null,
+        defaultBranch: "main",
+        detailType: "analysis_run",
+        executablePatchPlanCount: 4,
+        findingCount: 3,
+        jobKind: null,
+        label: "Weekly review",
+        lifecycleStatus: null,
+        relatedActionId: null,
+        relatedExecutionId: null,
+        relatedJobId: null,
+        relatedPlanId: null,
+        relatedRunId: "run_one",
+        relatedTrackedPullRequestId: null,
+        totalPatchPlans: 5
+      },
+      executionEventId: null,
+      executionId: null,
+      jobId: null,
+      kind: "analysis_run",
+      occurredAt: "2026-04-12T10:02:00.000Z",
+      planId: null,
+      pullRequestUrl: null,
+      repositoryFullName: "openai/openai-node",
+      runId: "run_one",
+      status: "snapshot_saved",
+      summary: "3 findings, 4 executable patch plans",
+      title: "Weekly review",
+      trackedPullRequestId: null
+    });
+
+    expect(executionEvent.success).toBe(true);
+    expect(trackedPullRequest.success).toBe(true);
+    expect(fallback.success).toBe(true);
+    expect(analysisJob.success).toBe(true);
+    expect(analysisRun.success).toBe(true);
   });
 });

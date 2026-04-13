@@ -212,11 +212,11 @@ function createRepositoryActivity(overrides: Record<string, unknown> = {}) {
     activityId: "run:run_one",
     detail: {
       actorUserId: null,
-      auditDetails: null,
-      auditEventType: null,
       blockedPatchPlanCount: 0,
-      branchName: null,
+      branchName: "main",
       candidateSelectionCount: null,
+      defaultBranch: "main",
+      detailType: "analysis_run",
       executablePatchPlanCount: 2,
       findingCount: 1,
       jobKind: null,
@@ -227,7 +227,8 @@ function createRepositoryActivity(overrides: Record<string, unknown> = {}) {
       relatedJobId: null,
       relatedPlanId: null,
       relatedRunId: "run_one",
-      relatedTrackedPullRequestId: null
+      relatedTrackedPullRequestId: null,
+      totalPatchPlans: 2
     },
     executionEventId: null,
     executionId: null,
@@ -626,22 +627,29 @@ describe("fleet routes", () => {
           activityId: "plan:plan_one",
           detail: {
             actorUserId: null,
-            auditDetails: null,
-            auditEventType: null,
+            approvalStatus: "required",
+            blockedActionCount: 0,
             blockedPatchPlanCount: null,
             branchName: null,
             candidateSelectionCount: 1,
+            detailType: "execution_plan",
+            eligibleActionCount: 1,
+            executionResultStatus: null,
             executablePatchPlanCount: null,
             findingCount: null,
             jobKind: null,
             label: null,
-            lifecycleStatus: null,
+            lifecycleStatus: "planned",
             relatedActionId: null,
             relatedExecutionId: "exec_one",
             relatedJobId: null,
             relatedPlanId: "plan_one",
             relatedRunId: "run_one",
-            relatedTrackedPullRequestId: null
+            relatedTrackedPullRequestId: null,
+            selectedIssueCandidateCount: 0,
+            selectedPRCandidateCount: 1,
+            totalActionCount: 1,
+            totalSelectionCount: 1
           },
           executionId: "exec_one",
           kind: "execution_plan",
@@ -937,25 +945,32 @@ describe("fleet routes", () => {
         activityId: "execution-event:event_one",
         detail: {
           actorUserId: "operator_one",
-          auditDetails: {
-            phase: "finalize",
-            result: "merged"
-          },
-          auditEventType: "execution_completed",
+          actionType: null,
           blockedPatchPlanCount: null,
           branchName: null,
           candidateSelectionCount: null,
+          detailType: "execution_event",
+          errors: [],
+          eventType: "execution_completed",
           executablePatchPlanCount: null,
           findingCount: null,
           jobKind: null,
           label: null,
           lifecycleStatus: null,
+          nextStatus: "completed",
+          previousStatus: null,
+          rawPayload: {
+            phase: "finalize",
+            result: "merged"
+          },
           relatedActionId: "action_one",
           relatedExecutionId: "exec_one",
           relatedJobId: null,
           relatedPlanId: "plan_one",
           relatedRunId: null,
-          relatedTrackedPullRequestId: null
+          relatedTrackedPullRequestId: null,
+          succeeded: null,
+          warnings: []
         },
         executionEventId: "event_one",
         executionId: "exec_one",
@@ -999,7 +1014,8 @@ describe("fleet routes", () => {
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
     expect(response.status).toBe(200);
-    expect(response.body.detail.auditDetails).toEqual({
+    expect(response.body.detail.detailType).toBe("execution_event");
+    expect(response.body.detail.rawPayload).toEqual({
       phase: "finalize",
       result: "merged"
     });

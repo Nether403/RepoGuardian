@@ -1385,6 +1385,17 @@ code {
   white-space: pre-wrap;
 }
 
+.fleet-detail-stack {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.fleet-raw-detail summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .trace-meta-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }

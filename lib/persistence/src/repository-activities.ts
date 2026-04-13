@@ -17,12 +17,19 @@ type RepositoryActivityRow = QueryResultRow & {
   action_id: string | null;
   activity_id: string;
   actor_user_id: string | null;
+  approval_status: string | null;
+  attempt_count: number | null;
   audit_details: unknown;
   blocked_patch_plan_count: number | null;
+  blocked_action_count: number | null;
   branch_name: string | null;
   candidate_selection_count: number | null;
+  closed_at: Date | string | null;
+  default_branch: string | null;
+  eligible_action_count: number | null;
   execution_event_id: string | null;
   execution_id: string | null;
+  execution_result_status: string | null;
   executable_patch_plan_count: number | null;
   finding_count: number | null;
   job_id: string | null;
@@ -30,14 +37,22 @@ type RepositoryActivityRow = QueryResultRow & {
   kind: RepositoryActivityKind;
   label: string | null;
   lifecycle_status: string | null;
+  max_attempts: number | null;
+  merged_at: Date | string | null;
   occurred_at: Date | string;
   plan_id: string | null;
+  pull_request_number: number | null;
+  pull_request_title: string | null;
   pull_request_url: string | null;
   repository_full_name: string;
   run_id: string | null;
+  selected_issue_candidate_count: number | null;
+  selected_pr_candidate_count: number | null;
   status: string;
   summary: string | null;
   title: string;
+  total_action_count: number | null;
+  total_patch_plans: number | null;
   tracked_pull_request_id: string | null;
 };
 
@@ -58,8 +73,23 @@ const repositoryEventsCteSql = `WITH repository_events AS (
       NULL::TEXT AS execution_id,
       NULL::TEXT AS action_id,
       NULL::TEXT AS actor_user_id,
+      NULL::TEXT AS approval_status,
+      NULL::INT AS attempt_count,
       NULL::JSONB AS audit_details,
+      NULL::INT AS blocked_action_count,
+      NULL::TIMESTAMPTZ AS closed_at,
+      runs.default_branch,
+      NULL::INT AS eligible_action_count,
+      NULL::TEXT AS execution_result_status,
+      NULL::TIMESTAMPTZ AS merged_at,
+      NULL::INT AS max_attempts,
+      NULL::INT AS pull_request_number,
+      NULL::TEXT AS pull_request_title,
       NULL::TEXT AS pull_request_url,
+      NULL::INT AS selected_issue_candidate_count,
+      NULL::INT AS selected_pr_candidate_count,
+      NULL::INT AS total_action_count,
+      (runs.executable_patch_plans + runs.blocked_patch_plans) AS total_patch_plans,
       runs.total_findings AS finding_count,
       runs.executable_patch_plans AS executable_patch_plan_count,
       runs.blocked_patch_plans AS blocked_patch_plan_count,
@@ -89,8 +119,23 @@ const repositoryEventsCteSql = `WITH repository_events AS (
       NULL::TEXT AS execution_id,
       NULL::TEXT AS action_id,
       NULL::TEXT AS actor_user_id,
+      NULL::TEXT AS approval_status,
+      jobs.attempt_count,
       NULL::JSONB AS audit_details,
+      NULL::INT AS blocked_action_count,
+      NULL::TIMESTAMPTZ AS closed_at,
+      NULL::TEXT AS default_branch,
+      NULL::INT AS eligible_action_count,
+      NULL::TEXT AS execution_result_status,
+      NULL::TIMESTAMPTZ AS merged_at,
+      jobs.max_attempts,
+      NULL::INT AS pull_request_number,
+      NULL::TEXT AS pull_request_title,
       NULL::TEXT AS pull_request_url,
+      NULL::INT AS selected_issue_candidate_count,
+      NULL::INT AS selected_pr_candidate_count,
+      NULL::INT AS total_action_count,
+      NULL::INT AS total_patch_plans,
       NULL::INT AS finding_count,
       NULL::INT AS executable_patch_plan_count,
       NULL::INT AS blocked_patch_plan_count,
@@ -124,8 +169,35 @@ const repositoryEventsCteSql = `WITH repository_events AS (
       attempts.execution_id,
       NULL::TEXT AS action_id,
       NULL::TEXT AS actor_user_id,
+      plans.approval_status,
+      NULL::INT AS attempt_count,
       NULL::JSONB AS audit_details,
+      CASE
+        WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'blockedActions'
+          THEN (plans.summary_payload->>'blockedActions')::INT
+        ELSE NULL
+      END AS blocked_action_count,
+      NULL::TIMESTAMPTZ AS closed_at,
+      NULL::TEXT AS default_branch,
+      CASE
+        WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'eligibleActions'
+          THEN (plans.summary_payload->>'eligibleActions')::INT
+        ELSE NULL
+      END AS eligible_action_count,
+      attempts.status AS execution_result_status,
+      NULL::TIMESTAMPTZ AS merged_at,
+      NULL::INT AS max_attempts,
+      NULL::INT AS pull_request_number,
+      NULL::TEXT AS pull_request_title,
       NULL::TEXT AS pull_request_url,
+      plans.selected_issue_candidate_count,
+      plans.selected_pr_candidate_count,
+      CASE
+        WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'totalActions'
+          THEN (plans.summary_payload->>'totalActions')::INT
+        ELSE NULL
+      END AS total_action_count,
+      NULL::INT AS total_patch_plans,
       NULL::INT AS finding_count,
       NULL::INT AS executable_patch_plan_count,
       NULL::INT AS blocked_patch_plan_count,
@@ -160,8 +232,23 @@ const repositoryEventsCteSql = `WITH repository_events AS (
       audit.execution_id,
       audit.action_id,
       audit.actor_user_id,
+      NULL::TEXT AS approval_status,
+      NULL::INT AS attempt_count,
       audit.details AS audit_details,
+      NULL::INT AS blocked_action_count,
+      NULL::TIMESTAMPTZ AS closed_at,
+      NULL::TEXT AS default_branch,
+      NULL::INT AS eligible_action_count,
+      NULL::TEXT AS execution_result_status,
+      NULL::TIMESTAMPTZ AS merged_at,
+      NULL::INT AS max_attempts,
+      NULL::INT AS pull_request_number,
+      NULL::TEXT AS pull_request_title,
       NULL::TEXT AS pull_request_url,
+      NULL::INT AS selected_issue_candidate_count,
+      NULL::INT AS selected_pr_candidate_count,
+      NULL::INT AS total_action_count,
+      NULL::INT AS total_patch_plans,
       NULL::INT AS finding_count,
       NULL::INT AS executable_patch_plan_count,
       NULL::INT AS blocked_patch_plan_count,
@@ -191,8 +278,23 @@ const repositoryEventsCteSql = `WITH repository_events AS (
       prs.execution_id,
       NULL::TEXT AS action_id,
       NULL::TEXT AS actor_user_id,
+      NULL::TEXT AS approval_status,
+      NULL::INT AS attempt_count,
       NULL::JSONB AS audit_details,
+      NULL::INT AS blocked_action_count,
+      prs.closed_at,
+      NULL::TEXT AS default_branch,
+      NULL::INT AS eligible_action_count,
+      NULL::TEXT AS execution_result_status,
+      prs.merged_at,
+      NULL::INT AS max_attempts,
+      prs.pull_request_number,
+      prs.title AS pull_request_title,
       prs.pull_request_url,
+      NULL::INT AS selected_issue_candidate_count,
+      NULL::INT AS selected_pr_candidate_count,
+      NULL::INT AS total_action_count,
+      NULL::INT AS total_patch_plans,
       NULL::INT AS finding_count,
       NULL::INT AS executable_patch_plan_count,
       NULL::INT AS blocked_patch_plan_count,
@@ -220,8 +322,23 @@ const repositoryActivitySelectColumnsSql = `activity_id,
       execution_id,
       action_id,
       actor_user_id,
+      approval_status,
+      attempt_count,
       audit_details,
+      blocked_action_count,
+      closed_at,
+      default_branch,
+      eligible_action_count,
+      execution_result_status,
+      merged_at,
+      max_attempts,
+      pull_request_number,
+      pull_request_title,
       pull_request_url,
+      selected_issue_candidate_count,
+      selected_pr_candidate_count,
+      total_action_count,
+      total_patch_plans,
       finding_count,
       executable_patch_plan_count,
       blocked_patch_plan_count,
@@ -297,32 +414,248 @@ function formatExecutionEventTitle(eventType: string): string {
     .join(" ");
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const items = value.filter(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+  );
+
+  return items;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function createGenericActivityDetail(
+  row: RepositoryActivityRow,
+  rawPayload: Record<string, unknown> | null
+) {
+  return {
+    actorUserId: row.actor_user_id,
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name,
+    candidateSelectionCount: row.candidate_selection_count,
+    detailType: "generic" as const,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status,
+    rawEventType: row.kind === "execution_event" ? row.status : null,
+    rawPayload,
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id
+  };
+}
+
+function createExecutionEventDetail(row: RepositoryActivityRow) {
+  const rawPayload = asRecord(row.audit_details);
+  const eventType = asString(row.status);
+
+  if (
+    !eventType ||
+    ![
+      "execution_started",
+      "action_started",
+      "action_succeeded",
+      "action_failed",
+      "execution_completed",
+      "execution_failed",
+      "plan_expired"
+    ].includes(eventType)
+  ) {
+    return createGenericActivityDetail(row, rawPayload);
+  }
+
+  return {
+    actorUserId: row.actor_user_id,
+    actionType: asString(rawPayload?.actionType),
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name,
+    candidateSelectionCount: row.candidate_selection_count,
+    detailType: "execution_event" as const,
+    errors: asStringArray(rawPayload?.errors),
+    eventType,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status,
+    nextStatus:
+      asString(rawPayload?.status) ??
+      (eventType === "execution_started" || eventType === "execution_completed" || eventType === "execution_failed"
+        ? row.status
+        : null),
+    previousStatus: asString(rawPayload?.previousStatus),
+    rawPayload,
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id,
+    succeeded: asBoolean(rawPayload?.succeeded),
+    warnings: asStringArray(rawPayload?.warnings)
+  };
+}
+
+function createAnalysisJobDetail(row: RepositoryActivityRow) {
+  return {
+    actorUserId: row.actor_user_id,
+    attemptCount: row.attempt_count,
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name,
+    candidateSelectionCount: row.candidate_selection_count,
+    detailType: "analysis_job" as const,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status,
+    maxAttempts: row.max_attempts,
+    queueStage:
+      row.status === "queued"
+        ? "queued"
+        : row.status === "running"
+          ? "running"
+          : "finished",
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id
+  };
+}
+
+function createAnalysisRunDetail(row: RepositoryActivityRow) {
+  return {
+    actorUserId: row.actor_user_id,
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name ?? row.default_branch,
+    candidateSelectionCount: row.candidate_selection_count,
+    defaultBranch: row.default_branch,
+    detailType: "analysis_run" as const,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status,
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id,
+    totalPatchPlans: row.total_patch_plans
+  };
+}
+
+function createExecutionPlanDetail(row: RepositoryActivityRow) {
+  return {
+    actorUserId: row.actor_user_id,
+    approvalStatus: row.approval_status,
+    blockedActionCount: row.blocked_action_count,
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name,
+    candidateSelectionCount: row.candidate_selection_count,
+    detailType: "execution_plan" as const,
+    eligibleActionCount: row.eligible_action_count,
+    executionResultStatus:
+      row.execution_result_status === "completed" || row.execution_result_status === "failed"
+        ? row.execution_result_status
+        : null,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status ?? row.status,
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id,
+    selectedIssueCandidateCount: row.selected_issue_candidate_count,
+    selectedPRCandidateCount: row.selected_pr_candidate_count,
+    totalActionCount: row.total_action_count,
+    totalSelectionCount:
+      row.selected_issue_candidate_count !== null || row.selected_pr_candidate_count !== null
+        ? (row.selected_issue_candidate_count ?? 0) + (row.selected_pr_candidate_count ?? 0)
+        : null
+  };
+}
+
+function createTrackedPullRequestDetail(row: RepositoryActivityRow) {
+  if (!row.pull_request_number || !row.pull_request_title || !row.lifecycle_status) {
+    return createGenericActivityDetail(row, asRecord(row.audit_details));
+  }
+
+  return {
+    actorUserId: row.actor_user_id,
+    blockedPatchPlanCount: row.blocked_patch_plan_count,
+    branchName: row.branch_name,
+    candidateSelectionCount: row.candidate_selection_count,
+    closedAt: row.closed_at ? toIsoString(row.closed_at) : null,
+    detailType: "tracked_pull_request" as const,
+    executablePatchPlanCount: row.executable_patch_plan_count,
+    findingCount: row.finding_count,
+    jobKind: row.job_kind,
+    label: row.label,
+    lifecycleStatus: row.lifecycle_status as "open" | "closed" | "merged",
+    mergedAt: row.merged_at ? toIsoString(row.merged_at) : null,
+    pullRequestNumber: row.pull_request_number,
+    pullRequestTitle: row.pull_request_title,
+    pullRequestUrl: row.pull_request_url,
+    relatedActionId: row.action_id,
+    relatedExecutionId: row.execution_id,
+    relatedJobId: row.job_id,
+    relatedPlanId: row.plan_id,
+    relatedRunId: row.run_id,
+    relatedTrackedPullRequestId: row.tracked_pull_request_id
+  };
+}
+
+function createRepositoryActivityDetail(row: RepositoryActivityRow) {
+  switch (row.kind) {
+    case "analysis_job":
+      return createAnalysisJobDetail(row);
+    case "analysis_run":
+      return createAnalysisRunDetail(row);
+    case "execution_event":
+      return createExecutionEventDetail(row);
+    case "execution_plan":
+      return createExecutionPlanDetail(row);
+    case "tracked_pull_request":
+      return createTrackedPullRequestDetail(row);
+    default:
+      return createGenericActivityDetail(row, asRecord(row.audit_details));
+  }
+}
+
 function parseRepositoryActivity(row: RepositoryActivityRow): RepositoryActivityEvent {
   return RepositoryActivityEventSchema.parse({
     actionId: row.action_id,
     activityId: row.activity_id,
-    detail: {
-      actorUserId: row.actor_user_id,
-      auditDetails:
-        row.audit_details && typeof row.audit_details === "object"
-          ? (row.audit_details as Record<string, unknown>)
-          : null,
-      auditEventType: row.kind === "execution_event" ? row.status : null,
-      blockedPatchPlanCount: row.blocked_patch_plan_count,
-      branchName: row.branch_name,
-      candidateSelectionCount: row.candidate_selection_count,
-      executablePatchPlanCount: row.executable_patch_plan_count,
-      findingCount: row.finding_count,
-      jobKind: row.job_kind,
-      label: row.label,
-      lifecycleStatus: row.lifecycle_status,
-      relatedActionId: row.action_id,
-      relatedExecutionId: row.execution_id,
-      relatedJobId: row.job_id,
-      relatedPlanId: row.plan_id,
-      relatedRunId: row.run_id,
-      relatedTrackedPullRequestId: row.tracked_pull_request_id
-    },
+    detail: createRepositoryActivityDetail(row),
     executionEventId: row.execution_event_id,
     executionId: row.execution_id,
     jobId: row.job_id,

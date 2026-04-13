@@ -1328,25 +1328,32 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           activityId: "execution-event:event_one",
           detail: {
             actorUserId: "operator_one",
-            auditDetails: {
-              phase: "finalize",
-              result: "merged"
-            },
-            auditEventType: "execution_completed",
+            actionType: null,
             blockedPatchPlanCount: null,
             branchName: null,
             candidateSelectionCount: null,
+            detailType: "execution_event",
+            errors: [],
+            eventType: "execution_completed",
             executablePatchPlanCount: null,
             findingCount: null,
             jobKind: null,
             label: null,
             lifecycleStatus: null,
+            nextStatus: "completed",
+            previousStatus: null,
+            rawPayload: {
+              phase: "finalize",
+              result: "merged"
+            },
             relatedActionId: "action_one",
             relatedExecutionId: "exec_one",
             relatedJobId: null,
             relatedPlanId: "plan_one",
             relatedRunId: null,
-            relatedTrackedPullRequestId: null
+            relatedTrackedPullRequestId: null,
+            succeeded: null,
+            warnings: []
           },
           executionEventId: "event_one",
           executionId: "exec_one",
@@ -1367,16 +1374,20 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           activityId: "pull-request:tpr_one",
           detail: {
             actorUserId: null,
-            auditDetails: null,
-            auditEventType: null,
             blockedPatchPlanCount: null,
             branchName: "repo-guardian/test-branch",
             candidateSelectionCount: null,
+            closedAt: null,
+            detailType: "tracked_pull_request",
             executablePatchPlanCount: null,
             findingCount: null,
             jobKind: null,
             label: "Harden workflow permissions",
             lifecycleStatus: "open",
+            mergedAt: null,
+            pullRequestNumber: 19,
+            pullRequestTitle: "Harden workflow permissions",
+            pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
             relatedActionId: null,
             relatedExecutionId: "exec_one",
             relatedJobId: null,
@@ -1403,11 +1414,14 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           activityId: "plan:plan_one",
           detail: {
             actorUserId: null,
-            auditDetails: null,
-            auditEventType: null,
+            approvalStatus: "granted",
+            blockedActionCount: 0,
             blockedPatchPlanCount: 0,
             branchName: null,
             candidateSelectionCount: 1,
+            detailType: "execution_plan",
+            eligibleActionCount: 1,
+            executionResultStatus: "completed",
             executablePatchPlanCount: 1,
             findingCount: null,
             jobKind: null,
@@ -1418,7 +1432,11 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
             relatedJobId: null,
             relatedPlanId: "plan_one",
             relatedRunId: "run_one",
-            relatedTrackedPullRequestId: null
+            relatedTrackedPullRequestId: null,
+            selectedIssueCandidateCount: 0,
+            selectedPRCandidateCount: 1,
+            totalActionCount: 1,
+            totalSelectionCount: 1
           },
           executionEventId: null,
           executionId: "exec_one",
@@ -1439,16 +1457,18 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           activityId: "job:job_one",
           detail: {
             actorUserId: null,
-            auditDetails: null,
-            auditEventType: null,
+            attemptCount: 1,
             blockedPatchPlanCount: null,
             branchName: null,
             candidateSelectionCount: null,
+            detailType: "analysis_job",
             executablePatchPlanCount: null,
             findingCount: null,
             jobKind: "analyze_repository",
             label: "Nightly queue",
             lifecycleStatus: null,
+            maxAttempts: 3,
+            queueStage: "finished",
             relatedActionId: null,
             relatedExecutionId: null,
             relatedJobId: "job_one",
@@ -1475,11 +1495,11 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
           activityId: "run:run_one",
           detail: {
             actorUserId: null,
-            auditDetails: null,
-            auditEventType: null,
             blockedPatchPlanCount: 1,
             branchName: "main",
             candidateSelectionCount: null,
+            defaultBranch: "main",
+            detailType: "analysis_run",
             executablePatchPlanCount: 4,
             findingCount: 3,
             jobKind: null,
@@ -1490,7 +1510,8 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
             relatedJobId: null,
             relatedPlanId: null,
             relatedRunId: "run_one",
-            relatedTrackedPullRequestId: null
+            relatedTrackedPullRequestId: null,
+            totalPatchPlans: 5
           },
           executionEventId: null,
           executionId: null,
@@ -3563,6 +3584,9 @@ describe("App", () => {
       ).not.toBeInTheDocument();
     });
     expect(await screen.findByText(/actor operator_one/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Event type execution completed/i)).toBeInTheDocument();
+    expect(repositoryInspector.getByText(/Status transition completed/i)).toBeInTheDocument();
+    expect(repositoryInspector.getByText(/Raw event payload/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(
         repositoryInspector.queryByText(/3 findings, 4 executable patch plans/i)
@@ -3570,8 +3594,23 @@ describe("App", () => {
     });
     await user.click(repositoryInspector.getByRole("button", { name: /All activity/i }));
     expect(
-      repositoryInspector.getByText(/3 findings, 4 executable patch plans/i)
+      await repositoryInspector.findByText(/3 findings, 4 executable patch plans/i)
     ).toBeInTheDocument();
+    await user.selectOptions(repositoryInspector.getByLabelText("Depth"), "detail");
+    await user.click(repositoryInspector.getByRole("button", { name: /Apply filters/i }));
+    expect(await repositoryInspector.findByText(/Approval granted/i)).toBeInTheDocument();
+    expect(
+      repositoryInspector.getByText(/PR #19 Harden workflow permissions/i)
+    ).toBeInTheDocument();
+    expect(
+      repositoryInspector.getByText(/Lifecycle open/i)
+    ).toBeInTheDocument();
+    expect(await repositoryInspector.findByText(/Default branch main/i)).toBeInTheDocument();
+    expect(await repositoryInspector.findByText(/Patch plans 5 total/i)).toBeInTheDocument();
+    expect(
+      await repositoryInspector.findByText(/Job kind analyze_repository/i)
+    ).toBeInTheDocument();
+    expect(await repositoryInspector.findByText(/Queue stage finished/i)).toBeInTheDocument();
     expect(
       repositoryInspector.getAllByRole("link", { name: /Open GitHub PR/i }).length
     ).toBeGreaterThan(0);

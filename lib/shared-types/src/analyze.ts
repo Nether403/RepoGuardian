@@ -1145,6 +1145,21 @@ export const RepositoryExecutionEventDetailSchema =
     warnings: z.array(z.string().min(1)).nullable()
   });
 
+export const RepositoryAnalysisJobActivityDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    attemptCount: z.number().int().nonnegative().nullable(),
+    detailType: z.literal("analysis_job"),
+    maxAttempts: z.number().int().positive().nullable(),
+    queueStage: z.enum(["queued", "running", "finished"]).nullable()
+  });
+
+export const RepositoryAnalysisRunActivityDetailSchema =
+  RepositoryActivityDetailBaseSchema.extend({
+    defaultBranch: z.string().min(1).nullable(),
+    detailType: z.literal("analysis_run"),
+    totalPatchPlans: z.number().int().nonnegative().nullable()
+  });
+
 export const RepositoryExecutionPlanActivityDetailSchema =
   RepositoryActivityDetailBaseSchema.extend({
     approvalStatus: ApprovalStatusSchema.nullable(),
@@ -1177,6 +1192,8 @@ export const RepositoryGenericActivityDetailSchema =
   });
 
 export const RepositoryActivityDetailSchema = z.discriminatedUnion("detailType", [
+  RepositoryAnalysisJobActivityDetailSchema,
+  RepositoryAnalysisRunActivityDetailSchema,
   RepositoryExecutionEventDetailSchema,
   RepositoryExecutionPlanActivityDetailSchema,
   RepositoryTrackedPullRequestActivityDetailSchema,
@@ -1617,6 +1634,12 @@ export type RepositoryExecutionEventType = z.infer<
 >;
 export type RepositoryExecutionEventDetail = z.infer<
   typeof RepositoryExecutionEventDetailSchema
+>;
+export type RepositoryAnalysisJobActivityDetail = z.infer<
+  typeof RepositoryAnalysisJobActivityDetailSchema
+>;
+export type RepositoryAnalysisRunActivityDetail = z.infer<
+  typeof RepositoryAnalysisRunActivityDetailSchema
 >;
 export type RepositoryExecutionPlanActivityDetail = z.infer<
   typeof RepositoryExecutionPlanActivityDetailSchema
