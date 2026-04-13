@@ -1099,6 +1099,11 @@ export const RepositoryActivityCursorDirectionSchema = z.enum([
   "previous"
 ]);
 
+export const RepositoryTimelineExpansionModeSchema = z.enum([
+  "summary",
+  "detail"
+]);
+
 export const RepositoryActivityDetailSchema = z.object({
   auditEventType: z.string().min(1).nullable(),
   blockedPatchPlanCount: z.number().int().nonnegative().nullable(),
@@ -1155,6 +1160,25 @@ export const RepositoryActivityFeedSchema = z.object({
   previousCursor: z.string().min(1).nullable(),
   totalPages: z.number().int().nonnegative(),
   totalEvents: z.number().int().nonnegative()
+});
+
+export const RepositoryTimelinePageSchema = z.object({
+  appliedCursor: z.string().min(1).nullable(),
+  appliedCursorDirection: RepositoryActivityCursorDirectionSchema,
+  appliedKinds: z.array(RepositoryActivityKindSchema),
+  appliedSortPreset: RepositoryActivitySortPresetSchema,
+  appliedStatuses: z.array(z.string().min(1)),
+  availableKinds: z.array(RepositoryActivityKindSchema),
+  events: z.array(RepositoryActivityEventSchema),
+  expansionMode: RepositoryTimelineExpansionModeSchema,
+  hasNextPage: z.boolean(),
+  hasPreviousPage: z.boolean(),
+  limit: z.number().int().positive(),
+  nextCursor: z.string().min(1).nullable(),
+  occurredAfter: z.string().datetime().nullable(),
+  occurredBefore: z.string().datetime().nullable(),
+  previousCursor: z.string().min(1).nullable(),
+  returnedCount: z.number().int().nonnegative()
 });
 
 export const TrackedRepositoryHistoryResponseSchema = z.object({
@@ -1529,6 +1553,10 @@ export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;
 export type RepositoryActivityEvent = z.infer<typeof RepositoryActivityEventSchema>;
 export type RepositoryActivityFeed = z.infer<typeof RepositoryActivityFeedSchema>;
+export type RepositoryTimelineExpansionMode = z.infer<
+  typeof RepositoryTimelineExpansionModeSchema
+>;
+export type RepositoryTimelinePage = z.infer<typeof RepositoryTimelinePageSchema>;
 export type TrackedRepositoryHistoryResponse = z.infer<
   typeof TrackedRepositoryHistoryResponseSchema
 >;

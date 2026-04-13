@@ -10,8 +10,8 @@ import type {
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
   GetAnalysisRunResponse,
-  RepositoryActivityFeed,
   RepositoryActivityKind,
+  RepositoryTimelinePage,
   SavedAnalysisRunSummary,
   SweepSchedule,
   TrackedRepositoryHistoryResponse,
@@ -19,7 +19,8 @@ import type {
 } from "@repo-guardian/shared-types";
 import {
   RepositoryActivityCursorDirectionSchema,
-  RepositoryActivitySortPresetSchema
+  RepositoryActivitySortPresetSchema,
+  RepositoryTimelineExpansionModeSchema
 } from "@repo-guardian/shared-types";
 import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
 import { AppModeToggle } from "./components/AppModeToggle";
@@ -73,8 +74,8 @@ import {
   getAnalysisJob,
   getExecutionPlanDetail,
   getFleetStatus,
-  getTrackedRepositoryActivityFeed,
   getTrackedRepositoryHistory,
+  getTrackedRepositoryTimeline,
   listAnalysisJobs,
   listExecutionPlanEvents,
   listSweepSchedules,
@@ -107,12 +108,12 @@ type FleetAdminSnapshot = {
 type FleetRepositoryActivityQuery = {
   activityCursor: string | null;
   activityCursorDirection: "next" | "previous";
-  activityIncludeDetails: boolean;
   activityKinds: RepositoryActivityKind[];
+  activityExpansionMode: "summary" | "detail";
+  activityLimit: number;
   activityOccurredAfter: string | null;
   activityOccurredBefore: string | null;
   activityPage: number;
-  activityPageSize: number;
   activitySortPreset: "newest_first" | "oldest_first";
   activityStatuses: string[];
 };
@@ -123,17 +124,20 @@ const fleetRepositoryActivitySortPresets = [
 const fleetRepositoryActivityCursorDirections = [
   ...RepositoryActivityCursorDirectionSchema.options
 ] as const;
+const fleetRepositoryTimelineExpansionModes = [
+  ...RepositoryTimelineExpansionModeSchema.options
+] as const;
 const fleetRepositoryActivityStorageKey = "repo-guardian-fleet-activity-query";
 
 const defaultFleetRepositoryActivityQuery: FleetRepositoryActivityQuery = {
   activityCursor: null,
   activityCursorDirection: "next",
-  activityIncludeDetails: true,
+  activityExpansionMode: "detail",
   activityKinds: [],
+  activityLimit: 20,
   activityOccurredAfter: null,
   activityOccurredBefore: null,
   activityPage: 1,
-  activityPageSize: 20,
   activitySortPreset: "newest_first",
   activityStatuses: []
 };
@@ -146,7 +150,10 @@ function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
       return defaultFleetRepositoryActivityQuery;
     }
 
-    const parsed = JSON.parse(stored) as Partial<FleetRepositoryActivityQuery>;
+    const parsed = JSON.parse(stored) as Partial<FleetRepositoryActivityQuery> & {
+      activityIncludeDetails?: boolean;
+      activityPageSize?: number;
+    };
     const activityKinds = Array.isArray(parsed.activityKinds)
       ? parsed.activityKinds.filter((kind): kind is RepositoryActivityKind =>
           typeof kind === "string"
@@ -169,11 +176,24 @@ function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
       )
         ? (parsed.activityCursorDirection ?? "next")
         : "next",
-      activityIncludeDetails:
-        typeof parsed.activityIncludeDetails === "boolean"
-          ? parsed.activityIncludeDetails
-          : true,
+      activityExpansionMode: fleetRepositoryTimelineExpansionModes.includes(
+        parsed.activityExpansionMode ?? "detail"
+      )
+        ? (parsed.activityExpansionMode ?? "detail")
+        : parsed.activityIncludeDetails === false
+          ? "summary"
+        : "detail",
       activityKinds,
+      activityLimit:
+        typeof parsed.activityLimit === "number" &&
+        parsed.activityLimit >= 1 &&
+        parsed.activityLimit <= 100
+          ? Math.floor(parsed.activityLimit)
+          : typeof parsed.activityPageSize === "number" &&
+              parsed.activityPageSize >= 1 &&
+              parsed.activityPageSize <= 100
+            ? Math.floor(parsed.activityPageSize)
+          : defaultFleetRepositoryActivityQuery.activityLimit,
       activityOccurredAfter:
         typeof parsed.activityOccurredAfter === "string"
           ? parsed.activityOccurredAfter
@@ -186,12 +206,6 @@ function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
         typeof parsed.activityPage === "number" && parsed.activityPage > 0
           ? Math.floor(parsed.activityPage)
           : 1,
-      activityPageSize:
-        typeof parsed.activityPageSize === "number" &&
-        parsed.activityPageSize >= 1 &&
-        parsed.activityPageSize <= 100
-          ? Math.floor(parsed.activityPageSize)
-          : defaultFleetRepositoryActivityQuery.activityPageSize,
       activitySortPreset: fleetRepositoryActivitySortPresets.includes(
         parsed.activitySortPreset ?? "newest_first"
       )
@@ -351,8 +365,8 @@ function App() {
   >({});
   const [trackedRepositoryHistoriesById, setTrackedRepositoryHistoriesById] =
     useState<Record<string, TrackedRepositoryHistoryResponse>>({});
-  const [repositoryActivityFeedsById, setRepositoryActivityFeedsById] = useState<
-    Record<string, RepositoryActivityFeed>
+  const [repositoryTimelinePagesById, setRepositoryTimelinePagesById] = useState<
+    Record<string, RepositoryTimelinePage>
   >({});
   const [fleetRepositoryActivityQuery, setFleetRepositoryActivityQuery] =
     useState<FleetRepositoryActivityQuery>(loadFleetRepositoryActivityQuery);
@@ -427,26 +441,13 @@ function App() {
     fleetInspectorSelection?.kind === "plan" && selectedPlanDetail
       ? runDetailsById[selectedPlanDetail.analysisRunId] ?? null
       : null;
-  const selectedRepositoryActivityFeed =
+  const selectedRepositoryTimeline =
     fleetInspectorSelection?.kind === "repository"
-      ? repositoryActivityFeedsById[fleetInspectorSelection.id] ??
-        trackedRepositoryHistoriesById[fleetInspectorSelection.id]?.activityFeed ??
-        null
+      ? repositoryTimelinePagesById[fleetInspectorSelection.id] ?? null
       : null;
   const selectedRepositoryHistory =
     fleetInspectorSelection?.kind === "repository"
-      ? (() => {
-          const history = trackedRepositoryHistoriesById[fleetInspectorSelection.id];
-
-          if (!history) {
-            return null;
-          }
-
-          return {
-            ...history,
-            activityFeed: selectedRepositoryActivityFeed ?? history.activityFeed
-          };
-        })()
+      ? trackedRepositoryHistoriesById[fleetInspectorSelection.id] ?? null
       : null;
   const selectedRunDetail =
     fleetInspectorSelection?.kind === "run"
@@ -485,36 +486,29 @@ function App() {
     setTrackedRepositories(snapshot.trackedRepositories);
   }
 
-  function repositoryActivityFeedMatchesQuery(
-    activityFeed: RepositoryActivityFeed | undefined,
+  function repositoryTimelineMatchesQuery(
+    timelinePage: RepositoryTimelinePage | undefined,
     query: FleetRepositoryActivityQuery
   ): boolean {
-    if (!activityFeed) {
+    if (!timelinePage) {
       return false;
     }
 
-    if (activityFeed.page !== query.activityPage) {
-      return false;
-    }
-
-    if (activityFeed.pageSize !== query.activityPageSize) {
-      return false;
-    }
-
-    const appliedKinds = activityFeed.appliedKinds;
-    const appliedStatuses = activityFeed.appliedStatuses;
+    const appliedKinds = timelinePage.appliedKinds;
+    const appliedStatuses = timelinePage.appliedStatuses;
 
     return (
-      activityFeed.appliedCursor === query.activityCursor &&
-      activityFeed.appliedCursorDirection === query.activityCursorDirection &&
+      timelinePage.appliedCursor === query.activityCursor &&
+      timelinePage.appliedCursorDirection === query.activityCursorDirection &&
       appliedKinds.length === query.activityKinds.length &&
       appliedKinds.every((kind, index) => kind === query.activityKinds[index]) &&
-      activityFeed.appliedSortPreset === query.activitySortPreset &&
+      timelinePage.appliedSortPreset === query.activitySortPreset &&
       appliedStatuses.length === query.activityStatuses.length &&
       appliedStatuses.every((status, index) => status === query.activityStatuses[index]) &&
-      activityFeed.detailsIncluded === query.activityIncludeDetails &&
-      activityFeed.occurredAfter === query.activityOccurredAfter &&
-      activityFeed.occurredBefore === query.activityOccurredBefore
+      timelinePage.expansionMode === query.activityExpansionMode &&
+      timelinePage.limit === query.activityLimit &&
+      timelinePage.occurredAfter === query.activityOccurredAfter &&
+      timelinePage.occurredBefore === query.activityOccurredBefore
     );
   }
 
@@ -528,9 +522,8 @@ function App() {
         );
       case "repository":
         return Boolean(trackedRepositoryHistoriesById[selection.id]) &&
-          repositoryActivityFeedMatchesQuery(
-          repositoryActivityFeedsById[selection.id] ??
-            trackedRepositoryHistoriesById[selection.id]?.activityFeed,
+          repositoryTimelineMatchesQuery(
+          repositoryTimelinePagesById[selection.id],
           fleetRepositoryActivityQuery
         );
       case "run":
@@ -913,9 +906,8 @@ function App() {
     const hasCache =
       selection.kind === "repository"
         ? Boolean(trackedRepositoryHistoriesById[selection.id]) &&
-          repositoryActivityFeedMatchesQuery(
-            repositoryActivityFeedsById[selection.id] ??
-              trackedRepositoryHistoriesById[selection.id]?.activityFeed,
+          repositoryTimelineMatchesQuery(
+            repositoryTimelinePagesById[selection.id],
             repositoryQuery
           )
         : hasInspectorCache(selection);
@@ -970,9 +962,9 @@ function App() {
           break;
         }
         case "repository": {
-          const [history, activityFeed] = await Promise.all([
+          const [history, timelinePage] = await Promise.all([
             getTrackedRepositoryHistory(selection.id),
-            getTrackedRepositoryActivityFeed(selection.id, repositoryQuery)
+            getTrackedRepositoryTimeline(selection.id, repositoryQuery)
           ]);
 
           if (fleetInspectorRequestIdRef.current !== requestId) {
@@ -983,9 +975,9 @@ function App() {
             ...current,
             [selection.id]: history
           }));
-          setRepositoryActivityFeedsById((current) => ({
+          setRepositoryTimelinePagesById((current) => ({
             ...current,
-            [selection.id]: activityFeed
+            [selection.id]: timelinePage
           }));
           break;
         }
@@ -1077,6 +1069,18 @@ function App() {
     }));
   }
 
+  function handleRepositoryTimelineExpansionChange(
+    activityExpansionMode: "summary" | "detail"
+  ) {
+    setFleetRepositoryActivityQuery((current) => ({
+      ...current,
+      activityCursor: null,
+      activityCursorDirection: "next",
+      activityExpansionMode,
+      activityPage: 1
+    }));
+  }
+
   function handleRepositoryActivityFiltersChange(input: {
     activityOccurredAfter: string | null;
     activityOccurredBefore: string | null;
@@ -1093,16 +1097,14 @@ function App() {
     }));
   }
 
-  async function loadRepositoryActivityFeedForInspector(
+  async function loadRepositoryTimelineForInspector(
     trackedRepositoryId: string,
     query: FleetRepositoryActivityQuery,
     forceRefresh = false
   ) {
-    const cachedFeed =
-      repositoryActivityFeedsById[trackedRepositoryId] ??
-      trackedRepositoryHistoriesById[trackedRepositoryId]?.activityFeed;
+    const cachedTimeline = repositoryTimelinePagesById[trackedRepositoryId];
 
-    if (!forceRefresh && repositoryActivityFeedMatchesQuery(cachedFeed, query)) {
+    if (!forceRefresh && repositoryTimelineMatchesQuery(cachedTimeline, query)) {
       return;
     }
 
@@ -1112,15 +1114,15 @@ function App() {
     setFleetInspectorErrorMessage(null);
 
     try {
-      const activityFeed = await getTrackedRepositoryActivityFeed(trackedRepositoryId, query);
+      const timelinePage = await getTrackedRepositoryTimeline(trackedRepositoryId, query);
 
       if (fleetInspectorRequestIdRef.current !== requestId) {
         return;
       }
 
-      setRepositoryActivityFeedsById((current) => ({
+      setRepositoryTimelinePagesById((current) => ({
         ...current,
-        [trackedRepositoryId]: activityFeed
+        [trackedRepositoryId]: timelinePage
       }));
     } catch (error) {
       if (fleetInspectorRequestIdRef.current !== requestId) {
@@ -1130,7 +1132,7 @@ function App() {
       setFleetInspectorErrorMessage(
         error instanceof Error
           ? error.message
-          : "Repo Guardian could not load the selected repository activity feed."
+          : "Repo Guardian could not load the selected repository timeline."
       );
     } finally {
       if (fleetInspectorRequestIdRef.current === requestId) {
@@ -1144,7 +1146,7 @@ function App() {
       return;
     }
 
-    await loadRepositoryActivityFeedForInspector(
+    await loadRepositoryTimelineForInspector(
       fleetInspectorSelection.id,
       fleetRepositoryActivityQuery,
       true
@@ -1160,7 +1162,7 @@ function App() {
       return;
     }
 
-    void loadRepositoryActivityFeedForInspector(
+    void loadRepositoryTimelineForInspector(
       fleetInspectorSelection.id,
       fleetRepositoryActivityQuery
     );
@@ -1476,12 +1478,14 @@ function App() {
               planEvents={selectedPlanEvents}
               planRunDetail={selectedPlanRunDetail}
               repositoryHistory={selectedRepositoryHistory}
+              repositoryTimelinePage={selectedRepositoryTimeline}
               repositoryTimelineQuery={fleetRepositoryActivityQuery}
               runDetail={selectedRunDetail}
               selection={fleetInspectorSelection}
               onRepositoryTimelineFiltersChange={handleRepositoryActivityFiltersChange}
               onRepositoryTimelineKindsChange={handleRepositoryActivityKindsChange}
               onRepositoryTimelinePageChange={handleRepositoryActivityPageChange}
+              onRepositoryTimelineExpansionChange={handleRepositoryTimelineExpansionChange}
               onRepositoryTimelineSortChange={handleRepositoryActivitySortChange}
             />
           ) : null}

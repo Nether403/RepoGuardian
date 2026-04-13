@@ -13,10 +13,13 @@ import {
   ListAnalysisJobsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
+  RepositoryTimelinePageSchema,
   RetryAnalysisJobResponseSchema,
   RepositoryActivityFeedSchema,
   type RepositoryActivityKind,
   type RepositoryActivityFeed,
+  type RepositoryTimelineExpansionMode,
+  type RepositoryTimelinePage,
   TrackedRepositoryHistoryResponseSchema,
   TriggerSweepScheduleResponseSchema,
   type AnalysisJob,
@@ -38,6 +41,7 @@ import {
   getFleetStatus as requestGetFleetStatus,
   getTrackedRepositoryHistory as requestGetTrackedRepositoryHistory,
   getTrackedRepositoryActivity as requestGetTrackedRepositoryActivity,
+  getTrackedRepositoryTimeline as requestGetTrackedRepositoryTimeline,
   listAnalysisJobs as requestListAnalysisJobs,
   listExecutionPlanEvents as requestListExecutionPlanEvents,
   listSweepSchedules as requestListSweepSchedules,
@@ -339,6 +343,45 @@ export async function getTrackedRepositoryActivityFeed(
     throw toFleetClientError(
       error,
       "Repo Guardian could not load the tracked repository activity feed"
+    );
+  }
+}
+
+export async function getTrackedRepositoryTimeline(
+  trackedRepositoryId: string,
+  options?: {
+    activityCursor?: string | null;
+    activityCursorDirection?: "next" | "previous";
+    activityExpansionMode?: RepositoryTimelineExpansionMode;
+    activityKinds?: RepositoryActivityKind[];
+    activityLimit?: number;
+    activityOccurredAfter?: string | null;
+    activityOccurredBefore?: string | null;
+    activitySortPreset?: "newest_first" | "oldest_first";
+    activityStatuses?: string[];
+  }
+): Promise<RepositoryTimelinePage> {
+  try {
+    const response = await requestGetTrackedRepositoryTimeline(
+      trackedRepositoryId,
+      {
+        timelineCursor: options?.activityCursor ?? undefined,
+        timelineDirection: options?.activityCursorDirection,
+        timelineExpand: options?.activityExpansionMode,
+        timelineKinds: options?.activityKinds,
+        timelineLimit: options?.activityLimit,
+        timelineOccurredAfter: options?.activityOccurredAfter ?? undefined,
+        timelineOccurredBefore: options?.activityOccurredBefore ?? undefined,
+        timelineSortPreset: options?.activitySortPreset,
+        timelineStatuses: options?.activityStatuses
+      },
+      getApiOptions()
+    );
+    return RepositoryTimelinePageSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(
+      error,
+      "Repo Guardian could not load the tracked repository timeline"
     );
   }
 }

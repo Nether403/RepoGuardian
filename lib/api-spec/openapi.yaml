@@ -565,6 +565,87 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/tracked-repositories/{trackedRepositoryId}/timeline:
+    get:
+      operationId: getTrackedRepositoryTimeline
+      summary: Read a cursor-native tracked-repository timeline page with optional event-detail expansion
+      x-repo-guardian-response-type: RepositoryTimelinePage
+      parameters:
+        - name: trackedRepositoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: timelineCursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: timelineDirection
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivityCursorDirection"
+        - name: timelineExpand
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryTimelineExpansionMode"
+        - name: timelineKinds
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  $ref: "#/components/schemas/RepositoryActivityKind"
+        - name: timelineLimit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: timelineStatuses
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+        - name: timelineOccurredAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: timelineOccurredBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: timelineSortPreset
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivitySortPreset"
+      responses:
+        "200":
+          description: Cursor-native tracked repository timeline page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryTimelinePage"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/fleet/status:
     get:
       operationId: getFleetStatus
@@ -813,6 +894,10 @@ components:
       type: string
       description: Runtime schema is owned by RepositoryActivityCursorDirectionSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: RepositoryActivityCursorDirectionSchema
+    RepositoryTimelineExpansionMode:
+      type: string
+      description: Runtime schema is owned by RepositoryTimelineExpansionModeSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryTimelineExpansionModeSchema
     RepositoryActivityDetail:
       type: object
       description: Runtime schema is owned by RepositoryActivityDetailSchema in @repo-guardian/shared-types.
@@ -825,6 +910,10 @@ components:
       type: object
       description: Runtime schema is owned by RepositoryActivityFeedSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: RepositoryActivityFeedSchema
+    RepositoryTimelinePage:
+      type: object
+      description: Runtime schema is owned by RepositoryTimelinePageSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryTimelinePageSchema
     TrackedRepositoryHistoryResponse:
       type: object
       description: Runtime schema is owned by TrackedRepositoryHistoryResponseSchema in @repo-guardian/shared-types.

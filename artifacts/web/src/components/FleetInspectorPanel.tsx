@@ -9,9 +9,14 @@ import type {
   PRCandidate,
   RepositoryActivityEvent,
   RepositoryActivityKind,
+  RepositoryTimelineExpansionMode,
+  RepositoryTimelinePage,
   TrackedRepositoryHistoryResponse
 } from "@repo-guardian/shared-types";
-import { RepositoryActivitySortPresetSchema } from "@repo-guardian/shared-types";
+import {
+  RepositoryActivitySortPresetSchema,
+  RepositoryTimelineExpansionModeSchema
+} from "@repo-guardian/shared-types";
 import {
   buildTraceabilityViewModel,
   formatTimestamp
@@ -52,6 +57,9 @@ type FleetInspectorPanelProps = {
     activityStatuses: string[];
   }) => void;
   onRepositoryTimelineKindsChange: (activityKinds: RepositoryActivityKind[]) => void;
+  onRepositoryTimelineExpansionChange: (
+    activityExpansionMode: RepositoryTimelineExpansionMode
+  ) => void;
   onRepositoryTimelinePageChange: (
     page: number,
     cursor: string | null,
@@ -64,11 +72,13 @@ type FleetInspectorPanelProps = {
   planEvents: ExecutionPlanEventsResponse | null;
   planRunDetail: GetAnalysisRunResponse | null;
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
+  repositoryTimelinePage: RepositoryTimelinePage | null;
   repositoryTimelineQuery: {
     activityCursor: string | null;
     activityCursorDirection: "next" | "previous";
-    activityIncludeDetails: boolean;
+    activityExpansionMode: "summary" | "detail";
     activityKinds: RepositoryActivityKind[];
+    activityLimit: number;
     activityOccurredAfter: string | null;
     activityOccurredBefore: string | null;
     activityPage: number;
@@ -80,6 +90,9 @@ type FleetInspectorPanelProps = {
 };
 
 const repositoryActivitySortPresets = [...RepositoryActivitySortPresetSchema.options];
+const repositoryTimelineExpansionModes = [
+  ...RepositoryTimelineExpansionModeSchema.options
+];
 
 function getJobTone(status: AnalysisJob["status"]): "active" | "muted" | "up-next" | "warning" {
   switch (status) {
@@ -258,6 +271,7 @@ export function FleetInspectorPanel({
   onRefresh,
   onRefreshRepositoryTimeline,
   onRepositoryTimelineFiltersChange,
+  onRepositoryTimelineExpansionChange,
   onRepositoryTimelineKindsChange,
   onRepositoryTimelinePageChange,
   onRepositoryTimelineSortChange,
@@ -265,6 +279,7 @@ export function FleetInspectorPanel({
   planEvents,
   planRunDetail,
   repositoryHistory,
+  repositoryTimelinePage,
   repositoryTimelineQuery,
   runDetail,
   selection
@@ -272,6 +287,8 @@ export function FleetInspectorPanel({
   const [activityStatusInput, setActivityStatusInput] = useState("");
   const [activityOccurredAfterInput, setActivityOccurredAfterInput] = useState("");
   const [activityOccurredBeforeInput, setActivityOccurredBeforeInput] = useState("");
+  const [activityExpansionModeInput, setActivityExpansionModeInput] =
+    useState<RepositoryTimelineExpansionMode>(repositoryTimelineQuery.activityExpansionMode);
   const [activitySortPresetInput, setActivitySortPresetInput] = useState<
     "newest_first" | "oldest_first"
   >(repositoryTimelineQuery.activitySortPreset);
@@ -284,8 +301,10 @@ export function FleetInspectorPanel({
     setActivityOccurredBeforeInput(
       toDateTimeLocalValue(repositoryTimelineQuery.activityOccurredBefore)
     );
+    setActivityExpansionModeInput(repositoryTimelineQuery.activityExpansionMode);
     setActivitySortPresetInput(repositoryTimelineQuery.activitySortPreset);
   }, [
+    repositoryTimelineQuery.activityExpansionMode,
     repositoryTimelineQuery.activityOccurredAfter,
     repositoryTimelineQuery.activityOccurredBefore,
     repositoryTimelineQuery.activitySortPreset,
@@ -302,6 +321,7 @@ export function FleetInspectorPanel({
           issueCandidates: [],
           prCandidates: []
         };
+  const activeRepositoryTimeline = repositoryTimelinePage;
 
   return (
     <Panel
@@ -425,6 +445,23 @@ export function FleetInspectorPanel({
               <h3>Repository timeline</h3>
               <div className="fleet-form-grid">
                 <label className="form-field">
+                  <span>Depth</span>
+                  <select
+                    onChange={(event) =>
+                      setActivityExpansionModeInput(
+                        event.currentTarget.value as RepositoryTimelineExpansionMode
+                      )
+                    }
+                    value={activityExpansionModeInput}
+                  >
+                    {repositoryTimelineExpansionModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode === "detail" ? "Deep detail" : "Compact summary"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
                   <span>Sort</span>
                   <select
                     onChange={(event) =>
@@ -475,6 +512,7 @@ export function FleetInspectorPanel({
                 <button
                   className="secondary-button"
                   onClick={() => {
+                    onRepositoryTimelineExpansionChange(activityExpansionModeInput);
                     onRepositoryTimelineSortChange(activitySortPresetInput);
                     onRepositoryTimelineFiltersChange({
                       activityOccurredAfter:
@@ -501,7 +539,9 @@ export function FleetInspectorPanel({
                     setActivityStatusInput("");
                     setActivityOccurredAfterInput("");
                     setActivityOccurredBeforeInput("");
+                    setActivityExpansionModeInput("detail");
                     setActivitySortPresetInput("newest_first");
+                    onRepositoryTimelineExpansionChange("detail");
                     onRepositoryTimelineSortChange("newest_first");
                     onRepositoryTimelineFiltersChange({
                       activityOccurredAfter: null,
@@ -529,7 +569,7 @@ export function FleetInspectorPanel({
                 >
                   All activity
                 </button>
-                {repositoryHistory.activityFeed.availableKinds.map((kind) => (
+                {(activeRepositoryTimeline?.availableKinds ?? []).map((kind) => (
                   <button
                     className="secondary-button"
                     key={kind}
@@ -540,109 +580,108 @@ export function FleetInspectorPanel({
                   </button>
                 ))}
               </div>
-              {repositoryHistory.activityFeed.events.length > 0 ? (
+              {activeRepositoryTimeline && activeRepositoryTimeline.events.length > 0 ? (
                 <div className="fleet-timeline">
-                  {repositoryHistory.activityFeed.events.map((activity) => {
+                  {activeRepositoryTimeline.events.map((activity) => {
                     const primaryAction = getPrimaryActivityAction(activity);
 
                     return (
-                    <article className="fleet-timeline-item" key={activity.activityId}>
-                      <div className="fleet-timeline-marker" aria-hidden="true" />
-                      <div className="fleet-timeline-content">
-                        <div className="trace-card-header">
-                          <div>
-                            <p className="subsection-label">{formatActivityKind(activity.kind)}</p>
-                            <h3>{activity.title}</h3>
+                      <article className="fleet-timeline-item" key={activity.activityId}>
+                        <div className="fleet-timeline-marker" aria-hidden="true" />
+                        <div className="fleet-timeline-content">
+                          <div className="trace-card-header">
+                            <div>
+                              <p className="subsection-label">{formatActivityKind(activity.kind)}</p>
+                              <h3>{activity.title}</h3>
+                            </div>
+                            <StatusBadge label={activity.status} tone={getActivityTone(activity)} />
                           </div>
-                          <StatusBadge label={activity.status} tone={getActivityTone(activity)} />
-                        </div>
-                        <p className="trace-copy">{formatTimestamp(activity.occurredAt)}</p>
-                        {activity.summary ? (
-                          <p className="trace-copy">{activity.summary}</p>
-                        ) : null}
-                        {activity.detail ? (
-                          <div className="trace-chip-row">
-                            {activity.detail.findingCount !== null ? (
-                              <span className="trace-chip trace-chip-muted">
-                                {activity.detail.findingCount} findings
-                              </span>
+                          <p className="trace-copy">{formatTimestamp(activity.occurredAt)}</p>
+                          {activity.summary ? (
+                            <p className="trace-copy">{activity.summary}</p>
+                          ) : null}
+                          {activity.detail ? (
+                            <div className="trace-chip-row">
+                              {activity.detail.findingCount !== null ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  {activity.detail.findingCount} findings
+                                </span>
+                              ) : null}
+                              {activity.detail.executablePatchPlanCount !== null ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  {activity.detail.executablePatchPlanCount} executable
+                                </span>
+                              ) : null}
+                              {activity.detail.blockedPatchPlanCount !== null ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  {activity.detail.blockedPatchPlanCount} blocked
+                                </span>
+                              ) : null}
+                              {activity.detail.branchName ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  {activity.detail.branchName}
+                                </span>
+                              ) : null}
+                              {activity.detail.jobKind ? (
+                                <span className="trace-chip trace-chip-muted">
+                                  {activity.detail.jobKind}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <div className="fleet-inline-actions">
+                            {primaryAction ? (
+                              <button
+                                className="secondary-button"
+                                onClick={() =>
+                                  primaryAction.type === "plan"
+                                    ? onOpenPlan(primaryAction.targetId)
+                                    : onOpenRun(primaryAction.targetId)
+                                }
+                                type="button"
+                              >
+                                {primaryAction.label}
+                              </button>
                             ) : null}
-                            {activity.detail.executablePatchPlanCount !== null ? (
-                              <span className="trace-chip trace-chip-muted">
-                                {activity.detail.executablePatchPlanCount} executable
-                              </span>
-                            ) : null}
-                            {activity.detail.blockedPatchPlanCount !== null ? (
-                              <span className="trace-chip trace-chip-muted">
-                                {activity.detail.blockedPatchPlanCount} blocked
-                              </span>
-                            ) : null}
-                            {activity.detail.branchName ? (
-                              <span className="trace-chip trace-chip-muted">
-                                {activity.detail.branchName}
-                              </span>
-                            ) : null}
-                            {activity.detail.jobKind ? (
-                              <span className="trace-chip trace-chip-muted">
-                                {activity.detail.jobKind}
-                              </span>
+                            {activity.pullRequestUrl ? (
+                              <a
+                                className="secondary-button fleet-link-button"
+                                href={activity.pullRequestUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Open GitHub PR
+                              </a>
                             ) : null}
                           </div>
-                        ) : null}
-                        <div className="fleet-inline-actions">
-                          {primaryAction ? (
-                            <button
-                              className="secondary-button"
-                              onClick={() =>
-                                primaryAction.type === "plan"
-                                  ? onOpenPlan(primaryAction.targetId)
-                                  : onOpenRun(primaryAction.targetId)
-                              }
-                              type="button"
-                            >
-                              {primaryAction.label}
-                            </button>
-                          ) : null}
-                          {activity.pullRequestUrl ? (
-                            <a
-                              className="secondary-button fleet-link-button"
-                              href={activity.pullRequestUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Open GitHub PR
-                            </a>
-                          ) : null}
                         </div>
-                      </div>
-                    </article>
+                      </article>
                     );
                   })}
                 </div>
               ) : (
                 <p className="empty-copy">
-                  No {repositoryHistory.activityFeed.appliedKinds.length === 0
+                  No {activeRepositoryTimeline?.appliedKinds.length === 0
                     ? ""
-                    : `${repositoryHistory.activityFeed.appliedKinds
+                    : `${activeRepositoryTimeline?.appliedKinds
                         .map(formatActivityKind)
                         .join(", ")} `}events recorded for this repository yet.
                 </p>
               )}
               <div className="fleet-inline-actions">
                 <span className="trace-chip trace-chip-muted">
-                  Page {repositoryHistory.activityFeed.totalPages === 0 ? 0 : repositoryHistory.activityFeed.page} of{" "}
-                  {repositoryHistory.activityFeed.totalPages}
+                  Page {repositoryTimelineQuery.activityPage}
                 </span>
                 <span className="trace-chip trace-chip-muted">
-                  {repositoryHistory.activityFeed.totalEvents} total events
+                  {activeRepositoryTimeline?.returnedCount ?? 0} events in view
                 </span>
                 <button
                   className="secondary-button"
-                  disabled={!repositoryHistory.activityFeed.hasPreviousPage}
+                  disabled={!activeRepositoryTimeline?.hasPreviousPage}
                   onClick={() =>
                     onRepositoryTimelinePageChange(
                       repositoryTimelineQuery.activityPage - 1,
-                      repositoryHistory.activityFeed.previousCursor,
+                      activeRepositoryTimeline?.previousCursor ?? null,
                       "previous"
                     )
                   }
@@ -652,11 +691,11 @@ export function FleetInspectorPanel({
                 </button>
                 <button
                   className="secondary-button"
-                  disabled={!repositoryHistory.activityFeed.hasNextPage}
+                  disabled={!activeRepositoryTimeline?.hasNextPage}
                   onClick={() =>
                     onRepositoryTimelinePageChange(
                       repositoryTimelineQuery.activityPage + 1,
-                      repositoryHistory.activityFeed.nextCursor,
+                      activeRepositoryTimeline?.nextCursor ?? null,
                       "next"
                     )
                   }

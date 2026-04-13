@@ -27,6 +27,7 @@ import type {
   ListSweepSchedulesResponse,
   ListTrackedRepositoriesResponse,
   RepositoryActivityFeed,
+  RepositoryTimelinePage,
   RetryAnalysisJobResponse,
   SaveAnalysisRunRequest,
   SaveAnalysisRunResponse,
@@ -337,6 +338,15 @@ export async function getTrackedRepositoryHistory(trackedRepositoryId: string, q
   return requestJson<TrackedRepositoryHistoryResponse>({
     method: "GET",
     path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/history`,
+    query,
+    options
+  });
+}
+
+export async function getTrackedRepositoryTimeline(trackedRepositoryId: string, query: { "timelineCursor"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineDirection"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineExpand"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineKinds"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineLimit"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineStatuses"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineOccurredAfter"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineOccurredBefore"?: string | number | boolean | readonly (string | number | boolean)[]; "timelineSortPreset"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<RepositoryTimelinePage> {
+  return requestJson<RepositoryTimelinePage>({
+    method: "GET",
+    path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/timeline`,
     query,
     options
   });

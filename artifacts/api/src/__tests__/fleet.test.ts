@@ -278,6 +278,30 @@ function createTestApp(
           previousCursor: null,
           totalPages: 0,
           totalEvents: 0
+        }),
+        listTimelineByRepositoryFullName: vi.fn().mockResolvedValue({
+          appliedCursor: null,
+          appliedCursorDirection: "next",
+          appliedKinds: [],
+          appliedSortPreset: "newest_first",
+          appliedStatuses: [],
+          availableKinds: [
+            "analysis_job",
+            "analysis_run",
+            "execution_event",
+            "execution_plan",
+            "tracked_pull_request"
+          ],
+          events: [],
+          expansionMode: "summary",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          limit: 20,
+          nextCursor: null,
+          occurredAfter: null,
+          occurredBefore: null,
+          previousCursor: null,
+          returnedCount: 0
         })
       },
       ...input
@@ -700,7 +724,8 @@ describe("fleet routes", () => {
         ])
       },
       repositoryActivityStore: {
-        listActivitiesByRepositoryFullName
+        listActivitiesByRepositoryFullName,
+        listTimelineByRepositoryFullName: vi.fn()
       },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
@@ -783,7 +808,8 @@ describe("fleet routes", () => {
         listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
       repositoryActivityStore: {
-        listActivitiesByRepositoryFullName
+        listActivitiesByRepositoryFullName,
+        listTimelineByRepositoryFullName: vi.fn()
       },
       runStore: {
         listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
@@ -820,6 +846,80 @@ describe("fleet routes", () => {
       repositoryFullName: "openai/openai-node",
       sortPreset: "oldest_first",
       statuses: ["completed", "open"]
+    });
+  });
+
+  it("returns a cursor-native tracked repository timeline page", async () => {
+    const listTimelineByRepositoryFullName = vi.fn().mockResolvedValue({
+      appliedCursor: "cursor_one",
+      appliedCursorDirection: "next",
+      appliedKinds: ["execution_plan"],
+      appliedSortPreset: "oldest_first",
+      appliedStatuses: ["completed"],
+      availableKinds: [
+        "analysis_job",
+        "analysis_run",
+        "execution_event",
+        "execution_plan",
+        "tracked_pull_request"
+      ],
+      events: [createRepositoryActivity({ status: "completed" })],
+      expansionMode: "detail",
+      hasNextPage: true,
+      hasPreviousPage: true,
+      limit: 5,
+      nextCursor: "cursor_next",
+      occurredAfter: "2026-04-10T00:00:00.000Z",
+      occurredBefore: null,
+      previousCursor: "cursor_previous",
+      returnedCount: 1
+    });
+    const trackedRepository = createTrackedRepository();
+    const app = createTestApp({
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      repositoryActivityStore: {
+        listActivitiesByRepositoryFullName: vi.fn(),
+        listTimelineByRepositoryFullName
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn().mockResolvedValue(trackedRepository),
+        listRepositories: vi.fn().mockResolvedValue([trackedRepository])
+      }
+    });
+
+    const response = await request(app)
+      .get(
+        "/tracked-repositories/tracked_one/timeline?timelineKinds=execution_plan&timelineStatuses=completed&timelineOccurredAfter=2026-04-10T00:00:00.000Z&timelineLimit=5&timelineSortPreset=oldest_first&timelineCursor=cursor_one&timelineDirection=next&timelineExpand=detail"
+      )
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(200);
+    expect(response.body.expansionMode).toBe("detail");
+    expect(response.body.limit).toBe(5);
+    expect(listTimelineByRepositoryFullName).toHaveBeenCalledWith({
+      cursor: "cursor_one",
+      cursorDirection: "next",
+      expansionMode: "detail",
+      kinds: ["execution_plan"],
+      limit: 5,
+      occurredAfter: "2026-04-10T00:00:00.000Z",
+      occurredBefore: null,
+      repositoryFullName: "openai/openai-node",
+      sortPreset: "oldest_first",
+      statuses: ["completed"]
     });
   });
 

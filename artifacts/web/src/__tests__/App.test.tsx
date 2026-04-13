@@ -3413,18 +3413,18 @@ describe("App", () => {
         return createJsonResponse(createTrackedRepositoryHistoryFixture());
       }
 
-      if (url.startsWith("/api/tracked-repositories/tracked_one/activity")) {
+      if (url.startsWith("/api/tracked-repositories/tracked_one/timeline")) {
         const requestUrl = new URL(`http://localhost${url}`);
-        const activityKinds = requestUrl.searchParams.getAll("activityKinds");
-        const activityStatuses = requestUrl.searchParams.getAll("activityStatuses");
-        const activityCursor = requestUrl.searchParams.get("activityCursor");
+        const activityKinds = requestUrl.searchParams.getAll("timelineKinds");
+        const activityStatuses = requestUrl.searchParams.getAll("timelineStatuses");
+        const activityCursor = requestUrl.searchParams.get("timelineCursor");
         const activityCursorDirection =
-          requestUrl.searchParams.get("activityCursorDirection") ?? "next";
-        const activityIncludeDetails =
-          requestUrl.searchParams.get("activityIncludeDetails") === "true";
-        const activityPage = Number(requestUrl.searchParams.get("activityPage") ?? "1");
+          requestUrl.searchParams.get("timelineDirection") ?? "next";
+        const activityExpansionMode =
+          requestUrl.searchParams.get("timelineExpand") ?? "summary";
         const activitySortPreset =
-          requestUrl.searchParams.get("activitySortPreset") ?? "newest_first";
+          requestUrl.searchParams.get("timelineSortPreset") ?? "newest_first";
+        const activityLimit = Number(requestUrl.searchParams.get("timelineLimit") ?? "20");
         const fixture = createTrackedRepositoryHistoryFixture();
         const filteredEvents =
           activityKinds.length === 0 && activityStatuses.length === 0
@@ -3443,17 +3443,16 @@ describe("App", () => {
           appliedKinds: activityKinds,
           appliedSortPreset: activitySortPreset,
           appliedStatuses: activityStatuses,
-          detailsIncluded: activityIncludeDetails,
           events: filteredEvents,
+          expansionMode: activityExpansionMode,
           hasNextPage: false,
-          hasPreviousPage: activityPage > 1,
+          hasPreviousPage: activityCursor !== null,
+          limit: activityLimit,
           nextCursor: null,
-          occurredAfter: requestUrl.searchParams.get("activityOccurredAfter"),
-          occurredBefore: requestUrl.searchParams.get("activityOccurredBefore"),
-          page: activityPage,
-          previousCursor: activityPage > 1 ? "cursor_previous" : null,
-          totalPages: 1,
-          totalEvents: filteredEvents.length
+          occurredAfter: requestUrl.searchParams.get("timelineOccurredAfter"),
+          occurredBefore: requestUrl.searchParams.get("timelineOccurredBefore"),
+          previousCursor: activityCursor ? "cursor_previous" : null,
+          returnedCount: filteredEvents.length
         });
       }
 
@@ -3687,23 +3686,26 @@ describe("App", () => {
         return createJsonResponse(createTrackedRepositoryHistoryFixture());
       }
 
-      if (url.startsWith("/api/tracked-repositories/tracked_one/activity")) {
+      if (url.startsWith("/api/tracked-repositories/tracked_one/timeline")) {
         const requestUrl = new URL(`http://localhost${url}`);
 
         return createJsonResponse({
           ...createTrackedRepositoryHistoryFixture().activityFeed,
-          appliedCursor: requestUrl.searchParams.get("activityCursor"),
+          appliedCursor: requestUrl.searchParams.get("timelineCursor"),
           appliedCursorDirection:
-            requestUrl.searchParams.get("activityCursorDirection") ?? "next",
-          appliedKinds: requestUrl.searchParams.getAll("activityKinds"),
+            requestUrl.searchParams.get("timelineDirection") ?? "next",
+          appliedKinds: requestUrl.searchParams.getAll("timelineKinds"),
           appliedSortPreset:
-            requestUrl.searchParams.get("activitySortPreset") ?? "newest_first",
-          appliedStatuses: requestUrl.searchParams.getAll("activityStatuses"),
-          detailsIncluded:
-            requestUrl.searchParams.get("activityIncludeDetails") === "true",
-          occurredAfter: requestUrl.searchParams.get("activityOccurredAfter"),
-          occurredBefore: requestUrl.searchParams.get("activityOccurredBefore"),
-          page: Number(requestUrl.searchParams.get("activityPage") ?? "1")
+            requestUrl.searchParams.get("timelineSortPreset") ?? "newest_first",
+          appliedStatuses: requestUrl.searchParams.getAll("timelineStatuses"),
+          expansionMode:
+            requestUrl.searchParams.get("timelineExpand") ?? "summary",
+          limit: Number(requestUrl.searchParams.get("timelineLimit") ?? "20"),
+          occurredAfter: requestUrl.searchParams.get("timelineOccurredAfter"),
+          occurredBefore: requestUrl.searchParams.get("timelineOccurredBefore"),
+          previousCursor: null,
+          nextCursor: null,
+          returnedCount: createTrackedRepositoryHistoryFixture().activityFeed.events.length
         });
       }
 
@@ -3761,13 +3763,13 @@ describe("App", () => {
     await waitFor(() => {
       const activityRequest = fetchMock.mock.calls.find(([url]) =>
         typeof url === "string" &&
-        url.startsWith("/api/tracked-repositories/tracked_one/activity")
+        url.startsWith("/api/tracked-repositories/tracked_one/timeline")
       )?.[0];
 
       expect(activityRequest).toBeDefined();
-      expect(activityRequest).toEqual(expect.stringContaining("activityStatuses=completed"));
-      expect(activityRequest).toEqual(expect.stringContaining("activitySortPreset=oldest_first"));
-      expect(activityRequest).toEqual(expect.stringContaining("activityCursor=cursor_saved"));
+      expect(activityRequest).toEqual(expect.stringContaining("timelineStatuses=completed"));
+      expect(activityRequest).toEqual(expect.stringContaining("timelineSortPreset=oldest_first"));
+      expect(activityRequest).toEqual(expect.stringContaining("timelineCursor=cursor_saved"));
     });
   });
 

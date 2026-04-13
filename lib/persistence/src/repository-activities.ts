@@ -4,8 +4,11 @@ import {
   RepositoryActivityEventSchema,
   RepositoryActivityKindSchema,
   RepositoryActivitySortPresetSchema,
+  RepositoryTimelineExpansionModeSchema,
   type RepositoryActivityEvent,
-  type RepositoryActivityKind
+  type RepositoryActivityKind,
+  type RepositoryTimelineExpansionMode,
+  type RepositoryTimelinePage
 } from "@repo-guardian/shared-types";
 import type { PostgresClient } from "./client.js";
 
@@ -40,10 +43,15 @@ const repositoryActivitySortPresets = [...RepositoryActivitySortPresetSchema.opt
 const repositoryActivityCursorDirections = [
   ...RepositoryActivityCursorDirectionSchema.options
 ];
+const repositoryTimelineExpansionModes = [
+  ...RepositoryTimelineExpansionModeSchema.options
+];
 
 type RepositoryActivitySortPreset = (typeof repositoryActivitySortPresets)[number];
 type RepositoryActivityCursorDirection =
   (typeof repositoryActivityCursorDirections)[number];
+type RepositoryTimelineExpansionModeValue =
+  (typeof repositoryTimelineExpansionModes)[number];
 
 type ActivityCursor = {
   activityId: string;
@@ -134,11 +142,325 @@ function parseRepositoryActivity(row: RepositoryActivityRow): RepositoryActivity
   });
 }
 
+function parseRepositoryActivityForExpansion(
+  row: RepositoryActivityRow,
+  expansionMode: RepositoryTimelineExpansionModeValue
+): RepositoryActivityEvent {
+  const activity = parseRepositoryActivity(row);
+
+  if (expansionMode === "detail") {
+    return activity;
+  }
+
+  return RepositoryActivityEventSchema.parse({
+    ...activity,
+    detail: null
+  });
+}
+
 export class RepositoryActivityRepository {
   private readonly client: PostgresClient;
 
   constructor(client: PostgresClient) {
     this.client = client;
+  }
+
+  async listTimelineByRepositoryFullName(input: {
+    cursor?: string | null;
+    cursorDirection?: RepositoryActivityCursorDirection;
+    expansionMode?: RepositoryTimelineExpansionMode;
+    kinds?: RepositoryActivityKind[];
+    limit?: number;
+    occurredAfter?: string | null;
+    occurredBefore?: string | null;
+    repositoryFullName: string;
+    sortPreset?: RepositoryActivitySortPreset;
+    statuses?: string[];
+  }): Promise<RepositoryTimelinePage> {
+    const pageSize = input.limit ?? 40;
+    const appliedKinds = (input.kinds ?? []).filter((kind, index, kinds) =>
+      repositoryActivityKinds.includes(kind) && kinds.indexOf(kind) === index
+    );
+    const appliedStatuses = (input.statuses ?? []).filter(
+      (status, index, statuses) => status.trim().length > 0 && statuses.indexOf(status) === index
+    );
+    const kinds = appliedKinds.length > 0 ? appliedKinds : null;
+    const statuses = appliedStatuses.length > 0 ? appliedStatuses : null;
+    const occurredAfter = input.occurredAfter ?? null;
+    const occurredBefore = input.occurredBefore ?? null;
+    const appliedSortPreset = repositoryActivitySortPresets.includes(
+      input.sortPreset ?? "newest_first"
+    )
+      ? (input.sortPreset ?? "newest_first")
+      : "newest_first";
+    const appliedCursorDirection = repositoryActivityCursorDirections.includes(
+      input.cursorDirection ?? "next"
+    )
+      ? (input.cursorDirection ?? "next")
+      : "next";
+    const expansionMode = repositoryTimelineExpansionModes.includes(
+      input.expansionMode ?? "summary"
+    )
+      ? (input.expansionMode ?? "summary")
+      : "summary";
+    const decodedCursor = input.cursor ? decodeActivityCursor(input.cursor) : null;
+    const naturalSortDirection = appliedSortPreset === "oldest_first" ? "ASC" : "DESC";
+    const reverseSortDirection = naturalSortDirection === "ASC" ? "DESC" : "ASC";
+    const useReverseCursorQuery = decodedCursor !== null && appliedCursorDirection === "previous";
+    const effectiveSortDirection = useReverseCursorQuery
+      ? reverseSortDirection
+      : naturalSortDirection;
+    const cursorComparator =
+      naturalSortDirection === "ASC"
+        ? appliedCursorDirection === "previous"
+          ? "<"
+          : ">"
+        : appliedCursorDirection === "previous"
+          ? ">"
+          : "<";
+    const queryText = `WITH repository_events AS (
+        SELECT
+          CONCAT('run:', runs.run_id) AS activity_id,
+          'analysis_run' AS kind,
+          runs.created_at AS occurred_at,
+          'snapshot_saved' AS status,
+          COALESCE(runs.label, runs.run_id) AS title,
+          CONCAT(runs.total_findings, ' findings, ', runs.executable_patch_plans, ' executable patch plans') AS summary,
+          runs.repository_full_name,
+          runs.run_id,
+          NULL::TEXT AS plan_id,
+          NULL::TEXT AS job_id,
+          NULL::TEXT AS tracked_pull_request_id,
+          NULL::TEXT AS execution_event_id,
+          NULL::TEXT AS execution_id,
+          NULL::TEXT AS action_id,
+          NULL::TEXT AS pull_request_url,
+          runs.total_findings AS finding_count,
+          runs.executable_patch_plans AS executable_patch_plan_count,
+          runs.blocked_patch_plans AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          runs.label,
+          NULL::TEXT AS lifecycle_status
+        FROM analysis_runs AS runs
+        WHERE runs.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          CONCAT('job:', jobs.job_id) AS activity_id,
+          'analysis_job' AS kind,
+          COALESCE(jobs.completed_at, jobs.failed_at, jobs.started_at, jobs.queued_at) AS occurred_at,
+          jobs.status,
+          COALESCE(jobs.label, jobs.job_id) AS title,
+          jobs.job_kind AS summary,
+          jobs.repository_full_name,
+          jobs.run_id,
+          jobs.plan_id,
+          jobs.job_id,
+          NULL::TEXT AS tracked_pull_request_id,
+          NULL::TEXT AS execution_event_id,
+          NULL::TEXT AS execution_id,
+          NULL::TEXT AS action_id,
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          jobs.job_kind,
+          jobs.label,
+          NULL::TEXT AS lifecycle_status
+        FROM analysis_jobs AS jobs
+        WHERE jobs.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          CONCAT('plan:', plans.plan_id) AS activity_id,
+          'execution_plan' AS kind,
+          COALESCE(plans.completed_at, plans.failed_at, plans.cancelled_at, plans.started_at, plans.created_at) AS occurred_at,
+          plans.status,
+          plans.plan_id AS title,
+          CASE
+            WHEN plans.summary_payload IS NOT NULL AND plans.summary_payload ? 'totalActions'
+              THEN CONCAT(plans.summary_payload->>'totalActions', ' actions')
+            ELSE NULL
+          END AS summary,
+          plans.repository_full_name,
+          plans.analysis_run_id AS run_id,
+          plans.plan_id,
+          NULL::TEXT AS job_id,
+          NULL::TEXT AS tracked_pull_request_id,
+          NULL::TEXT AS execution_event_id,
+          attempts.execution_id,
+          NULL::TEXT AS action_id,
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          (plans.selected_issue_candidate_count + plans.selected_pr_candidate_count) AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          NULL::TEXT AS lifecycle_status
+        FROM execution_plans AS plans
+        LEFT JOIN execution_attempts AS attempts
+          ON attempts.plan_id = plans.plan_id
+        WHERE plans.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          CONCAT('execution-event:', audit.event_id) AS activity_id,
+          'execution_event' AS kind,
+          audit.created_at AS occurred_at,
+          audit.event_type AS status,
+          audit.event_type AS title,
+          CASE
+            WHEN audit.action_id IS NOT NULL THEN CONCAT('Action ', audit.action_id)
+            ELSE NULL
+          END AS summary,
+          audit.repository_full_name,
+          NULL::TEXT AS run_id,
+          audit.plan_id,
+          NULL::TEXT AS job_id,
+          NULL::TEXT AS tracked_pull_request_id,
+          audit.event_id AS execution_event_id,
+          audit.execution_id,
+          audit.action_id,
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          NULL::TEXT AS lifecycle_status
+        FROM execution_audit_events AS audit
+        WHERE audit.repository_full_name = $1
+
+        UNION ALL
+
+        SELECT
+          CONCAT('pull-request:', prs.tracked_pull_request_id) AS activity_id,
+          'tracked_pull_request' AS kind,
+          COALESCE(prs.merged_at, prs.closed_at, prs.updated_at, prs.created_at) AS occurred_at,
+          prs.lifecycle_status AS status,
+          CONCAT('#', prs.pull_request_number, ' ', prs.title) AS title,
+          prs.branch_name AS summary,
+          prs.repository_full_name,
+          NULL::TEXT AS run_id,
+          prs.plan_id,
+          NULL::TEXT AS job_id,
+          prs.tracked_pull_request_id,
+          NULL::TEXT AS execution_event_id,
+          prs.execution_id,
+          NULL::TEXT AS action_id,
+          prs.pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          prs.branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          prs.lifecycle_status
+        FROM tracked_pull_requests AS prs
+        WHERE prs.repository_full_name = $1
+      )
+      SELECT
+        activity_id,
+        kind,
+        occurred_at,
+        status,
+        title,
+        summary,
+        repository_full_name,
+        run_id,
+        plan_id,
+        job_id,
+        tracked_pull_request_id,
+        execution_event_id,
+        execution_id,
+        action_id,
+        pull_request_url,
+        finding_count,
+        executable_patch_plan_count,
+        blocked_patch_plan_count,
+        candidate_selection_count,
+        branch_name,
+        job_kind,
+        label,
+        lifecycle_status
+      FROM repository_events
+      WHERE (($2::TEXT[] IS NULL) OR kind = ANY($2::TEXT[]))
+        AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
+        AND ($4::TIMESTAMPTZ IS NULL OR occurred_at >= $4)
+        AND ($5::TIMESTAMPTZ IS NULL OR occurred_at <= $5)
+        AND (
+          $6::TIMESTAMPTZ IS NULL OR $7::TEXT IS NULL OR
+          (
+            occurred_at ${cursorComparator} $6 OR
+            (occurred_at = $6 AND activity_id ${cursorComparator} $7)
+          )
+        )
+      ORDER BY occurred_at ${effectiveSortDirection}, activity_id ${effectiveSortDirection}
+      LIMIT $8`;
+    const result = await this.client.query<RepositoryActivityRow>(queryText, [
+      input.repositoryFullName,
+      kinds,
+      statuses,
+      occurredAfter,
+      occurredBefore,
+      decodedCursor?.occurredAt ?? null,
+      decodedCursor?.activityId ?? null,
+      pageSize + 1
+    ]);
+    const hasExtra = result.rows.length > pageSize;
+    const limitedRows = hasExtra ? result.rows.slice(0, pageSize) : result.rows;
+    const sortedRows = useReverseCursorQuery ? [...limitedRows].reverse() : limitedRows;
+    const hasPreviousPage =
+      decodedCursor !== null
+        ? appliedCursorDirection === "previous"
+          ? hasExtra
+          : true
+        : false;
+    const hasNextPage =
+      decodedCursor !== null
+        ? appliedCursorDirection === "previous"
+          ? sortedRows.length > 0
+          : hasExtra
+        : hasExtra;
+
+    return {
+      appliedCursor: decodedCursor ? input.cursor ?? null : null,
+      appliedCursorDirection,
+      appliedKinds,
+      appliedSortPreset,
+      appliedStatuses,
+      availableKinds: repositoryActivityKinds,
+      events: sortedRows.map((row) =>
+        parseRepositoryActivityForExpansion(row, expansionMode)
+      ),
+      expansionMode,
+      hasNextPage,
+      hasPreviousPage,
+      limit: pageSize,
+      nextCursor:
+        hasNextPage && sortedRows.length > 0
+          ? createActivityCursor(sortedRows[sortedRows.length - 1]!)
+          : null,
+      occurredAfter,
+      occurredBefore,
+      previousCursor:
+        hasPreviousPage && sortedRows.length > 0
+          ? createActivityCursor(sortedRows[0]!)
+          : null,
+      returnedCount: sortedRows.length
+    };
   }
 
   async listActivitiesByRepositoryFullName(input: {

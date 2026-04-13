@@ -19,6 +19,8 @@ import {
   RepositoryActivityFeedSchema,
   RepositoryActivityKindSchema,
   RepositoryActivitySortPresetSchema,
+  RepositoryTimelineExpansionModeSchema,
+  RepositoryTimelinePageSchema,
   TrackedRepositoryHistoryResponseSchema
 } from "@repo-guardian/shared-types";
 import { z } from "zod";
@@ -65,7 +67,7 @@ type TrackedPullRequestStore = Pick<
 
 type RepositoryActivityStore = Pick<
   RepositoryActivityRepository,
-  "listActivitiesByRepositoryFullName"
+  "listActivitiesByRepositoryFullName" | "listTimelineByRepositoryFullName"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -136,6 +138,58 @@ const trackedRepositoryHistoryQuerySchema = z.object({
     .pipe(z.array(z.string().min(1)))
 });
 
+const trackedRepositoryTimelineQuerySchema = z.object({
+  timelineCursor: z.string().trim().min(1).nullable().optional().default(null),
+  timelineDirection: RepositoryActivityCursorDirectionSchema.optional().default("next"),
+  timelineExpand: RepositoryTimelineExpansionModeSchema.optional().default("summary"),
+  timelineKinds: z
+    .union([
+      RepositoryActivityKindSchema,
+      z.array(RepositoryActivityKindSchema),
+      z.string().trim().min(1)
+    ])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) {
+        return [];
+      }
+
+      const values = Array.isArray(value) ? value : [value];
+
+      return values.flatMap((entry) =>
+        typeof entry === "string"
+          ? entry
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0)
+          : entry
+      );
+    })
+    .pipe(z.array(RepositoryActivityKindSchema)),
+  timelineLimit: z.coerce.number().int().min(1).max(100).default(20),
+  timelineOccurredAfter: z.string().datetime().nullable().optional().default(null),
+  timelineOccurredBefore: z.string().datetime().nullable().optional().default(null),
+  timelineSortPreset: RepositoryActivitySortPresetSchema.optional().default("newest_first"),
+  timelineStatuses: z
+    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) {
+        return [];
+      }
+
+      const values = Array.isArray(value) ? value : [value];
+
+      return values.flatMap((entry) =>
+        entry
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      );
+    })
+    .pipe(z.array(z.string().min(1)))
+});
+
 function toRepositoryActivityQuery(input: z.infer<typeof trackedRepositoryHistoryQuerySchema>) {
   return {
     kinds: input.activityKinds,
@@ -148,6 +202,20 @@ function toRepositoryActivityQuery(input: z.infer<typeof trackedRepositoryHistor
     offset: (input.activityPage - 1) * input.activityPageSize,
     sortPreset: input.activitySortPreset,
     statuses: input.activityStatuses
+  };
+}
+
+function toRepositoryTimelineQuery(input: z.infer<typeof trackedRepositoryTimelineQuerySchema>) {
+  return {
+    cursor: input.timelineCursor,
+    cursorDirection: input.timelineDirection,
+    expansionMode: input.timelineExpand,
+    kinds: input.timelineKinds,
+    limit: input.timelineLimit,
+    occurredAfter: input.timelineOccurredAfter,
+    occurredBefore: input.timelineOccurredBefore,
+    sortPreset: input.timelineSortPreset,
+    statuses: input.timelineStatuses
   };
 }
 
@@ -334,6 +402,40 @@ export function createFleetRouter(input: {
       if (status) {
         response.status(status).json({
           error: error instanceof Error ? error.message : "Tracked repository activity request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/tracked-repositories/:trackedRepositoryId/timeline", async (request, response, next) => {
+    try {
+      const parsedQuery = trackedRepositoryTimelineQuerySchema.safeParse(request.query);
+
+      if (!parsedQuery.success) {
+        response.status(400).json({
+          error: "Tracked repository timeline query could not be validated."
+        });
+        return;
+      }
+
+      const trackedRepository = await input.trackedRepositoryStore.getRepository(
+        getSingleParam(request.params.trackedRepositoryId)
+      );
+      const timeline = await input.repositoryActivityStore.listTimelineByRepositoryFullName({
+        ...toRepositoryTimelineQuery(parsedQuery.data),
+        repositoryFullName: trackedRepository.fullName
+      });
+
+      response.json(RepositoryTimelinePageSchema.parse(timeline));
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Tracked repository timeline request failed"
         });
         return;
       }
