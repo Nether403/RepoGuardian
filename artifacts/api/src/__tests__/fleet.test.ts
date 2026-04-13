@@ -210,6 +210,23 @@ function createRepositoryActivity(overrides: Record<string, unknown> = {}) {
   return {
     actionId: null,
     activityId: "run:run_one",
+    detail: {
+      auditEventType: null,
+      blockedPatchPlanCount: 0,
+      branchName: null,
+      candidateSelectionCount: null,
+      executablePatchPlanCount: 2,
+      findingCount: 1,
+      jobKind: null,
+      label: "Weekly review",
+      lifecycleStatus: null,
+      relatedActionId: null,
+      relatedExecutionId: null,
+      relatedJobId: null,
+      relatedPlanId: null,
+      relatedRunId: "run_one",
+      relatedTrackedPullRequestId: null
+    },
     executionEventId: null,
     executionId: null,
     jobId: null,
@@ -237,7 +254,10 @@ function createTestApp(
     createFleetRouter({
       repositoryActivityStore: {
         listActivitiesByRepositoryFullName: vi.fn().mockResolvedValue({
+          appliedCursor: null,
+          appliedCursorDirection: "next",
           appliedKinds: [],
+          appliedSortPreset: "newest_first",
           appliedStatuses: [],
           availableKinds: [
             "analysis_job",
@@ -246,13 +266,16 @@ function createTestApp(
             "execution_plan",
             "tracked_pull_request"
           ],
+          detailsIncluded: true,
           events: [],
           hasNextPage: false,
           hasPreviousPage: false,
+          nextCursor: null,
           occurredAfter: null,
           occurredBefore: null,
           page: 1,
           pageSize: 20,
+          previousCursor: null,
           totalPages: 0,
           totalEvents: 0
         })
@@ -558,7 +581,10 @@ describe("fleet routes", () => {
 
   it("returns tracked repository history", async () => {
     const listActivitiesByRepositoryFullName = vi.fn().mockResolvedValue({
+      appliedCursor: null,
+      appliedCursorDirection: "next",
       appliedKinds: ["execution_plan"],
+      appliedSortPreset: "newest_first",
       appliedStatuses: ["planned"],
       availableKinds: [
         "analysis_job",
@@ -571,6 +597,23 @@ describe("fleet routes", () => {
         createRepositoryActivity(),
         createRepositoryActivity({
           activityId: "plan:plan_one",
+          detail: {
+            auditEventType: null,
+            blockedPatchPlanCount: null,
+            branchName: null,
+            candidateSelectionCount: 1,
+            executablePatchPlanCount: null,
+            findingCount: null,
+            jobKind: null,
+            label: null,
+            lifecycleStatus: null,
+            relatedActionId: null,
+            relatedExecutionId: "exec_one",
+            relatedJobId: null,
+            relatedPlanId: "plan_one",
+            relatedRunId: "run_one",
+            relatedTrackedPullRequestId: null
+          },
           executionId: "exec_one",
           kind: "execution_plan",
           occurredAt: "2026-04-12T10:05:00.000Z",
@@ -581,12 +624,15 @@ describe("fleet routes", () => {
           title: "plan_one"
         })
       ],
+      detailsIncluded: true,
       hasNextPage: true,
       hasPreviousPage: false,
+      nextCursor: "cursor_next",
       occurredAfter: "2026-04-12T10:00:00.000Z",
       occurredBefore: "2026-04-12T11:00:00.000Z",
       page: 1,
       pageSize: 2,
+      previousCursor: null,
       totalPages: 3,
       totalEvents: 2
     });
@@ -686,20 +732,26 @@ describe("fleet routes", () => {
       )
     ).toBe(true);
     expect(listActivitiesByRepositoryFullName).toHaveBeenCalledWith({
+      cursor: null,
+      cursorDirection: "next",
+      includeDetails: false,
       kinds: ["execution_plan"],
       limit: 2,
       occurredAfter: "2026-04-12T10:00:00.000Z",
       occurredBefore: "2026-04-12T11:00:00.000Z",
       offset: 0,
-      repositoryFullName: "openai/openai-node"
-      ,
+      repositoryFullName: "openai/openai-node",
+      sortPreset: "newest_first",
       statuses: ["planned"]
     });
   });
 
   it("returns tracked repository activity without loading repository summary context", async () => {
     const listActivitiesByRepositoryFullName = vi.fn().mockResolvedValue({
+      appliedCursor: "cursor_one",
+      appliedCursorDirection: "next",
       appliedKinds: [],
+      appliedSortPreset: "oldest_first",
       appliedStatuses: ["completed", "open"],
       availableKinds: [
         "analysis_job",
@@ -708,13 +760,16 @@ describe("fleet routes", () => {
         "execution_plan",
         "tracked_pull_request"
       ],
+      detailsIncluded: true,
       events: [createRepositoryActivity({ status: "completed" })],
       hasNextPage: false,
       hasPreviousPage: true,
+      nextCursor: null,
       occurredAfter: "2026-04-10T00:00:00.000Z",
       occurredBefore: null,
       page: 2,
       pageSize: 1,
+      previousCursor: "cursor_previous",
       totalEvents: 2,
       totalPages: 2
     });
@@ -745,20 +800,25 @@ describe("fleet routes", () => {
 
     const response = await request(app)
       .get(
-        "/tracked-repositories/tracked_one/activity?activityStatuses=completed,open&activityOccurredAfter=2026-04-10T00:00:00.000Z&activityPage=2&activityPageSize=1"
+        "/tracked-repositories/tracked_one/activity?activityStatuses=completed,open&activityOccurredAfter=2026-04-10T00:00:00.000Z&activityPage=2&activityPageSize=1&activitySortPreset=oldest_first&activityCursor=cursor_one&activityCursorDirection=next&activityIncludeDetails=true"
       )
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
     expect(response.status).toBe(200);
     expect(response.body.page).toBe(2);
+    expect(response.body.appliedSortPreset).toBe("oldest_first");
     expect(response.body.appliedStatuses).toEqual(["completed", "open"]);
     expect(listActivitiesByRepositoryFullName).toHaveBeenCalledWith({
+      cursor: "cursor_one",
+      cursorDirection: "next",
+      includeDetails: true,
       kinds: [],
       limit: 1,
       occurredAfter: "2026-04-10T00:00:00.000Z",
       occurredBefore: null,
       offset: 1,
       repositoryFullName: "openai/openai-node",
+      sortPreset: "oldest_first",
       statuses: ["completed", "open"]
     });
   });

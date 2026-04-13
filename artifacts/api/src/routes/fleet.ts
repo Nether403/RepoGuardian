@@ -15,8 +15,10 @@ import {
   CreateTrackedRepositoryRequestSchema,
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
+  RepositoryActivityCursorDirectionSchema,
   RepositoryActivityFeedSchema,
   RepositoryActivityKindSchema,
+  RepositoryActivitySortPresetSchema,
   TrackedRepositoryHistoryResponseSchema
 } from "@repo-guardian/shared-types";
 import { z } from "zod";
@@ -110,6 +112,10 @@ const trackedRepositoryHistoryQuerySchema = z.object({
   activityPageSize: z.coerce.number().int().min(1).max(100).default(20),
   activityOccurredAfter: z.string().datetime().nullable().optional().default(null),
   activityOccurredBefore: z.string().datetime().nullable().optional().default(null),
+  activityCursor: z.string().trim().min(1).nullable().optional().default(null),
+  activityCursorDirection: RepositoryActivityCursorDirectionSchema.optional().default("next"),
+  activityIncludeDetails: z.coerce.boolean().optional().default(false),
+  activitySortPreset: RepositoryActivitySortPresetSchema.optional().default("newest_first"),
   activityStatuses: z
     .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
     .optional()
@@ -134,9 +140,13 @@ function toRepositoryActivityQuery(input: z.infer<typeof trackedRepositoryHistor
   return {
     kinds: input.activityKinds,
     limit: input.activityPageSize,
+    cursor: input.activityCursor,
+    cursorDirection: input.activityCursorDirection,
+    includeDetails: input.activityIncludeDetails,
     occurredAfter: input.activityOccurredAfter,
     occurredBefore: input.activityOccurredBefore,
     offset: (input.activityPage - 1) * input.activityPageSize,
+    sortPreset: input.activitySortPreset,
     statuses: input.activityStatuses
   };
 }

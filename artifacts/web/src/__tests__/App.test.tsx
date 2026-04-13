@@ -1309,7 +1309,10 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
 
   return TrackedRepositoryHistoryResponseSchema.parse({
     activityFeed: {
+      appliedCursor: null,
+      appliedCursorDirection: "next",
       appliedKinds: [],
+      appliedSortPreset: "newest_first",
       appliedStatuses: [],
       availableKinds: [
         "analysis_job",
@@ -1318,10 +1321,28 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
         "execution_plan",
         "tracked_pull_request"
       ],
+      detailsIncluded: true,
       events: [
         {
           actionId: null,
           activityId: "execution-event:event_one",
+          detail: {
+            auditEventType: "execution_completed",
+            blockedPatchPlanCount: null,
+            branchName: null,
+            candidateSelectionCount: null,
+            executablePatchPlanCount: null,
+            findingCount: null,
+            jobKind: null,
+            label: null,
+            lifecycleStatus: null,
+            relatedActionId: "action_one",
+            relatedExecutionId: "exec_one",
+            relatedJobId: null,
+            relatedPlanId: "plan_one",
+            relatedRunId: null,
+            relatedTrackedPullRequestId: null
+          },
           executionEventId: "event_one",
           executionId: "exec_one",
           jobId: null,
@@ -1339,6 +1360,23 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
         {
           actionId: null,
           activityId: "pull-request:tpr_one",
+          detail: {
+            auditEventType: null,
+            blockedPatchPlanCount: null,
+            branchName: "repo-guardian/test-branch",
+            candidateSelectionCount: null,
+            executablePatchPlanCount: null,
+            findingCount: null,
+            jobKind: null,
+            label: "Harden workflow permissions",
+            lifecycleStatus: "open",
+            relatedActionId: null,
+            relatedExecutionId: "exec_one",
+            relatedJobId: null,
+            relatedPlanId: "plan_one",
+            relatedRunId: null,
+            relatedTrackedPullRequestId: "tpr_one"
+          },
           executionEventId: null,
           executionId: "exec_one",
           jobId: null,
@@ -1356,6 +1394,23 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
         {
           actionId: null,
           activityId: "plan:plan_one",
+          detail: {
+            auditEventType: null,
+            blockedPatchPlanCount: 0,
+            branchName: null,
+            candidateSelectionCount: 1,
+            executablePatchPlanCount: 1,
+            findingCount: null,
+            jobKind: null,
+            label: null,
+            lifecycleStatus: "completed",
+            relatedActionId: null,
+            relatedExecutionId: "exec_one",
+            relatedJobId: null,
+            relatedPlanId: "plan_one",
+            relatedRunId: "run_one",
+            relatedTrackedPullRequestId: null
+          },
           executionEventId: null,
           executionId: "exec_one",
           jobId: null,
@@ -1373,6 +1428,23 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
         {
           actionId: null,
           activityId: "job:job_one",
+          detail: {
+            auditEventType: null,
+            blockedPatchPlanCount: null,
+            branchName: null,
+            candidateSelectionCount: null,
+            executablePatchPlanCount: null,
+            findingCount: null,
+            jobKind: "analyze_repository",
+            label: "Nightly queue",
+            lifecycleStatus: null,
+            relatedActionId: null,
+            relatedExecutionId: null,
+            relatedJobId: "job_one",
+            relatedPlanId: null,
+            relatedRunId: "run_one",
+            relatedTrackedPullRequestId: null
+          },
           executionEventId: null,
           executionId: null,
           jobId: "job_one",
@@ -1390,6 +1462,23 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
         {
           actionId: null,
           activityId: "run:run_one",
+          detail: {
+            auditEventType: null,
+            blockedPatchPlanCount: 1,
+            branchName: "main",
+            candidateSelectionCount: null,
+            executablePatchPlanCount: 4,
+            findingCount: 3,
+            jobKind: null,
+            label: "Weekly review",
+            lifecycleStatus: null,
+            relatedActionId: null,
+            relatedExecutionId: null,
+            relatedJobId: null,
+            relatedPlanId: null,
+            relatedRunId: "run_one",
+            relatedTrackedPullRequestId: null
+          },
           executionEventId: null,
           executionId: null,
           jobId: null,
@@ -1407,10 +1496,12 @@ function createTrackedRepositoryHistoryFixture(overrides: Record<string, unknown
       ],
       hasNextPage: false,
       hasPreviousPage: false,
+      nextCursor: null,
       occurredAfter: null,
       occurredBefore: null,
       page: 1,
       pageSize: 20,
+      previousCursor: null,
       totalPages: 1,
       totalEvents: 5
     },
@@ -3326,7 +3417,14 @@ describe("App", () => {
         const requestUrl = new URL(`http://localhost${url}`);
         const activityKinds = requestUrl.searchParams.getAll("activityKinds");
         const activityStatuses = requestUrl.searchParams.getAll("activityStatuses");
+        const activityCursor = requestUrl.searchParams.get("activityCursor");
+        const activityCursorDirection =
+          requestUrl.searchParams.get("activityCursorDirection") ?? "next";
+        const activityIncludeDetails =
+          requestUrl.searchParams.get("activityIncludeDetails") === "true";
         const activityPage = Number(requestUrl.searchParams.get("activityPage") ?? "1");
+        const activitySortPreset =
+          requestUrl.searchParams.get("activitySortPreset") ?? "newest_first";
         const fixture = createTrackedRepositoryHistoryFixture();
         const filteredEvents =
           activityKinds.length === 0 && activityStatuses.length === 0
@@ -3340,14 +3438,20 @@ describe("App", () => {
 
         return createJsonResponse({
           ...fixture.activityFeed,
+          appliedCursor: activityCursor,
+          appliedCursorDirection: activityCursorDirection,
           appliedKinds: activityKinds,
+          appliedSortPreset: activitySortPreset,
           appliedStatuses: activityStatuses,
+          detailsIncluded: activityIncludeDetails,
           events: filteredEvents,
           hasNextPage: false,
           hasPreviousPage: activityPage > 1,
+          nextCursor: null,
           occurredAfter: requestUrl.searchParams.get("activityOccurredAfter"),
           occurredBefore: requestUrl.searchParams.get("activityOccurredBefore"),
           page: activityPage,
+          previousCursor: activityPage > 1 ? "cursor_previous" : null,
           totalPages: 1,
           totalEvents: filteredEvents.length
         });
@@ -3558,6 +3662,113 @@ describe("App", () => {
     });
 
     expect(jobDetailAttempts).toBe(2);
+  });
+
+  it("restores saved repository timeline filters and sorting from local storage", async () => {
+    const user = userEvent.setup();
+    globalThis.localStorage.setItem(
+      "repo-guardian-fleet-activity-query",
+      JSON.stringify({
+        activityCursor: "cursor_saved",
+        activityCursorDirection: "next",
+        activityIncludeDetails: true,
+        activityKinds: [],
+        activityOccurredAfter: "2026-04-11T00:00:00.000Z",
+        activityOccurredBefore: null,
+        activityPage: 2,
+        activityPageSize: 20,
+        activitySortPreset: "oldest_first",
+        activityStatuses: ["completed"]
+      })
+    );
+
+    const fetchMock = mockAuthenticatedFetch(async (url) => {
+      if (url === "/api/tracked-repositories/tracked_one/history") {
+        return createJsonResponse(createTrackedRepositoryHistoryFixture());
+      }
+
+      if (url.startsWith("/api/tracked-repositories/tracked_one/activity")) {
+        const requestUrl = new URL(`http://localhost${url}`);
+
+        return createJsonResponse({
+          ...createTrackedRepositoryHistoryFixture().activityFeed,
+          appliedCursor: requestUrl.searchParams.get("activityCursor"),
+          appliedCursorDirection:
+            requestUrl.searchParams.get("activityCursorDirection") ?? "next",
+          appliedKinds: requestUrl.searchParams.getAll("activityKinds"),
+          appliedSortPreset:
+            requestUrl.searchParams.get("activitySortPreset") ?? "newest_first",
+          appliedStatuses: requestUrl.searchParams.getAll("activityStatuses"),
+          detailsIncluded:
+            requestUrl.searchParams.get("activityIncludeDetails") === "true",
+          occurredAfter: requestUrl.searchParams.get("activityOccurredAfter"),
+          occurredBefore: requestUrl.searchParams.get("activityOccurredBefore"),
+          page: Number(requestUrl.searchParams.get("activityPage") ?? "1")
+        });
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: [createTrackedRepositoryFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    const trackedRepositoriesPanel = within(getPanelByHeading(/Tracked repositories/i));
+    await user.click(
+      trackedRepositoriesPanel.getAllByRole("button", { name: /^View details$/i })[0]!
+    );
+
+    const repositoryInspector = within(
+      await screen.findByRole("heading", { name: /Tracked repository history/i }).then((heading) =>
+        heading.closest("section") as HTMLElement
+      )
+    );
+
+    expect(repositoryInspector.getByLabelText("Sort")).toHaveValue("oldest_first");
+    expect(repositoryInspector.getByLabelText("Status filters")).toHaveValue("completed");
+
+    await waitFor(() => {
+      const activityRequest = fetchMock.mock.calls.find(([url]) =>
+        typeof url === "string" &&
+        url.startsWith("/api/tracked-repositories/tracked_one/activity")
+      )?.[0];
+
+      expect(activityRequest).toBeDefined();
+      expect(activityRequest).toEqual(expect.stringContaining("activityStatuses=completed"));
+      expect(activityRequest).toEqual(expect.stringContaining("activitySortPreset=oldest_first"));
+      expect(activityRequest).toEqual(expect.stringContaining("activityCursor=cursor_saved"));
+    });
   });
 
   it("preserves the loaded analysis when switching between analysis and fleet admin modes", async () => {

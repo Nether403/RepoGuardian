@@ -1089,9 +1089,38 @@ export const RepositoryActivityKindSchema = z.enum([
   "tracked_pull_request"
 ]);
 
+export const RepositoryActivitySortPresetSchema = z.enum([
+  "newest_first",
+  "oldest_first"
+]);
+
+export const RepositoryActivityCursorDirectionSchema = z.enum([
+  "next",
+  "previous"
+]);
+
+export const RepositoryActivityDetailSchema = z.object({
+  auditEventType: z.string().min(1).nullable(),
+  blockedPatchPlanCount: z.number().int().nonnegative().nullable(),
+  branchName: z.string().min(1).nullable(),
+  candidateSelectionCount: z.number().int().nonnegative().nullable(),
+  executablePatchPlanCount: z.number().int().nonnegative().nullable(),
+  findingCount: z.number().int().nonnegative().nullable(),
+  jobKind: z.string().min(1).nullable(),
+  label: z.string().min(1).nullable(),
+  lifecycleStatus: z.string().min(1).nullable(),
+  relatedActionId: z.string().min(1).nullable(),
+  relatedExecutionId: z.string().min(1).nullable(),
+  relatedJobId: z.string().min(1).nullable(),
+  relatedPlanId: z.string().min(1).nullable(),
+  relatedRunId: z.string().min(1).nullable(),
+  relatedTrackedPullRequestId: z.string().min(1).nullable()
+});
+
 export const RepositoryActivityEventSchema = z.object({
   actionId: z.string().min(1).nullable(),
   activityId: z.string().min(1),
+  detail: RepositoryActivityDetailSchema.nullable(),
   executionEventId: z.string().min(1).nullable(),
   executionId: z.string().min(1).nullable(),
   jobId: z.string().min(1).nullable(),
@@ -1108,16 +1137,22 @@ export const RepositoryActivityEventSchema = z.object({
 });
 
 export const RepositoryActivityFeedSchema = z.object({
+  appliedCursor: z.string().min(1).nullable(),
+  appliedCursorDirection: RepositoryActivityCursorDirectionSchema,
   appliedKinds: z.array(RepositoryActivityKindSchema),
+  appliedSortPreset: RepositoryActivitySortPresetSchema,
   appliedStatuses: z.array(z.string().min(1)),
   availableKinds: z.array(RepositoryActivityKindSchema),
+  detailsIncluded: z.boolean(),
   events: z.array(RepositoryActivityEventSchema),
   hasNextPage: z.boolean(),
   hasPreviousPage: z.boolean(),
+  nextCursor: z.string().min(1).nullable(),
   occurredAfter: z.string().datetime().nullable(),
   occurredBefore: z.string().datetime().nullable(),
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
+  previousCursor: z.string().min(1).nullable(),
   totalPages: z.number().int().nonnegative(),
   totalEvents: z.number().int().nonnegative()
 });

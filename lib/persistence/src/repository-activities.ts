@@ -1,7 +1,9 @@
 import type { QueryResultRow } from "pg";
 import {
+  RepositoryActivityCursorDirectionSchema,
   RepositoryActivityEventSchema,
   RepositoryActivityKindSchema,
+  RepositoryActivitySortPresetSchema,
   type RepositoryActivityEvent,
   type RepositoryActivityKind
 } from "@repo-guardian/shared-types";
@@ -10,10 +12,18 @@ import type { PostgresClient } from "./client.js";
 type RepositoryActivityRow = QueryResultRow & {
   action_id: string | null;
   activity_id: string;
+  blocked_patch_plan_count: number | null;
+  branch_name: string | null;
+  candidate_selection_count: number | null;
   execution_event_id: string | null;
   execution_id: string | null;
+  executable_patch_plan_count: number | null;
+  finding_count: number | null;
   job_id: string | null;
+  job_kind: string | null;
   kind: RepositoryActivityKind;
+  label: string | null;
+  lifecycle_status: string | null;
   occurred_at: Date | string;
   plan_id: string | null;
   pull_request_url: string | null;
@@ -26,6 +36,54 @@ type RepositoryActivityRow = QueryResultRow & {
 };
 
 const repositoryActivityKinds = [...RepositoryActivityKindSchema.options];
+const repositoryActivitySortPresets = [...RepositoryActivitySortPresetSchema.options];
+const repositoryActivityCursorDirections = [
+  ...RepositoryActivityCursorDirectionSchema.options
+];
+
+type RepositoryActivitySortPreset = (typeof repositoryActivitySortPresets)[number];
+type RepositoryActivityCursorDirection =
+  (typeof repositoryActivityCursorDirections)[number];
+
+type ActivityCursor = {
+  activityId: string;
+  occurredAt: string;
+};
+
+function encodeActivityCursor(cursor: ActivityCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeActivityCursor(cursor: string): ActivityCursor | null {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8")
+    ) as Partial<ActivityCursor>;
+
+    if (
+      typeof parsed.activityId !== "string" ||
+      parsed.activityId.trim().length === 0 ||
+      typeof parsed.occurredAt !== "string" ||
+      Number.isNaN(new Date(parsed.occurredAt).valueOf())
+    ) {
+      return null;
+    }
+
+    return {
+      activityId: parsed.activityId,
+      occurredAt: new Date(parsed.occurredAt).toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createActivityCursor(row: RepositoryActivityRow): string {
+  return encodeActivityCursor({
+    activityId: row.activity_id,
+    occurredAt: toIsoString(row.occurred_at)
+  });
+}
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -42,6 +100,23 @@ function parseRepositoryActivity(row: RepositoryActivityRow): RepositoryActivity
   return RepositoryActivityEventSchema.parse({
     actionId: row.action_id,
     activityId: row.activity_id,
+    detail: {
+      auditEventType: row.kind === "execution_event" ? row.status : null,
+      blockedPatchPlanCount: row.blocked_patch_plan_count,
+      branchName: row.branch_name,
+      candidateSelectionCount: row.candidate_selection_count,
+      executablePatchPlanCount: row.executable_patch_plan_count,
+      findingCount: row.finding_count,
+      jobKind: row.job_kind,
+      label: row.label,
+      lifecycleStatus: row.lifecycle_status,
+      relatedActionId: row.action_id,
+      relatedExecutionId: row.execution_id,
+      relatedJobId: row.job_id,
+      relatedPlanId: row.plan_id,
+      relatedRunId: row.run_id,
+      relatedTrackedPullRequestId: row.tracked_pull_request_id
+    },
     executionEventId: row.execution_event_id,
     executionId: row.execution_id,
     jobId: row.job_id,
@@ -67,30 +142,41 @@ export class RepositoryActivityRepository {
   }
 
   async listActivitiesByRepositoryFullName(input: {
+    cursor?: string | null;
+    cursorDirection?: RepositoryActivityCursorDirection;
+    includeDetails?: boolean;
     kinds?: RepositoryActivityKind[];
     limit?: number;
     offset?: number;
     occurredAfter?: string | null;
     occurredBefore?: string | null;
     repositoryFullName: string;
+    sortPreset?: RepositoryActivitySortPreset;
     statuses?: string[];
   }): Promise<{
+    appliedCursor: string | null;
+    appliedCursorDirection: RepositoryActivityCursorDirection;
     appliedKinds: RepositoryActivityKind[];
+    appliedSortPreset: RepositoryActivitySortPreset;
     appliedStatuses: string[];
     availableKinds: RepositoryActivityKind[];
+    detailsIncluded: boolean;
     events: RepositoryActivityEvent[];
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+    nextCursor: string | null;
     occurredAfter: string | null;
     occurredBefore: string | null;
     page: number;
     pageSize: number;
+    previousCursor: string | null;
     totalPages: number;
     totalEvents: number;
   }> {
     const pageSize = input.limit ?? 40;
     const offset = Math.max(0, input.offset ?? 0);
     const page = Math.floor(offset / pageSize) + 1;
+    const detailsIncluded = input.includeDetails ?? false;
     const appliedKinds = (input.kinds ?? []).filter((kind, index, kinds) =>
       repositoryActivityKinds.includes(kind) && kinds.indexOf(kind) === index
     );
@@ -101,6 +187,32 @@ export class RepositoryActivityRepository {
     const statuses = appliedStatuses.length > 0 ? appliedStatuses : null;
     const occurredAfter = input.occurredAfter ?? null;
     const occurredBefore = input.occurredBefore ?? null;
+    const appliedSortPreset = repositoryActivitySortPresets.includes(
+      input.sortPreset ?? "newest_first"
+    )
+      ? (input.sortPreset ?? "newest_first")
+      : "newest_first";
+    const appliedCursorDirection = repositoryActivityCursorDirections.includes(
+      input.cursorDirection ?? "next"
+    )
+      ? (input.cursorDirection ?? "next")
+      : "next";
+    const decodedCursor = input.cursor ? decodeActivityCursor(input.cursor) : null;
+    const usesCursor = decodedCursor !== null;
+    const naturalSortDirection = appliedSortPreset === "oldest_first" ? "ASC" : "DESC";
+    const reverseSortDirection = naturalSortDirection === "ASC" ? "DESC" : "ASC";
+    const useReverseCursorQuery = usesCursor && appliedCursorDirection === "previous";
+    const effectiveSortDirection = useReverseCursorQuery
+      ? reverseSortDirection
+      : naturalSortDirection;
+    const cursorComparator =
+      naturalSortDirection === "ASC"
+        ? appliedCursorDirection === "previous"
+          ? "<"
+          : ">"
+        : appliedCursorDirection === "previous"
+          ? ">"
+          : "<";
     const queryText = `WITH repository_events AS (
         SELECT
           CONCAT('run:', runs.run_id) AS activity_id,
@@ -117,7 +229,15 @@ export class RepositoryActivityRepository {
           NULL::TEXT AS execution_event_id,
           NULL::TEXT AS execution_id,
           NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url
+          NULL::TEXT AS pull_request_url,
+          runs.total_findings AS finding_count,
+          runs.executable_patch_plans AS executable_patch_plan_count,
+          runs.blocked_patch_plans AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          runs.label,
+          NULL::TEXT AS lifecycle_status
         FROM analysis_runs AS runs
         WHERE runs.repository_full_name = $1
 
@@ -138,7 +258,15 @@ export class RepositoryActivityRepository {
           NULL::TEXT AS execution_event_id,
           NULL::TEXT AS execution_id,
           NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          jobs.job_kind,
+          jobs.label,
+          NULL::TEXT AS lifecycle_status
         FROM analysis_jobs AS jobs
         WHERE jobs.repository_full_name = $1
 
@@ -163,7 +291,15 @@ export class RepositoryActivityRepository {
           NULL::TEXT AS execution_event_id,
           attempts.execution_id,
           NULL::TEXT AS action_id,
-          NULL::TEXT AS pull_request_url
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          (plans.selected_issue_candidate_count + plans.selected_pr_candidate_count) AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          NULL::TEXT AS lifecycle_status
         FROM execution_plans AS plans
         LEFT JOIN execution_attempts AS attempts
           ON attempts.plan_id = plans.plan_id
@@ -189,7 +325,15 @@ export class RepositoryActivityRepository {
           audit.event_id AS execution_event_id,
           audit.execution_id,
           audit.action_id,
-          NULL::TEXT AS pull_request_url
+          NULL::TEXT AS pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          NULL::TEXT AS branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          NULL::TEXT AS lifecycle_status
         FROM execution_audit_events AS audit
         WHERE audit.repository_full_name = $1
 
@@ -210,7 +354,15 @@ export class RepositoryActivityRepository {
           NULL::TEXT AS execution_event_id,
           prs.execution_id,
           NULL::TEXT AS action_id,
-          prs.pull_request_url
+          prs.pull_request_url,
+          NULL::INT AS finding_count,
+          NULL::INT AS executable_patch_plan_count,
+          NULL::INT AS blocked_patch_plan_count,
+          NULL::INT AS candidate_selection_count,
+          prs.branch_name,
+          NULL::TEXT AS job_kind,
+          NULL::TEXT AS label,
+          prs.lifecycle_status
         FROM tracked_pull_requests AS prs
         WHERE prs.repository_full_name = $1
       )
@@ -229,15 +381,29 @@ export class RepositoryActivityRepository {
         execution_event_id,
         execution_id,
         action_id,
-        pull_request_url
+        pull_request_url,
+        finding_count,
+        executable_patch_plan_count,
+        blocked_patch_plan_count,
+        candidate_selection_count,
+        branch_name,
+        job_kind,
+        label,
+        lifecycle_status
       FROM repository_events
-      WHERE $2::TEXT[] IS NULL OR kind = ANY($2::TEXT[])
+      WHERE (($2::TEXT[] IS NULL) OR kind = ANY($2::TEXT[]))
         AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
         AND ($4::TIMESTAMPTZ IS NULL OR occurred_at >= $4)
         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at <= $5)
-      ORDER BY occurred_at DESC, activity_id DESC
-      LIMIT $6
-      OFFSET $7`;
+        AND (
+          $6::TIMESTAMPTZ IS NULL OR $7::TEXT IS NULL OR
+          (
+            occurred_at ${cursorComparator} $6 OR
+            (occurred_at = $6 AND activity_id ${cursorComparator} $7)
+          )
+        )
+      ORDER BY occurred_at ${effectiveSortDirection}, activity_id ${effectiveSortDirection}
+      LIMIT $8`;
     const countQueryText = `WITH repository_events AS (
         SELECT
           'analysis_run' AS kind,
@@ -288,15 +454,16 @@ export class RepositoryActivityRepository {
         AND ($3::TEXT[] IS NULL OR status = ANY($3::TEXT[]))
         AND ($4::TIMESTAMPTZ IS NULL OR occurred_at >= $4)
         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at <= $5)`;
-    const [result, countResult] = await Promise.all([
+      const [result, countResult] = await Promise.all([
       this.client.query<RepositoryActivityRow>(queryText, [
         input.repositoryFullName,
         kinds,
         statuses,
         occurredAfter,
         occurredBefore,
-        pageSize,
-        offset
+        decodedCursor?.occurredAt ?? null,
+        decodedCursor?.activityId ?? null,
+        usesCursor ? pageSize + 1 : pageSize
       ]),
       this.client.query<{ total_events: number }>(countQueryText, [
         input.repositoryFullName,
@@ -308,18 +475,52 @@ export class RepositoryActivityRepository {
     ]);
     const totalEvents = countResult.rows[0]?.total_events ?? 0;
     const totalPages = totalEvents === 0 ? 0 : Math.ceil(totalEvents / pageSize);
+    const hasExtra = result.rows.length > pageSize;
+    const limitedRows = hasExtra ? result.rows.slice(0, pageSize) : result.rows;
+    const sortedRows = useReverseCursorQuery ? [...limitedRows].reverse() : limitedRows;
+    const hasPreviousPage = usesCursor
+      ? appliedCursorDirection === "previous"
+        ? hasExtra
+        : true
+      : offset > 0;
+    const hasNextPage = usesCursor
+      ? appliedCursorDirection === "previous"
+        ? sortedRows.length > 0
+        : hasExtra
+      : offset + limitedRows.length < totalEvents;
+    const nextCursor =
+      hasNextPage && sortedRows.length > 0
+        ? createActivityCursor(sortedRows[sortedRows.length - 1]!)
+        : null;
+    const previousCursor =
+      hasPreviousPage && sortedRows.length > 0
+        ? createActivityCursor(sortedRows[0]!)
+        : null;
 
     return {
+      appliedCursor: decodedCursor ? input.cursor ?? null : null,
+      appliedCursorDirection,
       appliedKinds,
+      appliedSortPreset,
       appliedStatuses,
       availableKinds: repositoryActivityKinds,
-      events: result.rows.map(parseRepositoryActivity),
-      hasNextPage: offset + result.rows.length < totalEvents,
-      hasPreviousPage: offset > 0,
+      detailsIncluded,
+      events: sortedRows.map((row) =>
+        detailsIncluded
+          ? parseRepositoryActivity(row)
+          : RepositoryActivityEventSchema.parse({
+              ...parseRepositoryActivity(row),
+              detail: null
+            })
+      ),
+      hasNextPage,
+      hasPreviousPage,
+      nextCursor,
       occurredAfter,
       occurredBefore,
       page,
       pageSize,
+      previousCursor,
       totalEvents,
       totalPages
     };

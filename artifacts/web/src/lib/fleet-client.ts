@@ -264,18 +264,32 @@ export async function triggerSweepSchedule(scheduleId: string): Promise<{
 export async function getTrackedRepositoryHistory(
   trackedRepositoryId: string,
   options?: {
+    activityCursor?: string | null;
+    activityCursorDirection?: "next" | "previous";
+    activityIncludeDetails?: boolean;
     activityKinds?: RepositoryActivityKind[];
+    activityOccurredAfter?: string | null;
+    activityOccurredBefore?: string | null;
     activityPage?: number;
     activityPageSize?: number;
+    activitySortPreset?: "newest_first" | "oldest_first";
+    activityStatuses?: string[];
   }
 ): Promise<TrackedRepositoryHistoryResponse> {
   try {
     const response = await requestGetTrackedRepositoryHistory(
       trackedRepositoryId,
       {
+        activityCursor: options?.activityCursor ?? undefined,
+        activityCursorDirection: options?.activityCursorDirection,
+        activityIncludeDetails: options?.activityIncludeDetails,
         activityKinds: options?.activityKinds,
+        activityOccurredAfter: options?.activityOccurredAfter ?? undefined,
+        activityOccurredBefore: options?.activityOccurredBefore ?? undefined,
         activityPage: options?.activityPage,
-        activityPageSize: options?.activityPageSize
+        activityPageSize: options?.activityPageSize,
+        activitySortPreset: options?.activitySortPreset,
+        activityStatuses: options?.activityStatuses
       },
       getApiOptions()
     );
@@ -291,11 +305,15 @@ export async function getTrackedRepositoryHistory(
 export async function getTrackedRepositoryActivityFeed(
   trackedRepositoryId: string,
   options?: {
+    activityCursor?: string | null;
+    activityCursorDirection?: "next" | "previous";
+    activityIncludeDetails?: boolean;
     activityKinds?: RepositoryActivityKind[];
     activityOccurredAfter?: string | null;
     activityOccurredBefore?: string | null;
     activityPage?: number;
     activityPageSize?: number;
+    activitySortPreset?: "newest_first" | "oldest_first";
     activityStatuses?: string[];
   }
 ): Promise<RepositoryActivityFeed> {
@@ -303,11 +321,15 @@ export async function getTrackedRepositoryActivityFeed(
     const response = await requestGetTrackedRepositoryActivity(
       trackedRepositoryId,
       {
+        activityCursor: options?.activityCursor ?? undefined,
+        activityCursorDirection: options?.activityCursorDirection,
+        activityIncludeDetails: options?.activityIncludeDetails,
         activityKinds: options?.activityKinds,
         activityOccurredAfter: options?.activityOccurredAfter ?? undefined,
         activityOccurredBefore: options?.activityOccurredBefore ?? undefined,
         activityPage: options?.activityPage,
         activityPageSize: options?.activityPageSize,
+        activitySortPreset: options?.activitySortPreset,
         activityStatuses: options?.activityStatuses
       },
       getApiOptions()

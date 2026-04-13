@@ -425,6 +425,27 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
+        - name: activityCursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: activityCursorDirection
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivityCursorDirection"
+        - name: activityIncludeDetails
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: activitySortPreset
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivitySortPreset"
         - name: activityStatuses
           in: query
           required: false
@@ -491,6 +512,27 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
+        - name: activityCursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: activityCursorDirection
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivityCursorDirection"
+        - name: activityIncludeDetails
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: activitySortPreset
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RepositoryActivitySortPreset"
         - name: activityStatuses
           in: query
           required: false
@@ -763,6 +805,18 @@ components:
       type: string
       description: Runtime schema is owned by RepositoryActivityKindSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: RepositoryActivityKindSchema
+    RepositoryActivitySortPreset:
+      type: string
+      description: Runtime schema is owned by RepositoryActivitySortPresetSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivitySortPresetSchema
+    RepositoryActivityCursorDirection:
+      type: string
+      description: Runtime schema is owned by RepositoryActivityCursorDirectionSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivityCursorDirectionSchema
+    RepositoryActivityDetail:
+      type: object
+      description: Runtime schema is owned by RepositoryActivityDetailSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: RepositoryActivityDetailSchema
     RepositoryActivityEvent:
       type: object
       description: Runtime schema is owned by RepositoryActivityEventSchema in @repo-guardian/shared-types.

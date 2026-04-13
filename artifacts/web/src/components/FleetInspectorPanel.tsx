@@ -11,6 +11,7 @@ import type {
   RepositoryActivityKind,
   TrackedRepositoryHistoryResponse
 } from "@repo-guardian/shared-types";
+import { RepositoryActivitySortPresetSchema } from "@repo-guardian/shared-types";
 import {
   buildTraceabilityViewModel,
   formatTimestamp
@@ -51,21 +52,34 @@ type FleetInspectorPanelProps = {
     activityStatuses: string[];
   }) => void;
   onRepositoryTimelineKindsChange: (activityKinds: RepositoryActivityKind[]) => void;
-  onRepositoryTimelinePageChange: (page: number) => void;
+  onRepositoryTimelinePageChange: (
+    page: number,
+    cursor: string | null,
+    direction: "next" | "previous"
+  ) => void;
+  onRepositoryTimelineSortChange: (
+    activitySortPreset: "newest_first" | "oldest_first"
+  ) => void;
   planDetail: ExecutionPlanDetailResponse | null;
   planEvents: ExecutionPlanEventsResponse | null;
   planRunDetail: GetAnalysisRunResponse | null;
   repositoryHistory: TrackedRepositoryHistoryResponse | null;
   repositoryTimelineQuery: {
+    activityCursor: string | null;
+    activityCursorDirection: "next" | "previous";
+    activityIncludeDetails: boolean;
     activityKinds: RepositoryActivityKind[];
     activityOccurredAfter: string | null;
     activityOccurredBefore: string | null;
     activityPage: number;
+    activitySortPreset: "newest_first" | "oldest_first";
     activityStatuses: string[];
   };
   runDetail: GetAnalysisRunResponse | null;
   selection: InspectorSelection | null;
 };
+
+const repositoryActivitySortPresets = [...RepositoryActivitySortPresetSchema.options];
 
 function getJobTone(status: AnalysisJob["status"]): "active" | "muted" | "up-next" | "warning" {
   switch (status) {
@@ -246,6 +260,7 @@ export function FleetInspectorPanel({
   onRepositoryTimelineFiltersChange,
   onRepositoryTimelineKindsChange,
   onRepositoryTimelinePageChange,
+  onRepositoryTimelineSortChange,
   planDetail,
   planEvents,
   planRunDetail,
@@ -257,6 +272,9 @@ export function FleetInspectorPanel({
   const [activityStatusInput, setActivityStatusInput] = useState("");
   const [activityOccurredAfterInput, setActivityOccurredAfterInput] = useState("");
   const [activityOccurredBeforeInput, setActivityOccurredBeforeInput] = useState("");
+  const [activitySortPresetInput, setActivitySortPresetInput] = useState<
+    "newest_first" | "oldest_first"
+  >(repositoryTimelineQuery.activitySortPreset);
 
   useEffect(() => {
     setActivityStatusInput(repositoryTimelineQuery.activityStatuses.join(", "));
@@ -266,9 +284,11 @@ export function FleetInspectorPanel({
     setActivityOccurredBeforeInput(
       toDateTimeLocalValue(repositoryTimelineQuery.activityOccurredBefore)
     );
+    setActivitySortPresetInput(repositoryTimelineQuery.activitySortPreset);
   }, [
     repositoryTimelineQuery.activityOccurredAfter,
     repositoryTimelineQuery.activityOccurredBefore,
+    repositoryTimelineQuery.activitySortPreset,
     repositoryTimelineQuery.activityStatuses,
     selection?.id,
     selection?.kind
@@ -405,6 +425,23 @@ export function FleetInspectorPanel({
               <h3>Repository timeline</h3>
               <div className="fleet-form-grid">
                 <label className="form-field">
+                  <span>Sort</span>
+                  <select
+                    onChange={(event) =>
+                      setActivitySortPresetInput(
+                        event.currentTarget.value as "newest_first" | "oldest_first"
+                      )
+                    }
+                    value={activitySortPresetInput}
+                  >
+                    {repositoryActivitySortPresets.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {preset === "newest_first" ? "Newest first" : "Oldest first"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
                   <span>Status filters</span>
                   <input
                     onChange={(event) => setActivityStatusInput(event.currentTarget.value)}
@@ -437,7 +474,8 @@ export function FleetInspectorPanel({
               <div className="fleet-inline-actions">
                 <button
                   className="secondary-button"
-                  onClick={() =>
+                  onClick={() => {
+                    onRepositoryTimelineSortChange(activitySortPresetInput);
                     onRepositoryTimelineFiltersChange({
                       activityOccurredAfter:
                         activityOccurredAfterInput.length > 0
@@ -451,8 +489,8 @@ export function FleetInspectorPanel({
                         .split(",")
                         .map((item) => item.trim())
                         .filter((item) => item.length > 0)
-                    })
-                  }
+                    });
+                  }}
                   type="button"
                 >
                   Apply filters
@@ -463,6 +501,8 @@ export function FleetInspectorPanel({
                     setActivityStatusInput("");
                     setActivityOccurredAfterInput("");
                     setActivityOccurredBeforeInput("");
+                    setActivitySortPresetInput("newest_first");
+                    onRepositoryTimelineSortChange("newest_first");
                     onRepositoryTimelineFiltersChange({
                       activityOccurredAfter: null,
                       activityOccurredBefore: null,
@@ -520,6 +560,35 @@ export function FleetInspectorPanel({
                         {activity.summary ? (
                           <p className="trace-copy">{activity.summary}</p>
                         ) : null}
+                        {activity.detail ? (
+                          <div className="trace-chip-row">
+                            {activity.detail.findingCount !== null ? (
+                              <span className="trace-chip trace-chip-muted">
+                                {activity.detail.findingCount} findings
+                              </span>
+                            ) : null}
+                            {activity.detail.executablePatchPlanCount !== null ? (
+                              <span className="trace-chip trace-chip-muted">
+                                {activity.detail.executablePatchPlanCount} executable
+                              </span>
+                            ) : null}
+                            {activity.detail.blockedPatchPlanCount !== null ? (
+                              <span className="trace-chip trace-chip-muted">
+                                {activity.detail.blockedPatchPlanCount} blocked
+                              </span>
+                            ) : null}
+                            {activity.detail.branchName ? (
+                              <span className="trace-chip trace-chip-muted">
+                                {activity.detail.branchName}
+                              </span>
+                            ) : null}
+                            {activity.detail.jobKind ? (
+                              <span className="trace-chip trace-chip-muted">
+                                {activity.detail.jobKind}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="fleet-inline-actions">
                           {primaryAction ? (
                             <button
@@ -571,7 +640,11 @@ export function FleetInspectorPanel({
                   className="secondary-button"
                   disabled={!repositoryHistory.activityFeed.hasPreviousPage}
                   onClick={() =>
-                    onRepositoryTimelinePageChange(repositoryTimelineQuery.activityPage - 1)
+                    onRepositoryTimelinePageChange(
+                      repositoryTimelineQuery.activityPage - 1,
+                      repositoryHistory.activityFeed.previousCursor,
+                      "previous"
+                    )
                   }
                   type="button"
                 >
@@ -581,7 +654,11 @@ export function FleetInspectorPanel({
                   className="secondary-button"
                   disabled={!repositoryHistory.activityFeed.hasNextPage}
                   onClick={() =>
-                    onRepositoryTimelinePageChange(repositoryTimelineQuery.activityPage + 1)
+                    onRepositoryTimelinePageChange(
+                      repositoryTimelineQuery.activityPage + 1,
+                      repositoryHistory.activityFeed.nextCursor,
+                      "next"
+                    )
                   }
                   type="button"
                 >
