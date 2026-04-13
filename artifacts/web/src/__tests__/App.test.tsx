@@ -11,13 +11,17 @@ import userEvent from "@testing-library/user-event";
 import {
   AnalysisJobSchema,
   AnalyzeRepoResponseSchema,
+  AuthSessionSchema,
   ExecutionPlanDetailResponseSchema,
   ExecutionPlanEventsResponseSchema,
   ExecutionResultSchema,
   ExecutionPlanResponseSchema,
   FleetStatusResponseSchema,
+  GitHubInstallationRepositorySchema,
+  GitHubInstallationSchema,
   GetAnalysisRunResponseSchema,
   ListAnalysisJobsResponseSchema,
+  ListGitHubInstallationsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   SweepScheduleSchema,
@@ -1016,6 +1020,104 @@ function createTrackedRepositoryFixture(overrides: Record<string, unknown> = {})
     lastQueuedAt: "2026-04-12T10:00:00.000Z",
     owner: "openai",
     repo: "openai-node",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createAuthSessionFixture(overrides: Record<string, unknown> = {}) {
+  return AuthSessionSchema.parse({
+    authenticated: true,
+    activeWorkspaceId: "workspace_alpha",
+    authMode: "session",
+    user: {
+      avatarUrl: null,
+      createdAt: "2026-04-12T10:00:00.000Z",
+      displayName: "Alex Maintainer",
+      githubLogin: "alex",
+      githubUserId: 42,
+      id: "usr_alex",
+      updatedAt: "2026-04-12T10:00:00.000Z"
+    },
+    workspaces: [
+      {
+        membership: {
+          createdAt: "2026-04-12T10:00:00.000Z",
+          id: "membership_alpha",
+          role: "owner",
+          updatedAt: "2026-04-12T10:00:00.000Z",
+          userId: "usr_alex",
+          workspaceId: "workspace_alpha"
+        },
+        workspace: {
+          createdAt: "2026-04-12T10:00:00.000Z",
+          id: "workspace_alpha",
+          name: "Alpha Workspace",
+          slug: "alpha-workspace",
+          updatedAt: "2026-04-12T10:00:00.000Z"
+        }
+      },
+      {
+        membership: {
+          createdAt: "2026-04-12T10:00:00.000Z",
+          id: "membership_beta",
+          role: "reviewer",
+          updatedAt: "2026-04-12T10:00:00.000Z",
+          userId: "usr_alex",
+          workspaceId: "workspace_beta"
+        },
+        workspace: {
+          createdAt: "2026-04-12T10:00:00.000Z",
+          id: "workspace_beta",
+          name: "Beta Workspace",
+          slug: "beta-workspace",
+          updatedAt: "2026-04-12T10:00:00.000Z"
+        }
+      }
+    ],
+    ...overrides
+  });
+}
+
+function createGitHubInstallationFixture(overrides: Record<string, unknown> = {}) {
+  return GitHubInstallationSchema.parse({
+    id: "ghi_12345",
+    workspaceId: "workspace_alpha",
+    githubInstallationId: 12345,
+    targetType: "Organization",
+    targetId: 7,
+    targetLogin: "openai",
+    status: "active",
+    permissions: {
+      contents: "write",
+      pull_requests: "write"
+    },
+    repositorySelection: "selected",
+    installedAt: "2026-04-12T10:00:00.000Z",
+    suspendedAt: null,
+    createdAt: "2026-04-12T10:00:00.000Z",
+    updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createInstallationRepositoryFixture(overrides: Record<string, unknown> = {}) {
+  return GitHubInstallationRepositorySchema.parse({
+    id: "ghir_repo_one",
+    workspaceId: "workspace_alpha",
+    githubInstallationId: "ghi_12345",
+    repositoryNodeId: "R_kgDO12345",
+    githubRepositoryId: 9001,
+    owner: "openai",
+    repo: "openai-node",
+    fullName: "openai/openai-node",
+    canonicalUrl: "https://github.com/openai/openai-node",
+    defaultBranch: "main",
+    isPrivate: false,
+    isArchived: false,
+    isSelected: true,
+    lastSyncedAt: "2026-04-12T10:00:00.000Z",
+    createdAt: "2026-04-12T10:00:00.000Z",
     updatedAt: "2026-04-12T10:00:00.000Z",
     ...overrides
   });
@@ -3231,6 +3333,150 @@ describe("App", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/analyze/jobs",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+  });
+
+  it("loads workspace access, syncs installations, and registers tracked repositories from synced installation visibility", async () => {
+    const user = userEvent.setup();
+    globalThis.localStorage.removeItem("repo-guardian-token");
+    const latestWorkspaceId = "workspace_alpha";
+    const latestInstallations = [createGitHubInstallationFixture()];
+    let latestRepositories = [createInstallationRepositoryFixture()];
+
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input, init) => {
+      const url = getFetchUrl(input);
+      const headers = new Headers(init?.headers);
+
+      if (url === "/api/auth/session") {
+        return createJsonResponse(createAuthSessionFixture({
+          activeWorkspaceId: latestWorkspaceId
+        }));
+      }
+
+      if (url === `/api/workspaces/${latestWorkspaceId}/installations`) {
+        expect(headers.get("x-repo-guardian-workspace-id")).toBe(latestWorkspaceId);
+        return createJsonResponse(
+          ListGitHubInstallationsResponseSchema.parse({
+            installations: latestInstallations,
+            repositories: latestRepositories
+          })
+        );
+      }
+
+      if (
+        url === `/api/workspaces/${latestWorkspaceId}/installations/ghi_12345/sync` &&
+        init?.method === "POST"
+      ) {
+        latestRepositories = [
+          ...latestRepositories,
+          createInstallationRepositoryFixture({
+            canonicalUrl: "https://github.com/openai/openai-agents-python",
+            fullName: "openai/openai-agents-python",
+            githubRepositoryId: 9002,
+            id: "ghir_repo_two",
+            repo: "openai-agents-python"
+          })
+        ];
+        return createJsonResponse({
+          installation: latestInstallations[0],
+          repositories: latestRepositories
+        });
+      }
+
+      if (url === "/api/tracked-repositories" && init?.method === "POST") {
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({
+          installationRepositoryId: "ghir_repo_two",
+          label: "Workspace review",
+          workspaceId: "workspace_alpha"
+        });
+        expect(body.repoInput).toBeUndefined();
+
+        return createJsonResponse(
+          {
+            repository: createTrackedRepositoryFixture({
+              fullName: "openai/openai-agents-python",
+              githubInstallationId: "ghi_12345",
+              id: "tracked_workspace_repo",
+              installationRepositoryId: "ghir_repo_two",
+              label: "Workspace review",
+              owner: "openai",
+              repo: "openai-agents-python",
+              workspaceId: "workspace_alpha"
+            })
+          },
+          true,
+          201
+        );
+      }
+
+      if (url === "/api/tracked-repositories") {
+        return createJsonResponse(
+          ListTrackedRepositoriesResponseSchema.parse({
+            repositories: []
+          })
+        );
+      }
+
+      if (url === "/api/fleet/status") {
+        return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url === "/api/analyze/jobs") {
+        return createJsonResponse(
+          ListAnalysisJobsResponseSchema.parse({
+            jobs: createFleetStatusFixture().recentJobs
+          })
+        );
+      }
+
+      if (url === "/api/sweep-schedules") {
+        return createJsonResponse(
+          ListSweepSchedulesResponseSchema.parse({
+            schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      return createJsonResponse({ error: "Unhandled" }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    expect(screen.getByText("GitHub session and workspace")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Alpha Workspace (owner)")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Sync repositories/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workspaces/workspace_alpha/installations/ghi_12345/sync",
+        expect.objectContaining({
+          method: "POST"
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const select = screen.getByLabelText("Repository input");
+      expect(select).toHaveTextContent("openai/openai-agents-python");
+    });
+
+    await user.selectOptions(screen.getByLabelText("Repository input"), "ghir_repo_two");
+    await user.type(screen.getByLabelText("Label"), "Workspace review");
+    await user.click(screen.getByRole("button", { name: /Register tracked repo/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tracked-repositories",
         expect.objectContaining({
           method: "POST"
         })

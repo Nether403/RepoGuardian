@@ -1,15 +1,10 @@
 import { type Router as ExpressRouter, Router } from "express";
-import {
-  GitHubReadClient,
-  type GitHubReadErrorCode,
-  isGitHubReadError
-} from "@repo-guardian/github";
+import { type GitHubReadErrorCode, isGitHubReadError } from "@repo-guardian/github";
 import { AnalyzeRepoRequestSchema } from "@repo-guardian/shared-types";
 import { analyzeRepository } from "../lib/analyze-repository.js";
-import { env } from "../lib/env.js";
+import { createInstallationReadClient } from "../lib/github-installations.js";
 import { requireAuth } from "../middleware/auth.js";
 
-const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
 const analyzeRouter: ExpressRouter = Router();
 
 function mapErrorCodeToStatus(code: GitHubReadErrorCode): number {
@@ -38,7 +33,16 @@ analyzeRouter.post("/analyze", requireAuth, async (request, response, next) => {
   }
 
   try {
-    const intake = await analyzeRepository(readClient, parsedRequest.data.repoInput);
+    const intake = await analyzeRepository(
+      await createInstallationReadClient({
+        repositoryFullName: parsedRequest.data.repoInput.includes("/")
+          ? parsedRequest.data.repoInput.replace(/^https:\/\/github\.com\//u, "").replace(/\/+$/u, "")
+          : parsedRequest.data.repoInput,
+        workspaceId:
+          parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId
+      }),
+      parsedRequest.data.repoInput
+    );
 
     response.json(intake);
   } catch (error) {

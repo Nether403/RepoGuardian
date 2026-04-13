@@ -99,8 +99,10 @@ export async function listTrackedRepositories(): Promise<TrackedRepository[]> {
 }
 
 export async function createTrackedRepository(input: {
+  installationRepositoryId?: string;
   label?: string | null;
-  repoInput: string;
+  repoInput?: string;
+  workspaceId?: string | null;
 }): Promise<TrackedRepository> {
   let requestBody: ReturnType<typeof CreateTrackedRepositoryRequestSchema.parse>;
 

@@ -6,11 +6,14 @@ import {
 } from "@repo-guardian/shared-types";
 import type { PostgresClient } from "./client.js";
 import { PersistenceError } from "./errors.js";
+import { resolveWorkspaceId } from "./scope.js";
 
 type TrackedRepositoryRow = QueryResultRow & {
   canonical_url: string;
   created_at: Date | string;
+  github_installation_id: string | null;
   is_active: boolean;
+  installation_repository_id: string | null;
   label: string | null;
   last_queued_at: Date | string | null;
   repository_full_name: string;
@@ -18,6 +21,7 @@ type TrackedRepositoryRow = QueryResultRow & {
   repository_repo: string;
   tracked_repository_id: string;
   updated_at: Date | string;
+  workspace_id: string;
 };
 
 function toIsoString(value: Date | string | null): string | null {
@@ -33,13 +37,16 @@ function parseTrackedRepository(row: TrackedRepositoryRow): TrackedRepository {
     canonicalUrl: row.canonical_url,
     createdAt: toIsoString(row.created_at),
     fullName: row.repository_full_name,
+    githubInstallationId: row.github_installation_id,
     id: row.tracked_repository_id,
+    installationRepositoryId: row.installation_repository_id,
     isActive: row.is_active,
     label: row.label,
     lastQueuedAt: toIsoString(row.last_queued_at),
     owner: row.repository_owner,
     repo: row.repository_repo,
-    updatedAt: toIsoString(row.updated_at)
+    updatedAt: toIsoString(row.updated_at),
+    workspaceId: row.workspace_id
   });
 }
 
@@ -62,14 +69,21 @@ export class TrackedRepositoryRepository {
   async createRepository(input: {
     canonicalUrl: string;
     fullName: string;
+    githubInstallationId?: string | null;
+    installationRepositoryId?: string | null;
     label?: string | null;
     owner: string;
     repo: string;
+    workspaceId?: string | null;
   }): Promise<TrackedRepository> {
     const now = new Date().toISOString();
+    const workspaceId = resolveWorkspaceId(input.workspaceId);
     const result = await this.client.query<TrackedRepositoryRow>(
       `INSERT INTO tracked_repositories (
         tracked_repository_id,
+        workspace_id,
+        github_installation_id,
+        installation_repository_id,
         repository_full_name,
         repository_owner,
         repository_repo,
@@ -79,8 +93,10 @@ export class TrackedRepositoryRepository {
         created_at,
         updated_at,
         last_queued_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $7, NULL)
-      ON CONFLICT (repository_full_name) DO UPDATE SET
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, $10, NULL)
+      ON CONFLICT (workspace_id, repository_full_name) DO UPDATE SET
+        github_installation_id = EXCLUDED.github_installation_id,
+        installation_repository_id = EXCLUDED.installation_repository_id,
         repository_owner = EXCLUDED.repository_owner,
         repository_repo = EXCLUDED.repository_repo,
         canonical_url = EXCLUDED.canonical_url,
@@ -89,6 +105,9 @@ export class TrackedRepositoryRepository {
         updated_at = EXCLUDED.updated_at
       RETURNING
         tracked_repository_id,
+        workspace_id,
+        github_installation_id,
+        installation_repository_id,
         repository_full_name,
         repository_owner,
         repository_repo,
@@ -100,6 +119,9 @@ export class TrackedRepositoryRepository {
         last_queued_at`,
       [
         `tracked_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+        workspaceId,
+        input.githubInstallationId ?? null,
+        input.installationRepositoryId ?? null,
         input.fullName,
         input.owner,
         input.repo,
@@ -112,11 +134,18 @@ export class TrackedRepositoryRepository {
     return parseTrackedRepository(result.rows[0]!);
   }
 
-  async getRepository(trackedRepositoryId: string): Promise<TrackedRepository> {
+  async getRepository(
+    trackedRepositoryId: string,
+    workspaceId?: string | null
+  ): Promise<TrackedRepository> {
     assertValidTrackedRepositoryId(trackedRepositoryId);
+    const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
     const result = await this.client.query<TrackedRepositoryRow>(
       `SELECT
         tracked_repository_id,
+        workspace_id,
+        github_installation_id,
+        installation_repository_id,
         repository_full_name,
         repository_owner,
         repository_repo,
@@ -127,8 +156,9 @@ export class TrackedRepositoryRepository {
         updated_at,
         last_queued_at
       FROM tracked_repositories
-      WHERE tracked_repository_id = $1`,
-      [trackedRepositoryId]
+      WHERE tracked_repository_id = $1
+        AND workspace_id = $2`,
+      [trackedRepositoryId, resolvedWorkspaceId]
     );
 
     if (result.rows.length === 0) {
@@ -138,10 +168,14 @@ export class TrackedRepositoryRepository {
     return parseTrackedRepository(result.rows[0]!);
   }
 
-  async listRepositories(): Promise<TrackedRepository[]> {
+  async listRepositories(workspaceId?: string | null): Promise<TrackedRepository[]> {
+    const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
     const result = await this.client.query<TrackedRepositoryRow>(
       `SELECT
         tracked_repository_id,
+        workspace_id,
+        github_installation_id,
+        installation_repository_id,
         repository_full_name,
         repository_owner,
         repository_repo,
@@ -152,7 +186,10 @@ export class TrackedRepositoryRepository {
         updated_at,
         last_queued_at
       FROM tracked_repositories
+      WHERE workspace_id = $1
       ORDER BY updated_at DESC, repository_full_name ASC`
+      ,
+      [resolvedWorkspaceId]
     );
 
     return result.rows.map(parseTrackedRepository);

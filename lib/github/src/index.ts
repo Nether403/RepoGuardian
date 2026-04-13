@@ -1,3 +1,4 @@
+export * from "./app-auth.js";
 export * from "./errors.js";
 export * from "./mappers.js";
 export * from "./read-client.js";

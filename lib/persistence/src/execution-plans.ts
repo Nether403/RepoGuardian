@@ -28,6 +28,7 @@ import {
   canTransitionExecutionPlanStatus,
   resolveExpiredPlannedStatus
 } from "./lifecycle.js";
+import { resolveWorkspaceId } from "./scope.js";
 
 type ExecutionPlanRow = QueryResultRow & {
   actor_user_id: string | null;
@@ -44,6 +45,7 @@ type ExecutionPlanRow = QueryResultRow & {
   execution_status: string | null;
   expires_at: Date | string;
   failed_at: Date | string | null;
+  github_installation_id: string | null;
   plan_hash: string;
   plan_id: string;
   repository_default_branch: string;
@@ -55,6 +57,7 @@ type ExecutionPlanRow = QueryResultRow & {
   started_at: Date | string | null;
   status: string;
   summary_payload: unknown;
+  workspace_id: string;
 };
 
 type ExecutionPlanActionRow = QueryResultRow & {
@@ -73,8 +76,10 @@ type ExecutionAuditEventRow = QueryResultRow & {
   event_id: string;
   event_type: string;
   execution_id: string | null;
+  github_installation_id: string | null;
   plan_id: string;
   repository_full_name: string;
+  workspace_id: string;
 };
 
 export type StoredExecutionPlan = {
@@ -84,6 +89,7 @@ export type StoredExecutionPlan = {
   approval: ExecutionPlanResponse["approval"];
   createdAt: string;
   expiresAt: string;
+  githubInstallationId?: string | null;
   planHash: string;
   planId: string;
   repository: {
@@ -95,17 +101,20 @@ export type StoredExecutionPlan = {
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
   summary: ExecutionPlanResponse["summary"];
+  workspaceId?: string | null;
 };
 
 export type ClaimedExecutionPlan = {
   actions: ExecutionActionPlan[];
   analysisRunId: string;
   executionId: string;
+  githubInstallationId: string | null;
   planHash: string;
   planId: string;
   repositoryFullName: string;
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
+  workspaceId: string;
 };
 
 const lifecycleValues = new Set<string>(ExecutionPlanLifecycleStatusValues);
@@ -157,9 +166,12 @@ export class ExecutionPlanRepository {
 
   async savePlan(input: StoredExecutionPlan): Promise<void> {
     await this.client.transaction(async (session) => {
+      const workspaceId = resolveWorkspaceId(input.workspaceId);
       await session.query(
         `INSERT INTO execution_plans (
           plan_id,
+          workspace_id,
+          github_installation_id,
           plan_hash,
           analysis_run_id,
           repository_full_name,
@@ -183,10 +195,12 @@ export class ExecutionPlanRepository {
           failed_at,
           cancelled_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, $13, $14::jsonb, NULL, $15, $16::jsonb, $17, $18, NULL, NULL, NULL, NULL
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, NULL, $16, $17::jsonb, $18, $19, NULL, NULL, NULL, NULL
         )`,
         [
           input.planId,
+          workspaceId,
+          input.githubInstallationId ?? null,
           input.planHash,
           input.analysisRunId,
           input.repository.fullName,
@@ -230,16 +244,22 @@ export class ExecutionPlanRepository {
         },
         eventType: "plan_created",
         executionId: null,
+        githubInstallationId: input.githubInstallationId ?? null,
         planId: input.planId,
         repositoryFullName: input.repository.fullName
+        ,
+        workspaceId
       });
     });
   }
 
-  async getPlanDetail(planId: string): Promise<ExecutionPlanDetailResponse> {
+  async getPlanDetail(
+    planId: string,
+    workspaceId?: string | null
+  ): Promise<ExecutionPlanDetailResponse> {
     assertValidPlanId(planId);
-    await this.expirePlanIfNeeded(planId);
-    const row = await this.getPlanRow(planId);
+    await this.expirePlanIfNeeded(planId, workspaceId);
+    const row = await this.getPlanRow(planId, undefined, false, workspaceId);
     const actions = await this.getPlanActions(planId);
 
     return ExecutionPlanDetailResponseSchema.parse({
@@ -267,6 +287,7 @@ export class ExecutionPlanRepository {
           : ExecutionResultSummarySchema.parse(row.summary_payload),
       expiresAt: toIsoString(row.expires_at),
       failedAt: toIsoString(row.failed_at),
+      githubInstallationId: row.github_installation_id,
       planHash: row.plan_hash,
       planId: row.plan_id,
       repository: {
@@ -278,12 +299,16 @@ export class ExecutionPlanRepository {
       selectedIssueCandidateIds: parseStringArray(row.selected_issue_candidate_ids),
       selectedPRCandidateIds: parseStringArray(row.selected_pr_candidate_ids),
       startedAt: toIsoString(row.started_at),
-      status: parsePlanStatus(row.status)
+      status: parsePlanStatus(row.status),
+      workspaceId: row.workspace_id
     });
   }
 
-  async getPlanEvents(planId: string): Promise<ExecutionPlanEventsResponse> {
-    await this.getPlanDetail(planId);
+  async getPlanEvents(
+    planId: string,
+    workspaceId?: string | null
+  ): Promise<ExecutionPlanEventsResponse> {
+    await this.getPlanDetail(planId, workspaceId);
     const result = await this.client.query<ExecutionAuditEventRow>(
       `SELECT
         event_id,
@@ -291,6 +316,8 @@ export class ExecutionPlanRepository {
         execution_id,
         action_id,
         event_type,
+        workspace_id,
+        github_installation_id,
         repository_full_name,
         actor_user_id,
         details,
@@ -312,8 +339,10 @@ export class ExecutionPlanRepository {
           eventId: row.event_id,
           eventType: parseEventType(row.event_type),
           executionId: row.execution_id,
+          githubInstallationId: row.github_installation_id,
           planId: row.plan_id,
-          repositoryFullName: row.repository_full_name
+          repositoryFullName: row.repository_full_name,
+          workspaceId: row.workspace_id
         })
       ),
       planId
@@ -323,10 +352,14 @@ export class ExecutionPlanRepository {
   async listPlanSummariesByRepositoryFullName(input: {
     limit?: number;
     repositoryFullName: string;
+    workspaceId?: string | null;
   }): Promise<ExecutionPlanSummary[]> {
+    const resolvedWorkspaceId = resolveWorkspaceId(input.workspaceId);
     const result = await this.client.query<ExecutionPlanRow>(
       `SELECT
         execution_plans.plan_id,
+        execution_plans.workspace_id,
+        execution_plans.github_installation_id,
         execution_plans.plan_hash,
         execution_plans.analysis_run_id,
         execution_plans.repository_full_name,
@@ -355,9 +388,10 @@ export class ExecutionPlanRepository {
       LEFT JOIN execution_attempts
         ON execution_attempts.plan_id = execution_plans.plan_id
       WHERE execution_plans.repository_full_name = $1
+        AND execution_plans.workspace_id = $2
       ORDER BY execution_plans.created_at DESC, execution_plans.plan_id DESC
-      LIMIT $2`,
-      [input.repositoryFullName, input.limit ?? 10]
+      LIMIT $3`,
+      [input.repositoryFullName, resolvedWorkspaceId, input.limit ?? 10]
     );
 
     return result.rows.map((row) =>
@@ -374,13 +408,15 @@ export class ExecutionPlanRepository {
             : null,
         expiresAt: toIsoString(row.expires_at),
         failedAt: toIsoString(row.failed_at),
+        githubInstallationId: row.github_installation_id,
         planId: row.plan_id,
         repositoryFullName: row.repository_full_name,
         selectedIssueCandidateCount: parseStringArray(row.selected_issue_candidate_ids).length,
         selectedPRCandidateCount: parseStringArray(row.selected_pr_candidate_ids).length,
         startedAt: toIsoString(row.started_at),
         status: parsePlanStatus(row.status),
-        summary: ExecutionResultSummarySchema.parse(row.summary_payload)
+        summary: ExecutionResultSummarySchema.parse(row.summary_payload),
+        workspaceId: row.workspace_id
       })
     );
   }
@@ -388,11 +424,12 @@ export class ExecutionPlanRepository {
   async claimExecution(input: {
     actorUserId: string | null;
     planId: string;
+    workspaceId?: string | null;
   }): Promise<ClaimedExecutionPlan> {
     assertValidPlanId(input.planId);
 
     return this.client.transaction(async (session) => {
-      const row = await this.getPlanRow(input.planId, session, true);
+      const row = await this.getPlanRow(input.planId, session, true, input.workspaceId);
       const currentStatus = parsePlanStatus(row.status);
       const nextStatus = resolveExpiredPlannedStatus({
         expiresAt: toIsoString(row.expires_at)!,
@@ -410,8 +447,10 @@ export class ExecutionPlanRepository {
             },
             eventType: "plan_expired",
             executionId: null,
+            githubInstallationId: row.github_installation_id,
             planId: input.planId,
-            repositoryFullName: row.repository_full_name
+            repositoryFullName: row.repository_full_name,
+            workspaceId: row.workspace_id
           });
         }
         throw new PersistenceError("conflict", "Plan is already executing or no longer active.");
@@ -430,13 +469,21 @@ export class ExecutionPlanRepository {
           `INSERT INTO execution_attempts (
             execution_id,
             plan_id,
+            workspace_id,
             actor_user_id,
             status,
             started_at,
             completed_at,
             error_message
-          ) VALUES ($1, $2, $3, $4, $5, NULL, NULL)`,
-          [executionId, input.planId, input.actorUserId, "executing", startedAt]
+          ) VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL)`,
+          [
+            executionId,
+            input.planId,
+            row.workspace_id,
+            input.actorUserId,
+            "executing",
+            startedAt
+          ]
         );
       } catch {
         throw new PersistenceError("conflict", "Plan is already executing or no longer active.");
@@ -465,8 +512,10 @@ export class ExecutionPlanRepository {
         },
         eventType: "execution_started",
         executionId,
+        githubInstallationId: row.github_installation_id,
         planId: input.planId,
-        repositoryFullName: row.repository_full_name
+        repositoryFullName: row.repository_full_name,
+        workspaceId: row.workspace_id
       });
 
       const actions = await this.getPlanActions(input.planId, session);
@@ -475,11 +524,13 @@ export class ExecutionPlanRepository {
         actions: actions.map((action) => ExecutionActionPlanSchema.parse(action)),
         analysisRunId: row.analysis_run_id,
         executionId,
+        githubInstallationId: row.github_installation_id,
         planHash: row.plan_hash,
         planId: row.plan_id,
         repositoryFullName: row.repository_full_name,
         selectedIssueCandidateIds: parseStringArray(row.selected_issue_candidate_ids),
-        selectedPRCandidateIds: parseStringArray(row.selected_pr_candidate_ids)
+        selectedPRCandidateIds: parseStringArray(row.selected_pr_candidate_ids),
+        workspaceId: row.workspace_id
       };
     });
   }
@@ -488,8 +539,10 @@ export class ExecutionPlanRepository {
     action: ExecutionActionPlan;
     actorUserId: string | null;
     executionId: string;
+    githubInstallationId?: string | null;
     planId: string;
     repositoryFullName: string;
+    workspaceId?: string | null;
   }): Promise<void> {
     await this.client.transaction(async (session) => {
       const startedAt = new Date().toISOString();
@@ -515,8 +568,10 @@ export class ExecutionPlanRepository {
         },
         eventType: "action_started",
         executionId: input.executionId,
+        githubInstallationId: input.githubInstallationId ?? null,
         planId: input.planId,
-        repositoryFullName: input.repositoryFullName
+        repositoryFullName: input.repositoryFullName,
+        workspaceId: resolveWorkspaceId(input.workspaceId)
       });
     });
   }
@@ -525,8 +580,10 @@ export class ExecutionPlanRepository {
     action: ExecutionActionPlan;
     actorUserId: string | null;
     executionId: string;
+    githubInstallationId?: string | null;
     planId: string;
     repositoryFullName: string;
+    workspaceId?: string | null;
   }): Promise<void> {
     await this.client.transaction(async (session) => {
       const completedAt = new Date().toISOString();
@@ -553,8 +610,10 @@ export class ExecutionPlanRepository {
         },
         eventType: input.action.succeeded ? "action_succeeded" : "action_failed",
         executionId: input.executionId,
+        githubInstallationId: input.githubInstallationId ?? null,
         planId: input.planId,
-        repositoryFullName: input.repositoryFullName
+        repositoryFullName: input.repositoryFullName,
+        workspaceId: resolveWorkspaceId(input.workspaceId)
       });
     });
   }
@@ -562,9 +621,11 @@ export class ExecutionPlanRepository {
   async finalizeExecution(input: {
     actorUserId: string | null;
     executionId: string;
+    githubInstallationId?: string | null;
     planId: string;
     repositoryFullName: string;
     result: ExecutionResult;
+    workspaceId?: string | null;
   }): Promise<void> {
     await this.client.transaction(async (session) => {
       const nextStatus: ExecutionPlanLifecycleStatus =
@@ -604,8 +665,10 @@ export class ExecutionPlanRepository {
         eventType:
           nextStatus === "completed" ? "execution_completed" : "execution_failed",
         executionId: input.executionId,
+        githubInstallationId: input.githubInstallationId ?? null,
         planId: input.planId,
-        repositoryFullName: input.repositoryFullName
+        repositoryFullName: input.repositoryFullName,
+        workspaceId: resolveWorkspaceId(input.workspaceId)
       });
     });
   }
@@ -614,8 +677,10 @@ export class ExecutionPlanRepository {
     actorUserId: string | null;
     errorMessage: string;
     executionId: string;
+    githubInstallationId?: string | null;
     planId: string;
     repositoryFullName: string;
+    workspaceId?: string | null;
   }): Promise<void> {
     await this.client.transaction(async (session) => {
       const failedAt = new Date().toISOString();
@@ -643,8 +708,10 @@ export class ExecutionPlanRepository {
         },
         eventType: "execution_failed",
         executionId: input.executionId,
+        githubInstallationId: input.githubInstallationId ?? null,
         planId: input.planId,
-        repositoryFullName: input.repositoryFullName
+        repositoryFullName: input.repositoryFullName,
+        workspaceId: resolveWorkspaceId(input.workspaceId)
       });
     });
   }
@@ -663,9 +730,12 @@ export class ExecutionPlanRepository {
     return true;
   }
 
-  private async expirePlanIfNeeded(planId: string): Promise<void> {
+  private async expirePlanIfNeeded(
+    planId: string,
+    workspaceId?: string | null
+  ): Promise<void> {
     await this.client.transaction(async (session) => {
-      const row = await this.getPlanRow(planId, session, true);
+      const row = await this.getPlanRow(planId, session, true, workspaceId);
       const status = parsePlanStatus(row.status);
       const nextStatus = resolveExpiredPlannedStatus({
         expiresAt: toIsoString(row.expires_at)!,
@@ -686,7 +756,9 @@ export class ExecutionPlanRepository {
         eventType: "plan_expired",
         executionId: row.execution_id,
         planId,
-        repositoryFullName: row.repository_full_name
+        repositoryFullName: row.repository_full_name,
+        workspaceId: row.workspace_id,
+        githubInstallationId: row.github_installation_id
       });
     });
   }
@@ -694,12 +766,21 @@ export class ExecutionPlanRepository {
   private async getPlanRow(
     planId: string,
     session?: PostgresSession,
-    lock = false
+    lock = false,
+    workspaceId?: string | null
   ): Promise<ExecutionPlanRow> {
     const executor = session ?? this.client;
+    const values: unknown[] = [planId];
+    let whereClause = `WHERE execution_plans.plan_id = $1`;
+    if (workspaceId) {
+      values.push(resolveWorkspaceId(workspaceId));
+      whereClause += ` AND execution_plans.workspace_id = $2`;
+    }
     const result = await executor.query<ExecutionPlanRow>(
       `SELECT
         execution_plans.plan_id,
+        execution_plans.workspace_id,
+        execution_plans.github_installation_id,
         execution_plans.plan_hash,
         execution_plans.analysis_run_id,
         execution_plans.repository_full_name,
@@ -727,9 +808,9 @@ export class ExecutionPlanRepository {
       FROM execution_plans
       LEFT JOIN execution_attempts
         ON execution_attempts.plan_id = execution_plans.plan_id
-      WHERE execution_plans.plan_id = $1
+      ${whereClause}
       ${lock ? "FOR UPDATE" : ""}`,
-      [planId]
+      values
     );
 
     if (result.rows.length === 0) {
@@ -793,8 +874,10 @@ export class ExecutionPlanRepository {
       details: Record<string, unknown>;
       eventType: string;
       executionId: string | null;
+      githubInstallationId?: string | null;
       planId: string;
       repositoryFullName: string;
+      workspaceId: string;
     }
   ): Promise<void> {
     await session.query(
@@ -804,17 +887,21 @@ export class ExecutionPlanRepository {
         execution_id,
         action_id,
         event_type,
+        workspace_id,
+        github_installation_id,
         repository_full_name,
         actor_user_id,
         details,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
       [
         `evt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
         input.planId,
         input.executionId,
         input.actionId ?? null,
         input.eventType,
+        input.workspaceId,
+        input.githubInstallationId ?? null,
         input.repositoryFullName,
         input.actorUserId,
         JSON.stringify(input.details),

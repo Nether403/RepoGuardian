@@ -5,9 +5,11 @@ import {
   type Router as ExpressRouter,
   Router
 } from "express";
+import authRouter from "./auth.js";
 import analyzeRouter from "./analyze.js";
 import createDefaultExecutionRouter from "./execution.js";
 import createDefaultFleetRouter from "./fleet.js";
+import installationRouter from "./installations.js";
 import createDefaultRunsRouter from "./runs.js";
 
 function createLazyRouter(factory: () => ExpressRouter): ExpressRouter {
@@ -28,6 +30,8 @@ function createLazyRouter(factory: () => ExpressRouter): ExpressRouter {
 
 const apiRouter: ExpressRouter = Router();
 
+apiRouter.use(authRouter);
+apiRouter.use(installationRouter);
 apiRouter.use(analyzeRouter);
 apiRouter.use(createLazyRouter(createDefaultExecutionRouter));
 apiRouter.use(createLazyRouter(createDefaultFleetRouter));

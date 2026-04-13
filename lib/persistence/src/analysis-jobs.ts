@@ -7,12 +7,14 @@ import {
 } from "@repo-guardian/shared-types";
 import type { PostgresClient, PostgresSession } from "./client.js";
 import { PersistenceError } from "./errors.js";
+import { resolveWorkspaceId } from "./scope.js";
 
 type AnalysisJobRow = QueryResultRow & {
   attempt_count: number;
   completed_at: Date | string | null;
   error_message: string | null;
   failed_at: Date | string | null;
+  github_installation_id: string | null;
   job_id: string;
   job_kind: string;
   job_payload: unknown;
@@ -29,6 +31,7 @@ type AnalysisJobRow = QueryResultRow & {
   status: string;
   tracked_repository_id: string | null;
   updated_at: Date | string;
+  workspace_id: string;
 };
 
 function toIsoString(value: Date | string | null): string | null {
@@ -45,6 +48,7 @@ function parseAnalysisJob(row: AnalysisJobRow): AnalysisJob {
     completedAt: toIsoString(row.completed_at),
     errorMessage: row.error_message,
     failedAt: toIsoString(row.failed_at),
+    githubInstallationId: row.github_installation_id,
     jobId: row.job_id,
     jobKind: row.job_kind,
     label: row.label,
@@ -59,7 +63,8 @@ function parseAnalysisJob(row: AnalysisJobRow): AnalysisJob {
     startedAt: toIsoString(row.started_at),
     status: row.status,
     trackedRepositoryId: row.tracked_repository_id,
-    updatedAt: toIsoString(row.updated_at)
+    updatedAt: toIsoString(row.updated_at),
+    workspaceId: row.workspace_id
   });
 }
 
@@ -76,6 +81,8 @@ async function getJobRow(
   const result = await executor.query<AnalysisJobRow>(
     `SELECT
       job_id,
+      workspace_id,
+      github_installation_id,
       job_kind,
       status,
       repo_input,
@@ -108,6 +115,7 @@ async function getJobRow(
 }
 
 export type StoredAnalysisJob = {
+  githubInstallationId?: string | null;
   jobKind: AnalysisJobKind;
   label?: string | null;
   maxAttempts?: number;
@@ -118,6 +126,7 @@ export type StoredAnalysisJob = {
   requestedByUserId: string | null;
   scheduledSweepId?: string | null;
   trackedRepositoryId?: string | null;
+  workspaceId?: string | null;
 };
 
 export class AnalysisJobRepository {
@@ -132,9 +141,12 @@ export class AnalysisJobRepository {
     const jobId = `job_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
     return this.client.transaction(async (session) => {
+      const workspaceId = resolveWorkspaceId(input.workspaceId);
       const result = await session.query<AnalysisJobRow>(
         `INSERT INTO analysis_jobs (
           job_id,
+          workspace_id,
+          github_installation_id,
           job_kind,
           status,
           repo_input,
@@ -157,8 +169,8 @@ export class AnalysisJobRepository {
         ) VALUES (
           $1,
           $2,
-          'queued',
           $3,
+          'queued',
           $4,
           $5,
           $6,
@@ -178,6 +190,8 @@ export class AnalysisJobRepository {
         )
         RETURNING
           job_id,
+          workspace_id,
+          github_installation_id,
           job_kind,
           status,
           repo_input,
@@ -199,6 +213,8 @@ export class AnalysisJobRepository {
           job_payload`,
         [
           jobId,
+          workspaceId,
+          input.githubInstallationId ?? null,
           input.jobKind,
           input.repoInput,
           input.repositoryFullName,
@@ -232,9 +248,13 @@ export class AnalysisJobRepository {
     });
   }
 
-  async getJob(jobId: string): Promise<AnalysisJob> {
+  async getJob(jobId: string, workspaceId?: string | null): Promise<AnalysisJob> {
     assertValidJobId(jobId);
-    return parseAnalysisJob(await getJobRow(this.client, jobId));
+    const row = await getJobRow(this.client, jobId);
+    if (row.workspace_id !== resolveWorkspaceId(workspaceId)) {
+      throw new PersistenceError("not_found", "Analysis job was not found.");
+    }
+    return parseAnalysisJob(row);
   }
 
   async getJobPayload(jobId: string): Promise<Record<string, unknown>> {
@@ -251,9 +271,12 @@ export class AnalysisJobRepository {
     repositoryFullName?: string;
     status?: AnalysisJob["status"];
     trackedRepositoryId?: string;
+    workspaceId?: string | null;
   } = {}): Promise<AnalysisJob[]> {
     const values: unknown[] = [];
     const filters: string[] = [];
+    values.push(resolveWorkspaceId(options.workspaceId));
+    filters.push(`workspace_id = $${values.length}`);
 
     if (options.status) {
       values.push(options.status);
@@ -275,6 +298,8 @@ export class AnalysisJobRepository {
     const result = await this.client.query<AnalysisJobRow>(
       `SELECT
         job_id,
+        workspace_id,
+        github_installation_id,
         job_kind,
         status,
         repo_input,
@@ -324,6 +349,8 @@ export class AnalysisJobRepository {
         WHERE job_id IN (SELECT job_id FROM next_job)
         RETURNING
           job_id,
+          workspace_id,
+          github_installation_id,
           job_kind,
           status,
           repo_input,
@@ -368,6 +395,8 @@ export class AnalysisJobRepository {
       WHERE job_id = $1
       RETURNING
         job_id,
+        workspace_id,
+        github_installation_id,
         job_kind,
         status,
         repo_input,
@@ -410,6 +439,8 @@ export class AnalysisJobRepository {
       WHERE job_id = $1
       RETURNING
         job_id,
+        workspace_id,
+        github_installation_id,
         job_kind,
         status,
         repo_input,
@@ -452,6 +483,8 @@ export class AnalysisJobRepository {
       WHERE job_id = $1 AND status = 'queued'
       RETURNING
         job_id,
+        workspace_id,
+        github_installation_id,
         job_kind,
         status,
         repo_input,
@@ -498,6 +531,8 @@ export class AnalysisJobRepository {
       WHERE job_id = $1 AND status IN ('failed', 'cancelled')
       RETURNING
         job_id,
+        workspace_id,
+        github_installation_id,
         job_kind,
         status,
         repo_input,

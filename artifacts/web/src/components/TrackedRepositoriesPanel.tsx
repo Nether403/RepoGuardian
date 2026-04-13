@@ -1,18 +1,25 @@
-import { useState, type FormEvent } from "react";
-import type { FleetTrackedRepositoryStatus } from "@repo-guardian/shared-types";
+import { useEffect, useState, type FormEvent } from "react";
+import type {
+  FleetTrackedRepositoryStatus,
+  GitHubInstallationRepository
+} from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
 type TrackedRepositoriesPanelProps = {
+  availableRepositories: GitHubInstallationRepository[];
+  canUseRepoInputFallback: boolean;
   errorMessage: string | null;
   isCreating: boolean;
   isLoading: boolean;
   pendingTrackedRepositoryId: string | null;
   repositories: FleetTrackedRepositoryStatus[];
   onCreateRepository: (input: {
+    installationRepositoryId?: string;
     label?: string | null;
-    repoInput: string;
+    repoInput?: string;
+    workspaceId?: string | null;
   }) => void;
   onEnqueueAnalysis: (trackedRepositoryId: string) => void;
   onOpenJobDetails: (jobId: string) => void;
@@ -20,6 +27,7 @@ type TrackedRepositoriesPanelProps = {
   onOpenRepositoryDetails: (trackedRepositoryId: string) => void;
   onOpenRunDetails: (runId: string) => void;
   onRefresh: () => void;
+  selectedWorkspaceId: string | null;
 };
 
 function formatPlanStatus(status: FleetTrackedRepositoryStatus["latestPlanStatus"]): string {
@@ -31,6 +39,8 @@ function formatPlanStatus(status: FleetTrackedRepositoryStatus["latestPlanStatus
 }
 
 export function TrackedRepositoriesPanel({
+  availableRepositories,
+  canUseRepoInputFallback,
   errorMessage,
   isCreating,
   isLoading,
@@ -42,19 +52,44 @@ export function TrackedRepositoriesPanel({
   onOpenPlanDetails,
   onOpenRepositoryDetails,
   onOpenRunDetails,
-  onRefresh
+  onRefresh,
+  selectedWorkspaceId
 }: TrackedRepositoriesPanelProps) {
   const [label, setLabel] = useState("");
+  const [installationRepositoryId, setInstallationRepositoryId] = useState(
+    availableRepositories[0]?.id ?? ""
+  );
   const [repoInput, setRepoInput] = useState("");
+  const hasSelectableRepositories = availableRepositories.length > 0;
+
+  useEffect(() => {
+    if (availableRepositories.length === 0) {
+      setInstallationRepositoryId("");
+      return;
+    }
+
+    setInstallationRepositoryId((current) =>
+      availableRepositories.some((repository) => repository.id === current)
+        ? current
+        : availableRepositories[0]!.id
+    );
+  }, [availableRepositories]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     onCreateRepository({
+      installationRepositoryId: hasSelectableRepositories
+        ? installationRepositoryId
+        : undefined,
       label: label.trim().length > 0 ? label : null,
-      repoInput
+      repoInput: canUseRepoInputFallback ? repoInput : undefined,
+      workspaceId: selectedWorkspaceId
     });
     setLabel("");
-    setRepoInput("");
+    if (canUseRepoInputFallback) {
+      setRepoInput("");
+    }
   }
 
   return (
@@ -75,11 +110,27 @@ export function TrackedRepositoriesPanel({
         <form className="fleet-form" onSubmit={handleSubmit}>
           <label>
             <span>Repository input</span>
-            <input
-              onChange={(event) => setRepoInput(event.target.value)}
-              placeholder="owner/repo or GitHub URL"
-              value={repoInput}
-            />
+            {hasSelectableRepositories ? (
+              <select
+                aria-label="Repository input"
+                onChange={(event) => setInstallationRepositoryId(event.target.value)}
+                value={installationRepositoryId}
+              >
+                {availableRepositories.map((repository) => (
+                  <option key={repository.id} value={repository.id}>
+                    {repository.fullName}
+                    {repository.isArchived ? " (archived)" : ""}
+                    {repository.isPrivate ? " (private)" : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                onChange={(event) => setRepoInput(event.target.value)}
+                placeholder="owner/repo or GitHub URL"
+                value={repoInput}
+              />
+            )}
           </label>
           <label>
             <span>Label</span>
@@ -92,7 +143,12 @@ export function TrackedRepositoriesPanel({
           <div className="fleet-form-actions">
             <button
               className="submit-button"
-              disabled={isCreating}
+              disabled={
+                isCreating ||
+                (!hasSelectableRepositories &&
+                  !canUseRepoInputFallback &&
+                  availableRepositories.length === 0)
+              }
               type="submit"
             >
               {isCreating ? "Registering..." : "Register tracked repo"}
@@ -112,6 +168,21 @@ export function TrackedRepositoriesPanel({
             {errorMessage}
           </p>
         ) : null}
+        {hasSelectableRepositories ? (
+          <p className="empty-copy">
+            New tracked repositories are selected from synced installation-visible
+            repositories for the active workspace.
+          </p>
+        ) : canUseRepoInputFallback ? (
+          <p className="empty-copy">
+            Local development fallback is active. Free-form repository input is still
+            available until a workspace installation is synced.
+          </p>
+        ) : (
+          <p className="empty-copy">
+            Sync a workspace installation before registering a tracked repository.
+          </p>
+        )}
         {repositories.length > 0 ? (
           <div className="fleet-card-list">
             {repositories.map((entry) => (

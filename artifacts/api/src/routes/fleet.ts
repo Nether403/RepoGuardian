@@ -34,11 +34,12 @@ import {
   getAnalysisJobRepository,
   getAnalysisRunRepository,
   getExecutionPlanRepository,
+  getGitHubInstallationRepository,
   getRepositoryActivityRepository,
   getTrackedPullRequestRepository,
   getTrackedRepositoryRepository
 } from "../lib/persistence.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireWorkspaceRole } from "../middleware/auth.js";
 import { GitHubReadClient } from "@repo-guardian/github";
 
 type TrackedRepositoryStore = Pick<
@@ -270,14 +271,19 @@ export function createFleetRouter(input: {
   fleetRouter.get("/tracked-repositories", async (_request, response, next) => {
     try {
       response.json({
-        repositories: await input.trackedRepositoryStore.listRepositories()
+        repositories: await input.trackedRepositoryStore.listRepositories(
+          _request.authContext?.activeWorkspaceId
+        )
       });
     } catch (error) {
       next(error);
     }
   });
 
-  fleetRouter.post("/tracked-repositories", async (request, response, next) => {
+  fleetRouter.post(
+    "/tracked-repositories",
+    requireWorkspaceRole(["owner", "maintainer"]),
+    async (request, response, next) => {
     const parsedRequest = CreateTrackedRepositoryRequestSchema.safeParse(request.body);
 
     if (!parsedRequest.success) {
@@ -288,13 +294,52 @@ export function createFleetRouter(input: {
     }
 
     try {
+      const workspaceId =
+        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+
+      if (workspaceId !== request.authContext!.activeWorkspaceId) {
+        response.status(403).json({
+          error: "Forbidden: workspace mismatch."
+        });
+        return;
+      }
+
+      if (parsedRequest.data.installationRepositoryId) {
+        const installationRepository =
+          await getGitHubInstallationRepository().getRepositoryById({
+            installationRepositoryId: parsedRequest.data.installationRepositoryId,
+            workspaceId
+          });
+        const repository = await input.trackedRepositoryStore.createRepository({
+          canonicalUrl: installationRepository.canonicalUrl,
+          fullName: installationRepository.fullName,
+          githubInstallationId: installationRepository.githubInstallationId,
+          installationRepositoryId: installationRepository.id,
+          label: parsedRequest.data.label,
+          owner: installationRepository.owner,
+          repo: installationRepository.repo,
+          workspaceId
+        });
+
+        response.status(201).json({ repository });
+        return;
+      }
+
+      if (!parsedRequest.data.repoInput) {
+        response.status(400).json({
+          error: "repoInput is required until installation repository selection is wired here."
+        });
+        return;
+      }
+
       const normalized = normalizeRepoInput(parsedRequest.data.repoInput);
       const repository = await input.trackedRepositoryStore.createRepository({
         canonicalUrl: normalized.canonicalUrl,
         fullName: normalized.fullName,
         label: parsedRequest.data.label,
         owner: normalized.owner,
-        repo: normalized.repo
+        repo: normalized.repo,
+        workspaceId
       });
 
       response.status(201).json({ repository });
@@ -315,18 +360,21 @@ export function createFleetRouter(input: {
       }
 
       const trackedRepository = await input.trackedRepositoryStore.getRepository(
-        getSingleParam(request.params.trackedRepositoryId)
+        getSingleParam(request.params.trackedRepositoryId),
+        request.authContext?.activeWorkspaceId
       );
       const [fleetStatus, recentRuns, recentJobs, recentPlans, trackedPullRequests] =
         await Promise.all([
           input.analysisJobProcessor.getFleetStatus(),
           input.runStore.listRunsByRepositoryFullName({
             limit: 8,
-            repositoryFullName: trackedRepository.fullName
+            repositoryFullName: trackedRepository.fullName,
+            workspaceId: request.authContext?.activeWorkspaceId
           }),
           input.analysisJobStore.listJobs({
             limit: 8,
-            repositoryFullName: trackedRepository.fullName
+            repositoryFullName: trackedRepository.fullName,
+            workspaceId: request.authContext?.activeWorkspaceId
           }),
           input.executionPlanStore.listPlanSummariesByRepositoryFullName({
             limit: 8,
@@ -395,7 +443,8 @@ export function createFleetRouter(input: {
       }
 
       const trackedRepository = await input.trackedRepositoryStore.getRepository(
-        getSingleParam(request.params.trackedRepositoryId)
+        getSingleParam(request.params.trackedRepositoryId),
+        request.authContext?.activeWorkspaceId
       );
       const activityFeed = await input.repositoryActivityStore.listActivitiesByRepositoryFullName({
         ...toRepositoryActivityQuery(parsedQuery.data),
@@ -429,7 +478,8 @@ export function createFleetRouter(input: {
       }
 
       const trackedRepository = await input.trackedRepositoryStore.getRepository(
-        getSingleParam(request.params.trackedRepositoryId)
+        getSingleParam(request.params.trackedRepositoryId),
+        request.authContext?.activeWorkspaceId
       );
       const timeline = await input.repositoryActivityStore.listTimelineByRepositoryFullName({
         ...toRepositoryTimelineQuery(parsedQuery.data),
@@ -464,9 +514,10 @@ export function createFleetRouter(input: {
           return;
         }
 
-        const trackedRepository = await input.trackedRepositoryStore.getRepository(
-          getSingleParam(request.params.trackedRepositoryId)
-        );
+      const trackedRepository = await input.trackedRepositoryStore.getRepository(
+        getSingleParam(request.params.trackedRepositoryId),
+        request.authContext?.activeWorkspaceId
+      );
         const event = await input.repositoryActivityStore.getActivityByRepositoryFullName({
           activityId: getSingleParam(request.params.activityId),
           expansionMode: parsedQuery.data.expand,

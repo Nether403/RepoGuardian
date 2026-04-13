@@ -7,10 +7,6 @@ import {
   type ExecutionServiceDependencies
 } from "@repo-guardian/execution";
 import {
-  GitHubReadClient,
-  GitHubWriteClient
-} from "@repo-guardian/github";
-import {
   type AnalysisRunRepository,
   type ClaimedExecutionPlan,
   type ExecutionPlanRepository,
@@ -24,14 +20,17 @@ import {
   type ExecutionActionPlan,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
-import { env } from "../lib/env.js";
+import {
+  createInstallationReadClient,
+  createInstallationWriteClient
+} from "../lib/github-installations.js";
 import {
   getAnalysisRunRepository,
   getExecutionPlanRepository,
   getTrackedPullRequestRepository
 } from "../lib/persistence.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireWorkspaceRole } from "../middleware/auth.js";
 
 type RunRepositoryLike = Pick<
   AnalysisRunRepository,
@@ -150,8 +149,9 @@ async function persistOpenedPullRequests(input: {
   planId: string;
   planRepository: PlanRepositoryLike;
   trackedPullRequestRepository: TrackedPullRequestRepositoryLike;
+  workspaceId: string;
 }): Promise<void> {
-  const detail = await input.planRepository.getPlanDetail(input.planId);
+  const detail = await input.planRepository.getPlanDetail(input.planId, input.workspaceId);
 
   for (const action of detail.actions) {
     if (
@@ -188,8 +188,10 @@ function createLifecycleCallbacks(input: {
         action,
         actorUserId: input.actorUserId,
         executionId: input.claimedPlan.executionId,
+        githubInstallationId: input.claimedPlan.githubInstallationId,
         planId: input.claimedPlan.planId,
-        repositoryFullName: input.claimedPlan.repositoryFullName
+        repositoryFullName: input.claimedPlan.repositoryFullName,
+        workspaceId: input.claimedPlan.workspaceId
       });
     },
     onActionStarted: async (action) => {
@@ -197,8 +199,10 @@ function createLifecycleCallbacks(input: {
         action,
         actorUserId: input.actorUserId,
         executionId: input.claimedPlan.executionId,
+        githubInstallationId: input.claimedPlan.githubInstallationId,
         planId: input.claimedPlan.planId,
-        repositoryFullName: input.claimedPlan.repositoryFullName
+        repositoryFullName: input.claimedPlan.repositoryFullName,
+        workspaceId: input.claimedPlan.workspaceId
       });
     }
   };
@@ -218,7 +222,11 @@ export function createExecutionRouter(
   const trackedPullRequestRepository =
     stores.trackedPullRequestRepository ?? getTrackedPullRequestRepository();
 
-  executionRouter.post("/execution/plan", requireAuth, async (request, response, next) => {
+  executionRouter.post(
+    "/execution/plan",
+    requireAuth,
+    requireWorkspaceRole(["owner", "maintainer", "reviewer"]),
+    async (request, response, next) => {
     const parsedRequest = ExecutionPlanRequestSchema.safeParse(request.body);
 
     if (!parsedRequest.success) {
@@ -229,7 +237,18 @@ export function createExecutionRouter(
     }
 
     try {
-      const run = await runRepository.getRun(parsedRequest.data.analysisRunId);
+      const workspaceId =
+        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+      const run = await runRepository.getRun(parsedRequest.data.analysisRunId, workspaceId);
+      const resolvedDependencies: ExecutionServiceDependencies = dependencies.readClient
+        ? dependencies
+        : {
+            ...dependencies,
+            readClient: await createInstallationReadClient({
+              repositoryFullName: run.run.analysis.repository.fullName,
+              workspaceId
+            })
+          };
       const planInput = {
         analysis: run.run.analysis,
         approvalGranted: false,
@@ -237,21 +256,28 @@ export function createExecutionRouter(
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
         selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds
       };
-      const result = await createExecutionPlanResult(planInput, dependencies);
+      const result = await createExecutionPlanResult(planInput, resolvedDependencies);
       const planHash = hashActions(result.actions);
       const planId = `plan_${crypto.randomBytes(8).toString("hex")}`;
-      const token = mintApprovalToken(planId, planHash, "usr_authenticated", 15);
+      const token = mintApprovalToken(
+        planId,
+        planHash,
+        request.authContext!.user.id,
+        workspaceId,
+        15
+      );
       const createdAt = new Date().toISOString();
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
       await planRepository.savePlan({
         actions: result.actions,
-        actorUserId: "usr_authenticated",
+        actorUserId: request.authContext!.user.id,
         analysisRunId: parsedRequest.data.analysisRunId,
         approval: {
           confirmationText: "I approve this GitHub write-back plan.",
           required: true
         },
+        githubInstallationId: run.run.githubInstallationId ?? null,
         createdAt,
         expiresAt,
         planHash,
@@ -264,7 +290,8 @@ export function createExecutionRouter(
         },
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
         selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds,
-        summary: result.summary
+        summary: result.summary,
+        workspaceId
       });
 
       response.json({
@@ -294,9 +321,14 @@ export function createExecutionRouter(
 
       next(error);
     }
-  });
+    }
+  );
 
-  executionRouter.post("/execution/execute", requireAuth, async (request, response, next) => {
+  executionRouter.post(
+    "/execution/execute",
+    requireAuth,
+    requireWorkspaceRole(["owner", "maintainer"]),
+    async (request, response, next) => {
     const parsedRequest = ExecutionExecuteRequestSchema.safeParse(request.body);
 
     if (!parsedRequest.success) {
@@ -316,13 +348,17 @@ export function createExecutionRouter(
 
       if (
         tokenPayload.planId !== parsedRequest.data.planId ||
-        tokenPayload.planHash !== parsedRequest.data.planHash
+        tokenPayload.planHash !== parsedRequest.data.planHash ||
+        tokenPayload.workspaceId !==
+          (parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId)
       ) {
         response.status(400).json({ error: "Token does not match plan details." });
         return;
       }
 
-      const detail = await planRepository.getPlanDetail(parsedRequest.data.planId);
+      const workspaceId =
+        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+      const detail = await planRepository.getPlanDetail(parsedRequest.data.planId, workspaceId);
 
       if (detail.planHash !== parsedRequest.data.planHash) {
         response.status(400).json({ error: "Token does not match plan details." });
@@ -340,16 +376,30 @@ export function createExecutionRouter(
       }
 
       const claimedPlan = await planRepository.claimExecution({
-        actorUserId: "usr_authenticated",
-        planId: parsedRequest.data.planId
+        actorUserId: request.authContext!.user.id,
+        planId: parsedRequest.data.planId,
+        workspaceId
       });
-      const run = await runRepository.getRun(claimedPlan.analysisRunId);
+      const run = await runRepository.getRun(claimedPlan.analysisRunId, workspaceId);
       const startedAt = new Date().toISOString();
       const callbacks = createLifecycleCallbacks({
-        actorUserId: "usr_authenticated",
+        actorUserId: request.authContext!.user.id,
         claimedPlan,
         planRepository
       });
+      const resolvedDependencies: ExecutionServiceDependencies = dependencies.writeClient
+        ? dependencies
+        : {
+            ...dependencies,
+            readClient: await createInstallationReadClient({
+              repositoryFullName: claimedPlan.repositoryFullName,
+              workspaceId
+            }),
+            writeClient: await createInstallationWriteClient({
+              repositoryFullName: claimedPlan.repositoryFullName,
+              workspaceId
+            })
+          };
       const executionInput = {
         analysis: run.run.analysis,
         approvalGranted: true,
@@ -362,7 +412,7 @@ export function createExecutionRouter(
         await executeApprovedActions(
           executionInput,
           claimedPlan.actions,
-          dependencies,
+          resolvedDependencies,
           callbacks
         );
         const result = buildExecutionResponse({
@@ -373,26 +423,31 @@ export function createExecutionRouter(
           startedAt
         });
         await planRepository.finalizeExecution({
-          actorUserId: "usr_authenticated",
+          actorUserId: request.authContext!.user.id,
           executionId: claimedPlan.executionId,
+          githubInstallationId: claimedPlan.githubInstallationId,
           planId: claimedPlan.planId,
           repositoryFullName: claimedPlan.repositoryFullName,
-          result
+          result,
+          workspaceId: claimedPlan.workspaceId
         });
         await persistOpenedPullRequests({
           executionId: claimedPlan.executionId,
           planId: claimedPlan.planId,
           planRepository,
-          trackedPullRequestRepository
+          trackedPullRequestRepository,
+          workspaceId: claimedPlan.workspaceId
         });
         response.json(result);
       } catch (error) {
         await planRepository.markExecutionFailure({
-          actorUserId: "usr_authenticated",
+          actorUserId: request.authContext!.user.id,
           errorMessage: error instanceof Error ? error.message : "Unexpected execution failure",
           executionId: claimedPlan.executionId,
+          githubInstallationId: claimedPlan.githubInstallationId,
           planId: claimedPlan.planId,
-          repositoryFullName: claimedPlan.repositoryFullName
+          repositoryFullName: claimedPlan.repositoryFullName,
+          workspaceId: claimedPlan.workspaceId
         });
         next(error);
       }
@@ -411,11 +466,17 @@ export function createExecutionRouter(
 
       next(error);
     }
-  });
+    }
+  );
 
   executionRouter.get("/execution/plans/:planId", requireAuth, async (request, response, next) => {
     try {
-      response.json(await planRepository.getPlanDetail(getSingleParam(request.params.planId)));
+      response.json(
+        await planRepository.getPlanDetail(
+          getSingleParam(request.params.planId),
+          request.authContext!.activeWorkspaceId
+        )
+      );
     } catch (error) {
       const mapped = mapPersistenceError(error);
 
@@ -430,7 +491,12 @@ export function createExecutionRouter(
 
   executionRouter.get("/execution/plans/:planId/events", requireAuth, async (request, response, next) => {
     try {
-      response.json(await planRepository.getPlanEvents(getSingleParam(request.params.planId)));
+      response.json(
+        await planRepository.getPlanEvents(
+          getSingleParam(request.params.planId),
+          request.authContext!.activeWorkspaceId
+        )
+      );
     } catch (error) {
       const mapped = mapPersistenceError(error);
 
@@ -447,13 +513,7 @@ export function createExecutionRouter(
 }
 
 function createDefaultExecutionRouter(): ExpressRouter {
-  const readClient = new GitHubReadClient({ token: env.GITHUB_TOKEN });
-  const writeClient = new GitHubWriteClient({ token: env.GITHUB_TOKEN });
-
-  return createExecutionRouter({
-    readClient,
-    writeClient
-  });
+  return createExecutionRouter({});
 }
 
 export default createDefaultExecutionRouter;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AnalysisJob,
   AnalyzeRepoResponse,
+  AuthSession,
   CompareAnalysisRunsResponse,
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
@@ -9,6 +10,8 @@ import type {
   ExecutionResult,
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
+  GitHubInstallation,
+  GitHubInstallationRepository,
   GetAnalysisRunResponse,
   RepositoryActivityEvent,
   RepositoryActivityKind,
@@ -44,6 +47,7 @@ import { SweepSchedulesPanel } from "./components/SweepSchedulesPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { TrackedPullRequestsPanel } from "./components/TrackedPullRequestsPanel";
 import { TrackedRepositoriesPanel } from "./components/TrackedRepositoriesPanel";
+import { WorkspaceAccessPanel } from "./components/WorkspaceAccessPanel";
 import { PartialAnalysisPanel, WarningsPanel } from "./components/WarningsPanel";
 import {
   buildTraceabilityMapSummary,
@@ -66,6 +70,7 @@ import {
   analyzeRepository
 } from "./lib/api-client";
 import { requestExecutionPlan, requestExecutionExecute } from "./lib/execution-client";
+import { setStoredActiveWorkspaceId } from "./lib/api-options";
 import {
   cancelAnalysisJob,
   createSweepSchedule,
@@ -92,6 +97,13 @@ import {
   saveAnalysisRun,
   SavedRunsClientError
 } from "./lib/runs-client";
+import {
+  getGitHubSignInUrl,
+  listWorkspaceInstallations,
+  loadAuthSession,
+  logoutAuthSession,
+  syncWorkspaceInstallation
+} from "./lib/workspace-client";
 
 type AppMode = "analysis" | "fleet-admin";
 type FleetInspectorSelection =
@@ -105,6 +117,13 @@ type FleetAdminSnapshot = {
   fleetStatus: FleetStatusResponse;
   sweepSchedules: SweepSchedule[];
   trackedRepositories: TrackedRepository[];
+};
+
+type WorkspaceAccessSnapshot = {
+  authSession: AuthSession | null;
+  installations: GitHubInstallation[];
+  repositories: GitHubInstallationRepository[];
+  selectedWorkspaceId: string | null;
 };
 
 type FleetRepositoryActivityQuery = {
@@ -143,6 +162,51 @@ const defaultFleetRepositoryActivityQuery: FleetRepositoryActivityQuery = {
   activitySortPreset: "newest_first",
   activityStatuses: []
 };
+
+async function loadWorkspaceAccessSnapshot(): Promise<WorkspaceAccessSnapshot> {
+  const authSession = await loadAuthSession();
+  const selectedWorkspaceId =
+    authSession?.activeWorkspaceId ?? authSession?.workspaces[0]?.workspace.id ?? null;
+
+  if (!selectedWorkspaceId) {
+    setStoredActiveWorkspaceId(null);
+    return {
+      authSession,
+      installations: [],
+      repositories: [],
+      selectedWorkspaceId: null
+    };
+  }
+
+  setStoredActiveWorkspaceId(selectedWorkspaceId);
+
+  if (authSession?.authMode === "api_key") {
+    return {
+      authSession,
+      installations: [],
+      repositories: [],
+      selectedWorkspaceId
+    };
+  }
+
+  try {
+    const installationSnapshot = await listWorkspaceInstallations(selectedWorkspaceId);
+
+    return {
+      authSession,
+      installations: installationSnapshot.installations,
+      repositories: installationSnapshot.repositories,
+      selectedWorkspaceId
+    };
+  } catch {
+    return {
+      authSession,
+      installations: [],
+      repositories: [],
+      selectedWorkspaceId
+    };
+  }
+}
 
 function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
   try {
@@ -317,6 +381,25 @@ function App() {
   const [savedRunsErrorMessage, setSavedRunsErrorMessage] = useState<string | null>(
     null
   );
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(true);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
+    null
+  );
+  const [githubInstallations, setGitHubInstallations] = useState<GitHubInstallation[]>(
+    []
+  );
+  const [installationRepositories, setInstallationRepositories] = useState<
+    GitHubInstallationRepository[]
+  >([]);
+  const [installationErrorMessage, setInstallationErrorMessage] = useState<
+    string | null
+  >(null);
+  const [isInstallationsLoading, setIsInstallationsLoading] = useState(false);
+  const [pendingInstallationId, setPendingInstallationId] = useState<string | null>(
+    null
+  );
   const [selectedIssueCandidateIds, setSelectedIssueCandidateIds] = useState<
     string[]
   >([]);
@@ -469,6 +552,11 @@ function App() {
     fleetInspectorSelection?.kind === "run"
       ? runDetailsById[fleetInspectorSelection.id] ?? null
       : null;
+  const availableInstallationRepositories = installationRepositories
+    .filter((repository) => !repository.isArchived)
+    .slice()
+    .sort((left, right) => left.fullName.localeCompare(right.fullName));
+  const canUseRepoInputFallback = authSession?.authMode === "api_key";
 
   function resetExecutionState() {
     setApprovalGranted(false);
@@ -500,6 +588,13 @@ function App() {
     setFleetStatus(snapshot.fleetStatus);
     setSweepSchedules(snapshot.sweepSchedules);
     setTrackedRepositories(snapshot.trackedRepositories);
+  }
+
+  function applyWorkspaceAccessSnapshot(snapshot: WorkspaceAccessSnapshot) {
+    setAuthSession(snapshot.authSession);
+    setSelectedWorkspaceId(snapshot.selectedWorkspaceId);
+    setGitHubInstallations(snapshot.installations);
+    setInstallationRepositories(snapshot.repositories);
   }
 
   function repositoryTimelineMatchesQuery(
@@ -779,7 +874,123 @@ function App() {
     }
   }
 
+  async function handleRefreshWorkspaceAccess() {
+    setAuthErrorMessage(null);
+    setInstallationErrorMessage(null);
+    setIsSessionLoading(true);
+    setIsInstallationsLoading(true);
+
+    try {
+      const snapshot = await loadWorkspaceAccessSnapshot();
+      applyWorkspaceAccessSnapshot(snapshot);
+    } catch (error) {
+      setAuthSession(null);
+      setSelectedWorkspaceId(null);
+      setGitHubInstallations([]);
+      setInstallationRepositories([]);
+      setAuthErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not load workspace access."
+      );
+    } finally {
+      setIsSessionLoading(false);
+      setIsInstallationsLoading(false);
+    }
+  }
+
+  function handleSignIn() {
+    window.location.assign(getGitHubSignInUrl());
+  }
+
+  async function handleLogout() {
+    setAuthErrorMessage(null);
+    setInstallationErrorMessage(null);
+
+    try {
+      await logoutAuthSession();
+      setStoredActiveWorkspaceId(null);
+      setAuthSession(null);
+      setSelectedWorkspaceId(null);
+      setGitHubInstallations([]);
+      setInstallationRepositories([]);
+      setFleetStatus(null);
+      setTrackedRepositories([]);
+      setAnalysisJobs([]);
+      setSweepSchedules([]);
+      setFleetInspectorSelection(null);
+    } catch (error) {
+      setAuthErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not sign out."
+      );
+    }
+  }
+
+  async function handleWorkspaceChange(workspaceId: string) {
+    setStoredActiveWorkspaceId(workspaceId);
+    setSelectedWorkspaceId(workspaceId);
+    setFleetStatus(null);
+    setTrackedRepositories([]);
+    setAnalysisJobs([]);
+    setSweepSchedules([]);
+    setFleetInspectorSelection(null);
+    setGitHubInstallations([]);
+    setInstallationRepositories([]);
+    setInstallationErrorMessage(null);
+    setIsInstallationsLoading(true);
+
+    try {
+      if (authSession?.authMode === "session") {
+        const snapshot = await listWorkspaceInstallations(workspaceId);
+        setGitHubInstallations(snapshot.installations);
+        setInstallationRepositories(snapshot.repositories);
+      }
+    } catch (error) {
+      setInstallationErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not load installations for the selected workspace."
+      );
+    } finally {
+      setIsInstallationsLoading(false);
+    }
+  }
+
+  async function handleSyncInstallation(installationId: string) {
+    if (!selectedWorkspaceId) {
+      return;
+    }
+
+    setInstallationErrorMessage(null);
+    setPendingInstallationId(installationId);
+
+    try {
+      await syncWorkspaceInstallation({
+        installationId,
+        workspaceId: selectedWorkspaceId
+      });
+      const snapshot = await listWorkspaceInstallations(selectedWorkspaceId);
+      setGitHubInstallations(snapshot.installations);
+      setInstallationRepositories(snapshot.repositories);
+    } catch (error) {
+      setInstallationErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not sync installation repositories."
+      );
+    } finally {
+      setPendingInstallationId(null);
+    }
+  }
+
   async function handleRefreshFleetAdmin() {
+    if (!authSession) {
+      setFleetErrorMessage("Sign in to load fleet admin data.");
+      return;
+    }
+
     setFleetErrorMessage(null);
     setIsFleetLoading(true);
 
@@ -797,8 +1008,10 @@ function App() {
   }
 
   async function handleCreateTrackedRepository(input: {
+    installationRepositoryId?: string;
     label?: string | null;
-    repoInput: string;
+    repoInput?: string;
+    workspaceId?: string | null;
   }) {
     setTrackedRepositoriesErrorMessage(null);
     setIsCreatingTrackedRepository(true);
@@ -1246,7 +1459,41 @@ function App() {
   }, [fleetRepositoryActivityQuery]);
 
   useEffect(() => {
-    if (appMode !== "fleet-admin" || fleetStatus) {
+    let cancelled = false;
+
+    void loadWorkspaceAccessSnapshot()
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        applyWorkspaceAccessSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setAuthErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Repo Guardian could not load workspace access."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsSessionLoading(false);
+          setIsInstallationsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (appMode !== "fleet-admin" || fleetStatus || isSessionLoading || !authSession) {
       return;
     }
 
@@ -1282,7 +1529,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [appMode, fleetStatus]);
+  }, [appMode, authSession, fleetStatus, isSessionLoading]);
 
   const heroAside =
     appMode === "analysis" ? (
@@ -1468,6 +1715,24 @@ function App() {
         </>
       ) : (
         <>
+          <WorkspaceAccessPanel
+            authErrorMessage={authErrorMessage}
+            authSession={authSession}
+            installationErrorMessage={installationErrorMessage}
+            installations={githubInstallations}
+            isInstallationsLoading={isInstallationsLoading}
+            isSessionLoading={isSessionLoading}
+            onLogout={() => void handleLogout()}
+            onRefresh={() => void handleRefreshWorkspaceAccess()}
+            onSignIn={handleSignIn}
+            onSyncInstallation={(installationId) =>
+              void handleSyncInstallation(installationId)
+            }
+            onWorkspaceChange={(workspaceId) => void handleWorkspaceChange(workspaceId)}
+            pendingInstallationId={pendingInstallationId}
+            repositories={installationRepositories}
+            selectedWorkspaceId={selectedWorkspaceId}
+          />
           <FleetOverviewPanel
             errorMessage={fleetErrorMessage}
             fleetStatus={fleetStatus}
@@ -1475,6 +1740,8 @@ function App() {
             onRefresh={handleRefreshFleetAdmin}
           />
           <TrackedRepositoriesPanel
+            availableRepositories={availableInstallationRepositories}
+            canUseRepoInputFallback={canUseRepoInputFallback}
             errorMessage={trackedRepositoriesErrorMessage}
             isCreating={isCreatingTrackedRepository}
             isLoading={isFleetLoading}
@@ -1497,6 +1764,7 @@ function App() {
             onRefresh={handleRefreshFleetAdmin}
             pendingTrackedRepositoryId={pendingTrackedRepositoryId}
             repositories={trackedRepositoryStatuses}
+            selectedWorkspaceId={selectedWorkspaceId}
           />
           <AnalysisJobsPanel
             errorMessage={jobsErrorMessage}

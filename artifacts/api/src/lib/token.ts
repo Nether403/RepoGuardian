@@ -5,6 +5,7 @@ export type ApprovalTokenPayload = {
   sub: string;
   planId: string;
   planHash: string;
+  workspaceId: string;
   scope: "repoguardian:execute";
   iat: number;
   exp: number;
@@ -29,6 +30,7 @@ export function mintApprovalToken(
   planId: string,
   planHash: string,
   userId: string,
+  workspaceId: string,
   ttlMinutes: number = 15
 ): string {
   const iat = Math.floor(Date.now() / 1000);
@@ -40,6 +42,7 @@ export function mintApprovalToken(
       sub: userId,
       planId,
       planHash,
+      workspaceId,
       scope: "repoguardian:execute",
       iat,
       exp

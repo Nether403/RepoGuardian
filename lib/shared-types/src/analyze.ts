@@ -10,7 +10,8 @@ export const NormalizedRepoInputSchema = z.object({
 });
 
 export const AnalyzeRepoRequestSchema = z.object({
-  repoInput: z.string().trim().min(1, "Repository input is required")
+  repoInput: z.string().trim().min(1, "Repository input is required"),
+  workspaceId: z.string().trim().min(1).optional()
 });
 
 export const AnalysisWarningCodeSchema = z.enum([
@@ -627,6 +628,7 @@ export const ExecutionPlanningContextSchema = z.object({
 
 export const ExecutionPlanRequestSchema = z.object({
   analysisRunId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
   selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
   selectedPRCandidateIds: z.array(z.string().min(1)).default([])
 });
@@ -634,6 +636,7 @@ export const ExecutionPlanRequestSchema = z.object({
 export const ExecutionExecuteRequestSchema = z.object({
   planId: z.string().min(1),
   planHash: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
   approvalToken: z.string().min(1),
   confirm: z.literal(true),
   confirmationText: z.string().min(1)
@@ -728,6 +731,8 @@ export const ExecutionPlanDetailResponseSchema = z.object({
   planId: z.string().min(1),
   planHash: z.string().min(1),
   analysisRunId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   repository: RepositoryMetadataSchema.pick({
     owner: true,
     repo: true,
@@ -768,6 +773,8 @@ export const ExecutionPlanStatusEventSchema = z.object({
   executionId: z.string().min(1).nullable(),
   actionId: z.string().min(1).nullable(),
   eventType: ExecutionPlanStatusEventTypeSchema,
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   repositoryFullName: z.string().min(3),
   actorUserId: z.string().min(1).nullable(),
   details: z.record(z.unknown()),
@@ -804,6 +811,8 @@ export const AnalyzeRepoResponseSchema = z.object({
 
 export const SavedAnalysisRunSummarySchema = z.object({
   id: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   createdAt: z.string().datetime(),
   label: z.string().min(1).nullable(),
   repositoryFullName: z.string().min(3),
@@ -824,6 +833,8 @@ export const SavedAnalysisRunSummarySchema = z.object({
 
 export const SavedAnalysisRunSchema = z.object({
   id: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   createdAt: z.string().datetime(),
   label: z.string().min(1).nullable(),
   analysis: AnalyzeRepoResponseSchema
@@ -848,8 +859,124 @@ export const GetAnalysisRunResponseSchema = z.object({
   summary: SavedAnalysisRunSummarySchema
 });
 
+export const WorkspaceRoleSchema = z.enum([
+  "owner",
+  "maintainer",
+  "reviewer",
+  "viewer"
+]);
+
+export const WorkspaceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(120),
+  slug: z.string().min(1).max(120),
+  isDefault: z.boolean().default(false),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const AuthenticatedUserSchema = z.object({
+  id: z.string().min(1),
+  githubUserId: z.number().int().positive(),
+  githubLogin: z.string().min(1),
+  displayName: z.string().min(1).nullable(),
+  avatarUrl: z.string().url().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const WorkspaceMembershipSchema = z.object({
+  id: z.string().min(1),
+  workspaceId: z.string().min(1),
+  userId: z.string().min(1),
+  role: WorkspaceRoleSchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const SessionWorkspaceSchema = z.object({
+  workspace: WorkspaceSchema,
+  membership: WorkspaceMembershipSchema
+});
+
+export const AuthSessionSchema = z.object({
+  authenticated: z.boolean(),
+  authMode: z.enum(["session", "api_key", "anonymous"]),
+  user: AuthenticatedUserSchema.nullable(),
+  activeWorkspaceId: z.string().min(1).nullable(),
+  workspaces: z.array(SessionWorkspaceSchema)
+});
+
+export const GitHubInstallationStatusSchema = z.enum([
+  "active",
+  "suspended",
+  "deleted"
+]);
+
+export const GitHubInstallationSchema = z.object({
+  id: z.string().min(1),
+  workspaceId: z.string().min(1),
+  githubInstallationId: z.number().int().positive(),
+  targetType: z.enum(["Organization", "User"]),
+  targetId: z.number().int().positive(),
+  targetLogin: z.string().min(1),
+  status: GitHubInstallationStatusSchema,
+  permissions: z.record(z.string()),
+  repositorySelection: z.enum(["all", "selected"]),
+  installedAt: z.string().datetime(),
+  suspendedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const GitHubInstallationRepositorySchema = z.object({
+  id: z.string().min(1),
+  workspaceId: z.string().min(1),
+  githubInstallationId: z.string().min(1),
+  repositoryNodeId: z.string().min(1).nullable(),
+  githubRepositoryId: z.number().int().positive(),
+  owner: z.string().min(1),
+  repo: z.string().min(1),
+  fullName: z.string().min(3),
+  canonicalUrl: z.string().url(),
+  defaultBranch: z.string().min(1).nullable(),
+  isPrivate: z.boolean(),
+  isArchived: z.boolean(),
+  isSelected: z.boolean(),
+  lastSyncedAt: z.string().datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const ListWorkspacesResponseSchema = z.object({
+  activeWorkspaceId: z.string().min(1).nullable(),
+  workspaces: z.array(SessionWorkspaceSchema)
+});
+
+export const CreateWorkspaceRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120)
+});
+
+export const CreateWorkspaceResponseSchema = z.object({
+  workspace: WorkspaceSchema,
+  membership: WorkspaceMembershipSchema
+});
+
+export const ListGitHubInstallationsResponseSchema = z.object({
+  installations: z.array(GitHubInstallationSchema),
+  repositories: z.array(GitHubInstallationRepositorySchema)
+});
+
+export const SyncGitHubInstallationResponseSchema = z.object({
+  installation: GitHubInstallationSchema,
+  repositories: z.array(GitHubInstallationRepositorySchema)
+});
+
 export const TrackedRepositorySchema = z.object({
   id: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
+  installationRepositoryId: z.string().min(1).nullable().optional(),
   owner: z.string().min(1),
   repo: z.string().min(1),
   fullName: z.string().min(3),
@@ -863,7 +990,12 @@ export const TrackedRepositorySchema = z.object({
 
 export const CreateTrackedRepositoryRequestSchema = z.object({
   label: z.string().trim().min(1).max(120).nullable().optional(),
-  repoInput: z.string().trim().min(1, "Repository input is required")
+  repoInput: z.string().trim().min(1).optional(),
+  workspaceId: z.string().trim().min(1).optional(),
+  installationRepositoryId: z.string().trim().min(1).optional()
+}).refine((value) => Boolean(value.repoInput || value.installationRepositoryId), {
+  message: "repoInput or installationRepositoryId is required",
+  path: ["repoInput"]
 });
 
 export const CreateTrackedRepositoryResponseSchema = z.object({
@@ -890,6 +1022,8 @@ export const AnalysisJobStatusSchema = z.enum([
 
 export const AnalysisJobSchema = z.object({
   jobId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   jobKind: AnalysisJobKindSchema,
   status: AnalysisJobStatusSchema,
   repoInput: z.string().min(1),
@@ -978,6 +1112,8 @@ export const SweepSelectionStrategySchema = z.enum(["all_executable_prs"]);
 
 export const SweepScheduleSchema = z.object({
   scheduleId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   cadence: SweepCadenceSchema,
   label: z.string().min(1).max(120),
   selectionStrategy: SweepSelectionStrategySchema,
@@ -1015,6 +1151,8 @@ export const TrackedPullRequestLifecycleStatusSchema = z.enum([
 
 export const TrackedPullRequestSchema = z.object({
   trackedPullRequestId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   repositoryFullName: z.string().min(3),
   owner: z.string().min(1),
   repo: z.string().min(1),
@@ -1064,6 +1202,8 @@ export const FleetStatusResponseSchema = z.object({
 
 export const ExecutionPlanSummarySchema = z.object({
   planId: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  githubInstallationId: z.string().min(1).nullable().optional(),
   analysisRunId: z.string().min(1),
   repositoryFullName: z.string().min(3),
   status: ExecutionPlanLifecycleStatusSchema,
@@ -1569,6 +1709,32 @@ export type ListAnalysisRunsResponse = z.infer<
 >;
 export type GetAnalysisRunResponse = z.infer<
   typeof GetAnalysisRunResponseSchema
+>;
+export type WorkspaceRole = z.infer<typeof WorkspaceRoleSchema>;
+export type Workspace = z.infer<typeof WorkspaceSchema>;
+export type AuthenticatedUser = z.infer<typeof AuthenticatedUserSchema>;
+export type WorkspaceMembership = z.infer<typeof WorkspaceMembershipSchema>;
+export type SessionWorkspace = z.infer<typeof SessionWorkspaceSchema>;
+export type AuthSession = z.infer<typeof AuthSessionSchema>;
+export type GitHubInstallationStatus = z.infer<
+  typeof GitHubInstallationStatusSchema
+>;
+export type GitHubInstallation = z.infer<typeof GitHubInstallationSchema>;
+export type GitHubInstallationRepository = z.infer<
+  typeof GitHubInstallationRepositorySchema
+>;
+export type ListWorkspacesResponse = z.infer<typeof ListWorkspacesResponseSchema>;
+export type CreateWorkspaceRequest = z.infer<
+  typeof CreateWorkspaceRequestSchema
+>;
+export type CreateWorkspaceResponse = z.infer<
+  typeof CreateWorkspaceResponseSchema
+>;
+export type ListGitHubInstallationsResponse = z.infer<
+  typeof ListGitHubInstallationsResponseSchema
+>;
+export type SyncGitHubInstallationResponse = z.infer<
+  typeof SyncGitHubInstallationResponseSchema
 >;
 export type TrackedRepository = z.infer<typeof TrackedRepositorySchema>;
 export type CreateTrackedRepositoryRequest = z.infer<

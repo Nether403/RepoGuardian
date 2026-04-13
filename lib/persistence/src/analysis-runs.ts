@@ -22,6 +22,7 @@ import {
 } from "@repo-guardian/runs";
 import type { PostgresClient } from "./client.js";
 import { PersistenceError } from "./errors.js";
+import { resolveWorkspaceId } from "./scope.js";
 
 type AnalysisRunRow = QueryResultRow & {
   analysis_payload: unknown;
@@ -30,6 +31,7 @@ type AnalysisRunRow = QueryResultRow & {
   default_branch: string;
   executable_patch_plans: number;
   fetched_at: Date | string;
+  github_installation_id: string | null;
   high_severity_findings: number;
   issue_candidates: number;
   label: string | null;
@@ -40,6 +42,7 @@ type AnalysisRunRow = QueryResultRow & {
   repository_full_name: string;
   run_id: string;
   total_findings: number;
+  workspace_id: string;
 };
 
 function assertValidRunId(runId: string): void {
@@ -60,8 +63,10 @@ function parseSavedRun(row: AnalysisRunRow): SavedAnalysisRun {
   return SavedAnalysisRunSchema.parse({
     analysis: row.analysis_payload,
     createdAt: toIsoString(row.created_at),
+    githubInstallationId: row.github_installation_id,
     id: row.run_id,
-    label: row.label
+    label: row.label,
+    workspaceId: row.workspace_id
   });
 }
 
@@ -93,14 +98,19 @@ export class AnalysisRunRepository {
 
   async saveRun(input: {
     analysis: AnalyzeRepoResponse;
+    githubInstallationId?: string | null;
     label?: string | null;
+    workspaceId?: string | null;
   }): Promise<SaveAnalysisRunResponse> {
     const createdAt = new Date().toISOString();
+    const workspaceId = resolveWorkspaceId(input.workspaceId);
     const run: SavedAnalysisRun = {
       analysis: input.analysis,
       createdAt,
+      githubInstallationId: input.githubInstallationId ?? null,
       id: createRunId(input.analysis, createdAt, randomUUID),
-      label: input.label?.trim() ? input.label.trim() : null
+      label: input.label?.trim() ? input.label.trim() : null,
+      workspaceId
     };
 
     await this.upsertRun(run);
@@ -117,6 +127,8 @@ export class AnalysisRunRepository {
     await this.client.query(
       `INSERT INTO analysis_runs (
         run_id,
+        workspace_id,
+        github_installation_id,
         created_at,
         label,
         repository_full_name,
@@ -130,9 +142,11 @@ export class AnalysisRunRepository {
         blocked_patch_plans,
         analysis_payload
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb
       )
       ON CONFLICT (run_id) DO UPDATE SET
+        workspace_id = EXCLUDED.workspace_id,
+        github_installation_id = EXCLUDED.github_installation_id,
         created_at = EXCLUDED.created_at,
         label = EXCLUDED.label,
         repository_full_name = EXCLUDED.repository_full_name,
@@ -147,6 +161,8 @@ export class AnalysisRunRepository {
         analysis_payload = EXCLUDED.analysis_payload`,
       [
         run.id,
+        run.workspaceId ?? resolveWorkspaceId(null),
+        run.githubInstallationId ?? null,
         run.createdAt,
         run.label,
         summary.repositoryFullName,
@@ -163,10 +179,13 @@ export class AnalysisRunRepository {
     );
   }
 
-  async listRuns(): Promise<ListAnalysisRunsResponse["runs"]> {
+  async listRuns(workspaceId?: string | null): Promise<ListAnalysisRunsResponse["runs"]> {
+    const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
     const result = await this.client.query<AnalysisRunRow>(
       `SELECT
         runs.run_id,
+        runs.workspace_id,
+        runs.github_installation_id,
         runs.created_at,
         runs.label,
         runs.repository_full_name,
@@ -193,7 +212,10 @@ export class AnalysisRunRepository {
         ORDER BY execution_plans.created_at DESC
         LIMIT 1
       ) AS plans ON TRUE
+      WHERE runs.workspace_id = $1
       ORDER BY runs.created_at DESC`
+      ,
+      [resolvedWorkspaceId]
     );
 
     return result.rows.map((row: AnalysisRunRow) =>
@@ -204,10 +226,14 @@ export class AnalysisRunRepository {
   async listRunsByRepositoryFullName(input: {
     limit?: number;
     repositoryFullName: string;
+    workspaceId?: string | null;
   }): Promise<SavedAnalysisRunSummary[]> {
+    const resolvedWorkspaceId = resolveWorkspaceId(input.workspaceId);
     const result = await this.client.query<AnalysisRunRow>(
       `SELECT
         runs.run_id,
+        runs.workspace_id,
+        runs.github_installation_id,
         runs.created_at,
         runs.label,
         runs.repository_full_name,
@@ -235,9 +261,10 @@ export class AnalysisRunRepository {
         LIMIT 1
       ) AS plans ON TRUE
       WHERE runs.repository_full_name = $1
+        AND runs.workspace_id = $2
       ORDER BY runs.created_at DESC
-      LIMIT $2`,
-      [input.repositoryFullName, input.limit ?? 10]
+      LIMIT $3`,
+      [input.repositoryFullName, resolvedWorkspaceId, input.limit ?? 10]
     );
 
     return result.rows.map((row: AnalysisRunRow) =>
@@ -245,9 +272,9 @@ export class AnalysisRunRepository {
     );
   }
 
-  async getRun(runId: string): Promise<GetAnalysisRunResponse> {
+  async getRun(runId: string, workspaceId?: string | null): Promise<GetAnalysisRunResponse> {
     assertValidRunId(runId);
-    const row = await this.getRunRow(runId);
+    const row = await this.getRunRow(runId, workspaceId);
     const run = parseSavedRun(row);
 
     return SaveAnalysisRunResponseSchema.parse({
@@ -259,10 +286,11 @@ export class AnalysisRunRepository {
   async compareRuns(input: {
     baseRunId: string;
     targetRunId: string;
+    workspaceId?: string | null;
   }): Promise<CompareAnalysisRunsResponse> {
     const [base, target] = await Promise.all([
-      this.getRun(input.baseRunId),
-      this.getRun(input.targetRunId)
+      this.getRun(input.baseRunId, input.workspaceId),
+      this.getRun(input.targetRunId, input.workspaceId)
     ]);
 
     return CompareAnalysisRunsResponseSchema.parse(
@@ -270,10 +298,16 @@ export class AnalysisRunRepository {
     );
   }
 
-  private async getRunRow(runId: string): Promise<AnalysisRunRow> {
+  private async getRunRow(
+    runId: string,
+    workspaceId?: string | null
+  ): Promise<AnalysisRunRow> {
+    const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
     const result = await this.client.query<AnalysisRunRow>(
       `SELECT
         runs.run_id,
+        runs.workspace_id,
+        runs.github_installation_id,
         runs.created_at,
         runs.label,
         runs.repository_full_name,
@@ -300,8 +334,9 @@ export class AnalysisRunRepository {
         ORDER BY execution_plans.created_at DESC
         LIMIT 1
       ) AS plans ON TRUE
-      WHERE runs.run_id = $1`,
-      [runId]
+      WHERE runs.run_id = $1
+        AND runs.workspace_id = $2`,
+      [runId, resolvedWorkspaceId]
     );
 
     if (result.rows.length === 0) {

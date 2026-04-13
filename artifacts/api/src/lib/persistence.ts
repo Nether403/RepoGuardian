@@ -4,23 +4,27 @@ import {
   AnalysisRunRepository,
   ExecutionPlanRepository,
   FleetStatusRepository,
+  GitHubInstallationRepositoryStore,
   PostgresClient,
   RepositoryActivityRepository,
   SweepScheduleRepository,
   TrackedPullRequestRepository,
-  TrackedRepositoryRepository
+  TrackedRepositoryRepository,
+  WorkspaceRepository
 } from "@repo-guardian/persistence";
 import { env } from "./env.js";
 
 let client: PostgresClient | null = null;
 let analysisJobRepository: AnalysisJobRepository | null = null;
 let fleetStatusRepository: FleetStatusRepository | null = null;
+let githubInstallationRepository: GitHubInstallationRepositoryStore | null = null;
 let runRepository: AnalysisRunRepository | null = null;
 let planRepository: ExecutionPlanRepository | null = null;
 let repositoryActivityRepository: RepositoryActivityRepository | null = null;
 let sweepScheduleRepository: SweepScheduleRepository | null = null;
 let trackedPullRequestRepository: TrackedPullRequestRepository | null = null;
 let trackedRepository: TrackedRepositoryRepository | null = null;
+let workspaceRepository: WorkspaceRepository | null = null;
 
 function requireDatabaseUrl(): string {
   if (!env.DATABASE_URL) {
@@ -53,6 +57,11 @@ export function getFleetStatusRepository(): FleetStatusRepository {
   return fleetStatusRepository;
 }
 
+export function getGitHubInstallationRepository(): GitHubInstallationRepositoryStore {
+  githubInstallationRepository ??= new GitHubInstallationRepositoryStore(getPostgresClient());
+  return githubInstallationRepository;
+}
+
 export function getExecutionPlanRepository(): ExecutionPlanRepository {
   planRepository ??= new ExecutionPlanRepository(getPostgresClient());
   return planRepository;
@@ -78,6 +87,11 @@ export function getTrackedRepositoryRepository(): TrackedRepositoryRepository {
   return trackedRepository;
 }
 
+export function getWorkspaceRepository(): WorkspaceRepository {
+  workspaceRepository ??= new WorkspaceRepository(getPostgresClient());
+  return workspaceRepository;
+}
+
 export function getLegacyRunStoreDir(): string {
   return env.REPO_GUARDIAN_RUN_STORE_DIR ?? join(process.cwd(), ".repo-guardian", "runs");
 }
@@ -91,10 +105,12 @@ export async function resetPersistenceCaches(): Promise<void> {
   client = null;
   analysisJobRepository = null;
   fleetStatusRepository = null;
+  githubInstallationRepository = null;
   runRepository = null;
   planRepository = null;
   repositoryActivityRepository = null;
   sweepScheduleRepository = null;
   trackedPullRequestRepository = null;
   trackedRepository = null;
+  workspaceRepository = null;
 }
