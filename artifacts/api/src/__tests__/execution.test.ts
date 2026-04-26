@@ -467,6 +467,9 @@ function createPackageLockContent(lockfileVersion = 3): string {
 
 type TestApp = {
   app: express.Express;
+  policyDecisionRepository: {
+    recordDecision: ReturnType<typeof vi.fn>;
+  };
   saveRun: (analysis: AnalyzeRepoResponse) => string;
 };
 
@@ -486,12 +489,18 @@ afterEach(() => {
 });
 
 function createTestApp(
-  dependencies: Parameters<typeof createExecutionRouter>[0]
+  dependencies: Parameters<typeof createExecutionRouter>[0],
+  options: {
+    policyDecisionRepository?: TestApp["policyDecisionRepository"];
+  } = {}
 ): TestApp {
   const app = express();
   const runs = new Map<string, SavedAnalysisRun>();
   const plans = new Map<string, StoredPlanState>();
   let executionCounter = 0;
+  const policyDecisionRepository = options.policyDecisionRepository ?? {
+    recordDecision: vi.fn().mockResolvedValue({})
+  };
   const trackedPullRequestRepository = {
     upsertOpenedPullRequest: vi.fn().mockImplementation(async (input) => ({
       branchName: input.branchName,
@@ -830,12 +839,14 @@ function createTestApp(
           };
         }
       },
+      policyDecisionRepository,
       trackedPullRequestRepository
     })
   );
 
   return {
     app,
+    policyDecisionRepository,
     saveRun(analysis) {
       const runId = `test_run_${Date.now()}_${runs.size + 1}`;
       const run: SavedAnalysisRun = {
@@ -1018,6 +1029,47 @@ describe("POST /api/execution/plan", () => {
       ])
     );
     expect(ExecutionResultSchema.safeParse(response.body).success).toBe(true);
+  });
+
+  it("records an allowed policy decision before executing an approved write", async () => {
+    const createIssue = vi.fn().mockResolvedValue({
+      issueNumber: 9,
+      issueUrl: "https://github.com/openai/openai-node/issues/9"
+    });
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createIssue,
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        openPullRequest: vi.fn()
+      }
+    });
+
+    const response = await runTwoPhaseExecution(
+      testApp,
+      createAnalysisContext(),
+      ["issue:workflow-hardening:.github/workflows/ci.yml"],
+      []
+    );
+
+    expect(response.status).toBe(200);
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_write",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: "Approved write execution may proceed.",
+        repositoryFullName: "openai/openai-node",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(
+      testApp.policyDecisionRepository.recordDecision.mock.invocationCallOrder[0]
+    ).toBeLessThan(createIssue.mock.invocationCallOrder[0]!);
   });
 
   it("executes an approved workflow PR creation request", async () => {

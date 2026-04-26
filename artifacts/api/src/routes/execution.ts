@@ -2,14 +2,17 @@ import { type Router as ExpressRouter, Router } from "express";
 import crypto from "node:crypto";
 import {
   createExecutionPlanResult,
+  evaluateExecutionWritePolicy,
   executeApprovedActions,
   type ExecutionLifecycleCallbacks,
+  type ExecutionWritePolicyDecision,
   type ExecutionServiceDependencies
 } from "@repo-guardian/execution";
 import {
   type AnalysisRunRepository,
   type ClaimedExecutionPlan,
   type ExecutionPlanRepository,
+  type PolicyDecisionRepository,
   type TrackedPullRequestRepository,
   isPersistenceError
 } from "@repo-guardian/persistence";
@@ -27,6 +30,7 @@ import {
 import {
   getAnalysisRunRepository,
   getExecutionPlanRepository,
+  getPolicyDecisionRepository,
   getTrackedPullRequestRepository
 } from "../lib/persistence.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
@@ -52,6 +56,11 @@ type PlanRepositoryLike = Pick<
 type TrackedPullRequestRepositoryLike = Pick<
   TrackedPullRequestRepository,
   "upsertOpenedPullRequest"
+>;
+
+type PolicyDecisionRepositoryLike = Pick<
+  PolicyDecisionRepository,
+  "recordDecision"
 >;
 
 function hashActions(actions: unknown[]): string {
@@ -177,6 +186,28 @@ async function persistOpenedPullRequests(input: {
   }
 }
 
+async function recordExecutionPolicyDecision(input: {
+  actorUserId: string;
+  decision: ExecutionWritePolicyDecision;
+  detail: Awaited<ReturnType<PlanRepositoryLike["getPlanDetail"]>>;
+  policyDecisionRepository: PolicyDecisionRepositoryLike;
+  workspaceId: string;
+}): Promise<void> {
+  await input.policyDecisionRepository.recordDecision({
+    actionType: "execute_write",
+    actorUserId: input.actorUserId,
+    decision: input.decision.decision,
+    details: input.decision.details,
+    githubInstallationId: input.detail.githubInstallationId ?? null,
+    planId: input.detail.planId,
+    reason: input.decision.reason,
+    repositoryFullName: input.detail.repository.fullName,
+    runId: input.detail.analysisRunId,
+    scopeType: "repository",
+    workspaceId: input.workspaceId
+  });
+}
+
 function createLifecycleCallbacks(input: {
   actorUserId: string | null;
   claimedPlan: ClaimedExecutionPlan;
@@ -212,6 +243,7 @@ export function createExecutionRouter(
   dependencies: ExecutionServiceDependencies,
   stores: {
     planRepository?: PlanRepositoryLike;
+    policyDecisionRepository?: PolicyDecisionRepositoryLike;
     runRepository?: RunRepositoryLike;
     trackedPullRequestRepository?: TrackedPullRequestRepositoryLike;
   } = {}
@@ -219,6 +251,8 @@ export function createExecutionRouter(
   const executionRouter: ExpressRouter = Router();
   const runRepository = stores.runRepository ?? getAnalysisRunRepository();
   const planRepository = stores.planRepository ?? getExecutionPlanRepository();
+  const policyDecisionRepository =
+    stores.policyDecisionRepository ?? getPolicyDecisionRepository();
   const trackedPullRequestRepository =
     stores.trackedPullRequestRepository ?? getTrackedPullRequestRepository();
 
@@ -359,8 +393,22 @@ export function createExecutionRouter(
       const workspaceId =
         parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
       const detail = await planRepository.getPlanDetail(parsedRequest.data.planId, workspaceId);
+      const planHashMatches = detail.planHash === parsedRequest.data.planHash;
+      const policyDecision = evaluateExecutionWritePolicy({
+        actions: detail.actions,
+        planHashMatches,
+        planStatus: detail.status
+      });
 
-      if (detail.planHash !== parsedRequest.data.planHash) {
+      await recordExecutionPolicyDecision({
+        actorUserId: request.authContext!.user.id,
+        decision: policyDecision,
+        detail,
+        policyDecisionRepository,
+        workspaceId
+      });
+
+      if (!planHashMatches) {
         response.status(400).json({ error: "Token does not match plan details." });
         return;
       }
