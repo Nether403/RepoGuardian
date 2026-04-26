@@ -9,6 +9,7 @@ type OpenApiOperation = {
   operationId?: unknown;
   parameters?: unknown;
   summary?: unknown;
+  "x-repo-guardian-client"?: unknown;
   "x-repo-guardian-request-type"?: unknown;
   "x-repo-guardian-response-type"?: unknown;
 };
@@ -109,6 +110,10 @@ function collectOperations(document: OpenApiDocument): ClientOperation[] {
   for (const [path, pathItem] of Object.entries(document.paths ?? {})) {
     for (const [method, operation] of Object.entries(pathItem)) {
       if (!httpMethods.has(method as HttpMethod) || !operation) {
+        continue;
+      }
+
+      if (operation["x-repo-guardian-client"] === false) {
         continue;
       }
 

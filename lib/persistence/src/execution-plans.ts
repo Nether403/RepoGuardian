@@ -195,7 +195,7 @@ export class ExecutionPlanRepository {
           failed_at,
           cancelled_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, NULL, $16, $17::jsonb, $18, $19, NULL, NULL, NULL, NULL
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16::jsonb, NULL, $17, $18::jsonb, $19, $20, NULL, NULL, NULL, NULL
         )`,
         [
           input.planId,
@@ -809,7 +809,7 @@ export class ExecutionPlanRepository {
       LEFT JOIN execution_attempts
         ON execution_attempts.plan_id = execution_plans.plan_id
       ${whereClause}
-      ${lock ? "FOR UPDATE" : ""}`,
+      ${lock ? "FOR UPDATE OF execution_plans" : ""}`,
       values
     );
 

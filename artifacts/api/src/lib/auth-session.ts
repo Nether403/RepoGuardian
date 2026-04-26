@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { env } from "./env.js";
 
+const OAUTH_STATE_COOKIE_NAME = "repo_guardian_oauth_state";
+
 export type SessionPayload = {
   activeWorkspaceId: string | null;
   authMode: "session";
@@ -80,4 +82,52 @@ export function createClearedSessionSetCookieHeader(): string {
   return `${env.SESSION_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${
     env.NODE_ENV === "production" ? "; Secure" : ""
   }`;
+}
+
+export function createOAuthStateSetCookieHeader(state: string): string {
+  const signedState = `${base64UrlEncode(state)}.${sign(base64UrlEncode(state))}`;
+  const parts = [
+    `${OAUTH_STATE_COOKIE_NAME}=${encodeURIComponent(signedState)}`,
+    "HttpOnly",
+    "Path=/api/auth/github/callback",
+    "SameSite=Lax",
+    "Max-Age=600"
+  ];
+
+  if (env.NODE_ENV === "production") {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
+}
+
+export function createClearedOAuthStateSetCookieHeader(): string {
+  return `${OAUTH_STATE_COOKIE_NAME}=; HttpOnly; Path=/api/auth/github/callback; Max-Age=0; SameSite=Lax${
+    env.NODE_ENV === "production" ? "; Secure" : ""
+  }`;
+}
+
+export function verifyOAuthStateCookie(input: {
+  cookieHeader?: string;
+  state: string;
+}): boolean {
+  const rawStateCookie = parseCookies(input.cookieHeader)[OAUTH_STATE_COOKIE_NAME];
+  if (!rawStateCookie || !input.state) {
+    return false;
+  }
+
+  const [encodedState, signature] = rawStateCookie.split(".");
+  if (!encodedState || !signature) {
+    return false;
+  }
+
+  const expectedSignature = sign(encodedState);
+  if (
+    Buffer.byteLength(signature) !== Buffer.byteLength(expectedSignature) ||
+    !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+  ) {
+    return false;
+  }
+
+  return base64UrlDecode(encodedState) === input.state;
 }

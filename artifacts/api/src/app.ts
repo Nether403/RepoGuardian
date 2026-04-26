@@ -21,7 +21,7 @@ app.use("/api", apiRouter);
 app.get("/", (_request: Request, response: Response) => {
   response.json({
     name: "Repo Guardian API",
-    stage: "milestone-7b-queue-foundation",
+    stage: "milestone-8a-stabilization",
     status: "ready"
   });
 });

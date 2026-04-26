@@ -9,7 +9,7 @@ describe("GET /health", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       service: "repo-guardian-api",
-      stage: "milestone-7a-durable-backbone",
+      stage: "milestone-8a-stabilization",
       status: "ok"
     });
     expect(typeof response.body.timestamp).toBe("string");

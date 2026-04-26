@@ -142,7 +142,7 @@ export class AnalysisRunRepository {
         blocked_patch_plans,
         analysis_payload
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb
       )
       ON CONFLICT (run_id) DO UPDATE SET
         workspace_id = EXCLUDED.workspace_id,

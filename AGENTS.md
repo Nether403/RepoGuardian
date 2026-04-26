@@ -146,16 +146,18 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Post-Milestone 6F / Stabilization
+### Active milestone: Milestone 8A / Stabilization
 Allowed:
 - keep `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*` as the canonical public contract
 - ensure deterministic patch PR generation for already supported ecosystems (including Gradle and Yarn) stays stable
 - maintain the two-phase approval-gated and authenticated GitHub write behavior
+- stabilize workspace-scoped auth, GitHub OAuth sessions, GitHub App installation reads, and tenant-aware persistence boundaries
+- keep the legacy shared-secret path as a local-development fallback only
 
 Not allowed in this milestone unless explicitly requested:
 - broaden GitHub write-back beyond the existing bounded slices (now including the new 6F targets)
 - add autonomous or background execution
-- add auth, billing, subscriptions, or enterprise controls
+- add billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason
 
 If asked for work in an earlier milestone, stay inside that explicitly requested milestone.

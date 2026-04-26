@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Router as ExpressRouter } from "express";
 import {
   AuthSessionSchema,
   CreateWorkspaceRequestSchema,
@@ -9,7 +9,10 @@ import {
 import { exchangeGitHubOAuthCode, fetchGitHubViewer } from "@repo-guardian/github";
 import {
   createClearedSessionSetCookieHeader,
-  createSessionSetCookieHeader
+  createClearedOAuthStateSetCookieHeader,
+  createOAuthStateSetCookieHeader,
+  createSessionSetCookieHeader,
+  verifyOAuthStateCookie
 } from "../lib/auth-session.js";
 import { env } from "../lib/env.js";
 import { getWorkspaceRepository } from "../lib/persistence.js";
@@ -21,10 +24,30 @@ function createOauthState(): string {
 
 const authRouter: ExpressRouter = Router();
 
+function createLocalSessionWorkspaces(authContext: NonNullable<Request["authContext"]>) {
+  const timestamp = authContext.membership.createdAt;
+
+  return [
+    {
+      membership: authContext.membership,
+      workspace: {
+        createdAt: timestamp,
+        id: authContext.activeWorkspaceId,
+        isDefault: true,
+        name: "Local Dev Workspace",
+        slug: "local-dev",
+        updatedAt: authContext.membership.updatedAt
+      }
+    }
+  ];
+}
+
 authRouter.get("/auth/session", requireAuth, async (request, response) => {
   const authContext = request.authContext!;
-  const workspaceRepository = getWorkspaceRepository();
-  const workspaces = await workspaceRepository.listWorkspacesForUser(authContext.user.id);
+  const workspaces =
+    authContext.authMode === "api_key" && env.NODE_ENV !== "production"
+      ? createLocalSessionWorkspaces(authContext)
+      : await getWorkspaceRepository().listWorkspacesForUser(authContext.user.id);
   response.json(
     AuthSessionSchema.parse({
       authenticated: true,
@@ -47,11 +70,13 @@ authRouter.get("/auth/github/start", (_request, response) => {
   url.searchParams.set("client_id", env.GITHUB_OAUTH_CLIENT_ID);
   url.searchParams.set("scope", "read:user");
   url.searchParams.set("state", state);
+  response.setHeader("Set-Cookie", createOAuthStateSetCookieHeader(state));
   response.redirect(url.toString());
 });
 
 authRouter.get("/auth/github/callback", async (request, response) => {
   const code = typeof request.query.code === "string" ? request.query.code : "";
+  const state = typeof request.query.state === "string" ? request.query.state : "";
   if (!code) {
     response.status(400).json({ error: "Missing GitHub OAuth code." });
     return;
@@ -59,6 +84,12 @@ authRouter.get("/auth/github/callback", async (request, response) => {
 
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
     response.status(500).json({ error: "GitHub OAuth is not configured." });
+    return;
+  }
+
+  if (!verifyOAuthStateCookie({ cookieHeader: request.headers.cookie, state })) {
+    response.setHeader("Set-Cookie", createClearedOAuthStateSetCookieHeader());
+    response.status(400).json({ error: "Invalid GitHub OAuth state." });
     return;
   }
 
@@ -86,14 +117,14 @@ authRouter.get("/auth/github/callback", async (request, response) => {
   }
 
   const activeWorkspaceId = workspaces[0]?.workspace.id ?? null;
-  response.setHeader(
-    "Set-Cookie",
+  response.setHeader("Set-Cookie", [
     createSessionSetCookieHeader({
       activeWorkspaceId,
       authMode: "session",
       userId: user.id
-    })
-  );
+    }),
+    createClearedOAuthStateSetCookieHeader()
+  ]);
   response.redirect("/");
 });
 
@@ -103,11 +134,14 @@ authRouter.post("/auth/logout", (_request, response) => {
 });
 
 authRouter.get("/workspaces", requireAuth, async (request, response) => {
-  const workspaceRepository = getWorkspaceRepository();
-  const workspaces = await workspaceRepository.listWorkspacesForUser(request.authContext!.user.id);
+  const authContext = request.authContext!;
+  const workspaces =
+    authContext.authMode === "api_key" && env.NODE_ENV !== "production"
+      ? createLocalSessionWorkspaces(authContext)
+      : await getWorkspaceRepository().listWorkspacesForUser(authContext.user.id);
   response.json(
     ListWorkspacesResponseSchema.parse({
-      activeWorkspaceId: request.authContext!.activeWorkspaceId,
+      activeWorkspaceId: authContext.activeWorkspaceId,
       workspaces
     })
   );

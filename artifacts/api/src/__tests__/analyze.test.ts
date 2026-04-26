@@ -28,6 +28,25 @@ describe("POST /api/analyze", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects an explicit workspace id outside the authenticated workspace", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await request(app)
+      .post("/api/analyze")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        repoInput: "openai/openai-node",
+        workspaceId: "workspace_other"
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: "Forbidden: workspace mismatch."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns the current analysis payload", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

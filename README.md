@@ -1,12 +1,12 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a post-`7B` alpha rather than a finished V1: it implements the Milestone 1 foundation plus the Milestone 2A, 2B, 3A, 3B, 4A, 4B, 5A, 5B, 6A, 6B, 6C, 6D, 6E, 6F, 7A, and 7B slices across public GitHub intake, metadata and tree fetch, deterministic manifest detection, ecosystem inference, dependency parsing into a normalized snapshot, advisory-backed dependency findings, targeted code-review findings, structured candidate issue generation, structured PR-candidate drafting, linked patch-planning metadata, deterministic Guardian Graph visual reporting, durable saved analysis runs with compare mode, OpenAPI-backed generated web API client functions, security-hardened two-phase execution planning, durable execution audit history, approved GitHub Issue creation, approved real PR write-back for tightly bounded deterministic paths, asynchronous tracked-repository analysis jobs, sweep scheduling, fleet status reporting, tracked remediation PR lifecycle persistence, and Fleet Admin timeline drill-downs with typed event detail.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 8A stabilization alpha rather than a finished V1: it implements the Milestone 1 through 7B foundation plus early 8A workspace-scoped auth, GitHub OAuth sessions, GitHub App installation repository sync, and generated API-client coverage for workspace and installation reads.
 
 ## Current scope
 
 - pnpm workspace monorepo
 - `POST /api/analyze` for public GitHub repository intake
-- Mandatory `Authorization: Bearer <API_SECRET_KEY>` header for all canonical API routes
+- GitHub OAuth session context for workspace-scoped production access, with `Authorization: Bearer <API_SECRET_KEY>` retained as a local-development fallback
 - recursive tree fetch for the default branch
 - manifest and lockfile detection
 - ecosystem inference and notable repository signals
@@ -22,6 +22,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - real GitHub Issue creation and bounded Pull Request write-back for supported deterministic slices
 - Vite + React UI for analysis, candidate selection, two-phase execution previews, and results
 - Fleet Admin mode for tracked repositories, fleet status, async job control, sweep schedules, and tracked PR visibility
+- Workspace Access UI for GitHub sign-in state, workspace selection, GitHub App installation sync, and installation-backed tracked repository registration
 - repository history and cursor-native timeline reads for Fleet Admin drill-downs
 - on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
@@ -92,17 +93,20 @@ Implemented fleet surfaces:
 - `POST /api/sweep-schedules`
 - `POST /api/sweep-schedules/{scheduleId}/trigger`
 
-Current 7B behavior:
+Current 8A stabilization behavior:
 
 - tracked repositories can be registered and manually queued for analysis
 - weekly sweep schedules can enqueue plan-only review passes
 - fleet status reports recent jobs, executable plans, blocked plans, stale plans, and tracked PR lifecycle
 - repository history and timeline reads stay read-only and supervised
 - timeline pages support filters, sorting, saved inspector state, cursor-native paging, and on-demand event expansion
+- workspace, user, membership, GitHub installation, and installation-repository records are persisted in Postgres
+- API routes enforce active-workspace boundaries for workspace and installation surfaces; explicit analysis workspace ids must match the authenticated workspace
+- GitHub OAuth callback state is validated before token exchange
 - GitHub writes remain approval-gated through the execution plan and execute routes; scheduled work does not perform unattended writes
 
 ## Roadmap
 
-The current state reflects **Milestone 7B** (Fleet Queueing and Scheduled Planning). The platform now layers tracked repositories, async analysis jobs, sweep scheduling, fleet status, and Fleet Admin timeline drill-downs on top of the durable execution backbone while keeping write execution supervised.
+The current state reflects **Milestone 8A stabilization in progress**. The platform now layers workspace-scoped access and GitHub App installation repository visibility on top of the completed 7B fleet foundation while keeping write execution supervised.
 
-The next goals are installation-aware GitHub access, tenant scopes, and actor-aware approval boundaries. See `docs/roadmap.md`.
+The next goals are finishing production-grade installation-to-workspace linking, expanding focused API tests around role boundaries, and running Postgres-backed validation regularly. See `docs/roadmap.md`.

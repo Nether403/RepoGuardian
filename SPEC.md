@@ -9,11 +9,12 @@ It accepts a GitHub repository URL or `owner/repo` slug, analyzes dependency and
 This product is not an autonomous maintainer. It is an engineering assistant with explicit user approval before write actions.
 
 Current implementation status:
-- post-`7B` alpha, not a finished V1
+- Milestone 8A stabilization alpha, not a finished V1
 - canonical supervised analysis and execution routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
-- security-hardened two-phase execution model with mandatory `Authorization` headers
+- security-hardened two-phase execution model with GitHub OAuth session context and a local-development legacy API-key fallback
 - GitHub write-back expansion for all supported ecosystems (now including Gradle and Yarn)
 - Fleet Admin and fleet-operations reads are implemented for tracked repositories, async jobs, sweep schedules, and repository timelines
+- workspace, membership, GitHub App installation, and installation-repository persistence is implemented for the first 8A access boundary
 
 ---
 
@@ -417,6 +418,14 @@ Initial foundation and basic write-back slices.
 - added tracked-repository history plus filterable repository activity and timeline reads
 - added cursor-native timeline paging and on-demand event expansion
 - added typed timeline detail rendering for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
+
+### Milestone 8A (GitHub App Installations and Tenant Scopes) [IN PROGRESS]
+- added workspace, user, membership, GitHub installation, and installation-repository persistence with legacy data backfilled into a local workspace
+- added GitHub OAuth session routes, signed session cookies, and OAuth state validation
+- added workspace-scoped installation listing and repository sync routes
+- added installation-token GitHub read/write client resolution with local-development fallback behavior
+- added Workspace Access web UI and generated API-client coverage for workspace and installation reads
+- stabilized active-workspace enforcement for explicit analysis workspace ids
 
 ---
 

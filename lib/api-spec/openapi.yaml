@@ -2,10 +2,156 @@ openapi: 3.0.3
 info:
   title: Repo Guardian API
   version: 0.1.0
-  description: Canonical post-7B foundation contract for supervised repository analysis, approval-gated execution planning, durable execution history, saved analysis runs, tracked repositories, and additive asynchronous analysis jobs. All routes require mandatory Bearer token authorization using the `API_SECRET_KEY`.
+  description: Canonical 8A foundation contract for supervised repository analysis, approval-gated execution planning, durable execution history, saved analysis runs, tracked repositories, additive asynchronous analysis jobs, workspace-scoped sessions, and GitHub App installation access. Production routes use GitHub OAuth session context; the legacy Bearer token remains a local-development fallback.
 servers:
   - url: /
 paths:
+  /api/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: Read the authenticated user, active workspace, and workspace memberships
+      x-repo-guardian-response-type: AuthSession
+      responses:
+        "200":
+          description: Active auth session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/auth/github/start:
+    get:
+      operationId: githubOAuthStart
+      summary: Start GitHub OAuth sign-in
+      x-repo-guardian-client: false
+      responses:
+        "302":
+          description: Redirect to GitHub OAuth authorization.
+        "500":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/auth/github/callback:
+    get:
+      operationId: githubOAuthCallback
+      summary: Complete GitHub OAuth sign-in and create a session
+      x-repo-guardian-client: false
+      responses:
+        "302":
+          description: Session established and redirected to the web app.
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/auth/logout:
+    post:
+      operationId: logoutAuthSession
+      summary: Clear the current auth session
+      x-repo-guardian-client: false
+      responses:
+        "204":
+          description: Session cleared.
+  /api/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: List workspaces available to the authenticated actor
+      x-repo-guardian-response-type: ListWorkspacesResponse
+      responses:
+        "200":
+          description: Workspace memberships.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspacesResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: createWorkspace
+      summary: Create a workspace owned by the authenticated actor
+      x-repo-guardian-request-type: CreateWorkspaceRequest
+      x-repo-guardian-response-type: CreateWorkspaceResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Created workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWorkspaceResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/workspaces/{workspaceId}/installations:
+    get:
+      operationId: listGitHubInstallations
+      summary: List GitHub App installations and synced repositories for a workspace
+      x-repo-guardian-response-type: ListGitHubInstallationsResponse
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace installations and repositories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListGitHubInstallationsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/workspaces/{workspaceId}/installations/{installationId}/sync:
+    post:
+      operationId: syncGitHubInstallation
+      summary: Refresh repositories visible through a workspace GitHub App installation
+      x-repo-guardian-response-type: SyncGitHubInstallationResponse
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: installationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Synced installation repositories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncGitHubInstallationResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/github/webhooks:
+    post:
+      operationId: githubWebhook
+      summary: Receive GitHub App installation webhooks
+      x-repo-guardian-client: false
+      responses:
+        "202":
+          description: Webhook accepted.
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
   /api/analyze:
     post:
       operationId: analyzeRepository
@@ -775,11 +921,55 @@ components:
         repoInput:
           type: string
           minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+          nullable: true
       x-repo-guardian-zod-schema: AnalyzeRepoRequestSchema
     AnalyzeRepoResponse:
       type: object
       description: Runtime schema is owned by AnalyzeRepoResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: AnalyzeRepoResponseSchema
+    AuthSession:
+      type: object
+      description: Runtime schema is owned by AuthSessionSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: AuthSessionSchema
+    Workspace:
+      type: object
+      description: Runtime schema is owned by WorkspaceSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: WorkspaceSchema
+    WorkspaceMembership:
+      type: object
+      description: Runtime schema is owned by WorkspaceMembershipSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: WorkspaceMembershipSchema
+    CreateWorkspaceRequest:
+      type: object
+      description: Runtime schema is owned by CreateWorkspaceRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateWorkspaceRequestSchema
+    CreateWorkspaceResponse:
+      type: object
+      description: Runtime schema is owned by CreateWorkspaceResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: CreateWorkspaceResponseSchema
+    ListWorkspacesResponse:
+      type: object
+      description: Runtime schema is owned by ListWorkspacesResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListWorkspacesResponseSchema
+    GitHubInstallation:
+      type: object
+      description: Runtime schema is owned by GitHubInstallationSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: GitHubInstallationSchema
+    GitHubInstallationRepository:
+      type: object
+      description: Runtime schema is owned by GitHubInstallationRepositorySchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: GitHubInstallationRepositorySchema
+    ListGitHubInstallationsResponse:
+      type: object
+      description: Runtime schema is owned by ListGitHubInstallationsResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListGitHubInstallationsResponseSchema
+    SyncGitHubInstallationResponse:
+      type: object
+      description: Runtime schema is owned by SyncGitHubInstallationResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: SyncGitHubInstallationResponseSchema
     TrackedRepository:
       type: object
       description: Runtime schema is owned by TrackedRepositorySchema in @repo-guardian/shared-types.

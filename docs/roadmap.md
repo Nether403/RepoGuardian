@@ -2,8 +2,17 @@
 
 ## Current status
 
-Repo Guardian is currently a post-`7B` alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration layered alongside it:
+Repo Guardian is currently a Milestone 8A stabilization alpha. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration and early workspace-scoped GitHub App access layered alongside it:
 
+- `GET /api/auth/session`
+- `GET /api/auth/github/start`
+- `GET /api/auth/github/callback`
+- `POST /api/auth/logout`
+- `GET /api/workspaces`
+- `POST /api/workspaces`
+- `GET /api/workspaces/{workspaceId}/installations`
+- `POST /api/workspaces/{workspaceId}/installations/{installationId}/sync`
+- `POST /api/github/webhooks`
 - `POST /api/analyze`
 - `POST /api/execution/plan` (Planning)
 - `POST /api/execution/execute` (Execution)
@@ -28,7 +37,7 @@ Repo Guardian is currently a post-`7B` alpha. The implemented contract is center
 - `POST /api/sweep-schedules`
 - `POST /api/sweep-schedules/{scheduleId}/trigger`
 
-All routes currently require `Authorization: Bearer <API_SECRET_KEY>`.
+Production access is moving to GitHub OAuth session context and workspace membership. The legacy `Authorization: Bearer <API_SECRET_KEY>` path remains as a local-development fallback.
 
 The current platform focus is still bounded, deterministic, and approval-gated:
 
@@ -39,6 +48,7 @@ The current platform focus is still bounded, deterministic, and approval-gated:
 - tracked repositories, async analysis jobs, and sweep schedules for multi-repository oversight
 - Fleet Admin web surfaces for fleet status, job control, schedule control, and repository timeline drill-downs
 - cursor-native repository timelines with on-demand typed event detail expansion
+- workspace, membership, installation, and installation-repository persistence for the first 8A boundary
 
 ## Current priorities
 
@@ -47,10 +57,10 @@ The next work should turn the current durable single-tenant alpha into a safer i
 Immediate priorities:
 
 - preserve stability of the current two-phase execution contract
-- validate and harden the new fleet queueing and timeline surfaces
-- move from shared-secret assumptions to installation-aware GitHub access
+- validate and harden workspace, role, and installation boundaries
+- finish production-grade GitHub App installation-to-workspace linking
 - keep deterministic write-back bounded while the product foundation matures
-- move next into tenant and actor boundaries rather than broader write-back
+- keep tenant and actor boundaries ahead of broader write-back
 
 ## Next milestones
 
@@ -84,7 +94,7 @@ Focus:
 
 This milestone keeps write execution supervised and approval-gated. It does **not** enable unattended GitHub writes.
 
-### Milestone 8A: GitHub App Installations and Tenant Scopes
+### Milestone 8A: GitHub App Installations and Tenant Scopes [IN PROGRESS]
 
 Milestone 8A replaces the current shared-secret and generic-token assumptions with installation-scoped access and tenant-aware product boundaries.
 
@@ -95,6 +105,14 @@ Focus:
 - tenant-aware repository, run, and execution ownership
 - actor-aware approval metadata
 - basic role-based access controls for review and execution workflows
+
+Implemented foundation:
+
+- workspace, user, membership, installation, and installation-repository persistence
+- GitHub OAuth session routes with signed session cookies and callback state validation
+- installation repository sync and installation-backed tracked repository selection
+- active-workspace enforcement for explicit analysis workspace ids
+- generated API-client coverage for workspace and installation read/sync helpers
 
 This milestone does **not** broaden patch synthesis or introduce semantic code migration.
 

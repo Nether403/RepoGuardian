@@ -33,13 +33,22 @@ analyzeRouter.post("/analyze", requireAuth, async (request, response, next) => {
   }
 
   try {
+    const workspaceId =
+      parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+
+    if (workspaceId !== request.authContext!.activeWorkspaceId) {
+      response.status(403).json({
+        error: "Forbidden: workspace mismatch."
+      });
+      return;
+    }
+
     const intake = await analyzeRepository(
       await createInstallationReadClient({
         repositoryFullName: parsedRequest.data.repoInput.includes("/")
           ? parsedRequest.data.repoInput.replace(/^https:\/\/github\.com\//u, "").replace(/\/+$/u, "")
           : parsedRequest.data.repoInput,
-        workspaceId:
-          parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId
+        workspaceId
       }),
       parsedRequest.data.repoInput
     );

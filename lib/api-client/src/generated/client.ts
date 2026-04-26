@@ -2,6 +2,7 @@
 import type {
   AnalyzeRepoRequest,
   AnalyzeRepoResponse,
+  AuthSession,
   CancelAnalysisJobResponse,
   CompareAnalysisRunsRequest,
   CompareAnalysisRunsResponse,
@@ -9,6 +10,8 @@ import type {
   CreateSweepScheduleResponse,
   CreateTrackedRepositoryRequest,
   CreateTrackedRepositoryResponse,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResponse,
   EnqueueAnalysisJobRequest,
   EnqueueAnalysisJobResponse,
   EnqueueExecutionPlanJobRequest,
@@ -24,14 +27,17 @@ import type {
   GetAnalysisRunResponse,
   ListAnalysisJobsResponse,
   ListAnalysisRunsResponse,
+  ListGitHubInstallationsResponse,
   ListSweepSchedulesResponse,
   ListTrackedRepositoriesResponse,
+  ListWorkspacesResponse,
   RepositoryActivityEvent,
   RepositoryActivityFeed,
   RepositoryTimelinePage,
   RetryAnalysisJobResponse,
   SaveAnalysisRunRequest,
   SaveAnalysisRunResponse,
+  SyncGitHubInstallationResponse,
   TrackedRepositoryHistoryResponse,
   TriggerSweepScheduleResponse
 } from "@repo-guardian/shared-types";
@@ -199,6 +205,14 @@ export async function retryAnalysisJob(jobId: string, options: RepoGuardianApiRe
   });
 }
 
+export async function getAuthSession(options: RepoGuardianApiRequestOptions = {}): Promise<AuthSession> {
+  return requestJson<AuthSession>({
+    method: "GET",
+    path: `/api/auth/session`,
+    options
+  });
+}
+
 export async function executeExecutionPlan(requestBody: ExecutionExecuteRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionResult> {
   return requestJson<ExecutionResult>({
     method: "POST",
@@ -358,6 +372,39 @@ export async function getTrackedRepositoryTimelineEvent(trackedRepositoryId: str
     method: "GET",
     path: `/api/tracked-repositories/${encodeURIComponent(trackedRepositoryId)}/timeline/${encodeURIComponent(activityId)}`,
     query,
+    options
+  });
+}
+
+export async function listWorkspaces(options: RepoGuardianApiRequestOptions = {}): Promise<ListWorkspacesResponse> {
+  return requestJson<ListWorkspacesResponse>({
+    method: "GET",
+    path: `/api/workspaces`,
+    options
+  });
+}
+
+export async function createWorkspace(requestBody: CreateWorkspaceRequest, options: RepoGuardianApiRequestOptions = {}): Promise<CreateWorkspaceResponse> {
+  return requestJson<CreateWorkspaceResponse>({
+    method: "POST",
+    path: `/api/workspaces`,
+    body: requestBody,
+    options
+  });
+}
+
+export async function listGitHubInstallations(workspaceId: string, options: RepoGuardianApiRequestOptions = {}): Promise<ListGitHubInstallationsResponse> {
+  return requestJson<ListGitHubInstallationsResponse>({
+    method: "GET",
+    path: `/api/workspaces/${encodeURIComponent(workspaceId)}/installations`,
+    options
+  });
+}
+
+export async function syncGitHubInstallation(workspaceId: string, installationId: string, options: RepoGuardianApiRequestOptions = {}): Promise<SyncGitHubInstallationResponse> {
+  return requestJson<SyncGitHubInstallationResponse>({
+    method: "POST",
+    path: `/api/workspaces/${encodeURIComponent(workspaceId)}/installations/${encodeURIComponent(installationId)}/sync`,
     options
   });
 }

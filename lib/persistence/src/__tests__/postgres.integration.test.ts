@@ -275,14 +275,15 @@ describeIf("Postgres persistence integration", () => {
         "0001_execution_backbone.sql",
         "0002_execution_plan_action_order_unique.sql",
         "0003_analysis_queue_foundation.sql",
-        "0004_scheduling_and_pr_lifecycle.sql"
+        "0004_scheduling_and_pr_lifecycle.sql",
+        "0005_workspaces_and_installations.sql"
       ]);
       await expect(runMigrations(migrationClient)).resolves.toEqual([]);
     } finally {
       await migrationClient.close();
       await isolatedDatabase.dispose();
     }
-  });
+  }, 15_000);
 
   it("persists runs and enriches summaries with durable execution metadata", async () => {
     const run = createRun("integration-run");

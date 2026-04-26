@@ -167,26 +167,8 @@ export class AnalysisJobRepository {
           updated_at,
           job_payload
         ) VALUES (
-          $1,
-          $2,
-          $3,
-          'queued',
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          0,
-          $9,
-          NULL,
-          $10,
-          NULL,
-          $11,
-          NULL,
-          NULL,
-          NULL,
-          $11,
-          $12::jsonb
+          $1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, 0, $11,
+          NULL, $12, NULL, $13, NULL, NULL, NULL, $13, $14::jsonb
         )
         RETURNING
           job_id,
