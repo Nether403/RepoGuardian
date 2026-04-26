@@ -309,6 +309,7 @@ function createTestApp(
         })
       },
       policyDecisionRepository: {
+        listRecentDecisions: vi.fn().mockResolvedValue([]),
         recordDecision: vi.fn().mockResolvedValue({})
       },
       ...input
@@ -548,7 +549,28 @@ describe("fleet routes", () => {
         schedule
       })
     });
+    const policyDecision = {
+      actionType: "execute_write",
+      actorUserId: "usr_authenticated",
+      createdAt: "2026-04-12T10:06:00.000Z",
+      decision: "allowed",
+      details: {
+        approvalGranted: true,
+        selectedActionCount: 1
+      },
+      eventId: "policy_decision_one",
+      githubInstallationId: null,
+      jobId: null,
+      planId: "plan_one",
+      repositoryFullName: "openai/openai-node",
+      reason: "Approved write execution may proceed.",
+      runId: "run_one",
+      scopeType: "repository",
+      sweepScheduleId: null,
+      workspaceId: "workspace_local_default"
+    };
     const policyDecisionRepository = {
+      listRecentDecisions: vi.fn().mockResolvedValue([policyDecision]),
       recordDecision: vi.fn().mockResolvedValue({})
     };
     const app = createTestApp({
@@ -578,6 +600,11 @@ describe("fleet routes", () => {
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
     expect(fleetStatusResponse.status).toBe(200);
     expect(fleetStatusResponse.body.summary.trackedRepositories).toBe(1);
+    expect(fleetStatusResponse.body.policyDecisions).toEqual([policyDecision]);
+    expect(policyDecisionRepository.listRecentDecisions).toHaveBeenCalledWith({
+      limit: 12,
+      workspaceId: "workspace_local_default"
+    });
 
     const listSchedulesResponse = await request(app)
       .get("/sweep-schedules")

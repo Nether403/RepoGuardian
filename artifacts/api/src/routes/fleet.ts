@@ -17,6 +17,7 @@ import {
   CreateTrackedRepositoryRequestSchema,
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
+  FleetStatusResponseSchema,
   RepositoryActivityCursorDirectionSchema,
   RepositoryActivityEventSchema,
   RepositoryActivityFeedSchema,
@@ -79,7 +80,7 @@ type RepositoryActivityStore = Pick<
 
 type PolicyDecisionRepositoryLike = Pick<
   PolicyDecisionRepository,
-  "recordDecision"
+  "listRecentDecisions" | "recordDecision"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -718,9 +719,22 @@ export function createFleetRouter(input: {
     }
   });
 
-  fleetRouter.get("/fleet/status", async (_request, response, next) => {
+  fleetRouter.get("/fleet/status", async (request, response, next) => {
     try {
-      response.json(await input.analysisJobProcessor.getFleetStatus());
+      const [fleetStatus, policyDecisions] = await Promise.all([
+        input.analysisJobProcessor.getFleetStatus(),
+        policyDecisionRepository.listRecentDecisions({
+          limit: 12,
+          workspaceId: request.authContext?.activeWorkspaceId
+        })
+      ]);
+
+      response.json(
+        FleetStatusResponseSchema.parse({
+          ...fleetStatus,
+          policyDecisions
+        })
+      );
     } catch (error) {
       const status = mapPersistenceError(error);
 

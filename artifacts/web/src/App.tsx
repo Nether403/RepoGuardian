@@ -38,6 +38,7 @@ import { GuardianGraphPanel } from "./components/GuardianGraphPanel";
 import { IssueCandidatesPanel } from "./components/IssueCandidatesPanel";
 import { PageShell } from "./components/PageShell";
 import { Panel } from "./components/Panel";
+import { PolicyDecisionsPanel } from "./components/PolicyDecisionsPanel";
 import { PRCandidatesPanel } from "./components/PRCandidatesPanel";
 import { RepoInputForm } from "./components/RepoInputForm";
 import { RepositorySummaryPanel } from "./components/RepositorySummaryPanel";
@@ -1739,6 +1740,7 @@ function App() {
             isLoading={isFleetLoading}
             onRefresh={handleRefreshFleetAdmin}
           />
+          <PolicyDecisionsPanel decisions={fleetStatus?.policyDecisions ?? []} />
           <TrackedRepositoriesPanel
             availableRepositories={availableInstallationRepositories}
             canUseRepoInputFallback={canUseRepoInputFallback}

@@ -1236,6 +1236,7 @@ export const FleetStatusResponseSchema = z.object({
     staleRepositories: z.number().int().nonnegative(),
     trackedRepositories: z.number().int().nonnegative()
   }),
+  policyDecisions: z.array(PolicyDecisionEventSchema).default([]),
   trackedRepositories: z.array(FleetTrackedRepositoryStatusSchema),
   recentJobs: z.array(AnalysisJobSchema),
   trackedPullRequests: z.array(TrackedPullRequestSchema)

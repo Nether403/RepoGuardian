@@ -1169,6 +1169,28 @@ function createFleetStatusFixture() {
 
   return FleetStatusResponseSchema.parse({
     generatedAt: "2026-04-12T10:05:00.000Z",
+    policyDecisions: [
+      {
+        actionType: "execute_write",
+        actorUserId: "usr_authenticated",
+        createdAt: "2026-04-12T10:06:00.000Z",
+        decision: "allowed",
+        details: {
+          approvalGranted: true,
+          selectedActionCount: 1
+        },
+        eventId: "policy_decision_one",
+        githubInstallationId: null,
+        jobId: null,
+        planId: "plan_one",
+        repositoryFullName: "openai/openai-node",
+        reason: "Approved write execution may proceed.",
+        runId: "run_one",
+        scopeType: "repository",
+        sweepScheduleId: null,
+        workspaceId: "workspace_local_default"
+      }
+    ],
     recentJobs: [
       latestJob,
       createAnalysisJobFixture({
@@ -3247,6 +3269,11 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: /Fleet status/i })).toBeInTheDocument();
     expect(screen.getByText("Executable Plans")).toBeInTheDocument();
+    const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
+    expect(policyDecisionsPanel.getByText("Approved write execution may proceed.")).toBeInTheDocument();
+    expect(policyDecisionsPanel.getByText("openai/openai-node")).toBeInTheDocument();
+    expect(policyDecisionsPanel.getByText("execute write")).toBeInTheDocument();
+    expect(policyDecisionsPanel.getByText("allowed")).toBeInTheDocument();
     expect(screen.getByText("Tracked repositories")).toBeInTheDocument();
     expect(screen.getByText("Tracked pull requests")).toBeInTheDocument();
     expect(
