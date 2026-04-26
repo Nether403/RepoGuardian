@@ -21,6 +21,16 @@ export type EvaluateExecutionWritePolicyInput = {
   planStatus: ExecutionPlanLifecycleStatus;
 };
 
+export type EvaluateExecutionPlanPolicyInput = {
+  selectedIssueCandidateIds: string[];
+  selectedPRCandidateIds: string[];
+};
+
+export type EvaluateSweepSchedulePolicyInput = {
+  cadence: string;
+  selectionStrategy: string;
+};
+
 function isWriteAction(actionType: ExecutionActionPlan["actionType"]): boolean {
   return (
     actionType === "create_issue" ||
@@ -66,5 +76,43 @@ export function evaluateExecutionWritePolicy(
     decision: "allowed",
     details,
     reason: "Approved write execution may proceed."
+  };
+}
+
+export function evaluateExecutionPlanPolicy(
+  input: EvaluateExecutionPlanPolicyInput
+): ExecutionWritePolicyDecision {
+  const details = {
+    issueSelections: input.selectedIssueCandidateIds.length,
+    prSelections: input.selectedPRCandidateIds.length,
+    totalSelections:
+      input.selectedIssueCandidateIds.length + input.selectedPRCandidateIds.length
+  };
+
+  if (details.totalSelections === 0) {
+    return {
+      decision: "denied",
+      details,
+      reason: "Execution plan generation is denied because no candidates were selected."
+    };
+  }
+
+  return {
+    decision: "allowed",
+    details,
+    reason: "Execution plan generation may proceed for selected candidates."
+  };
+}
+
+export function evaluateSweepSchedulePolicy(
+  input: EvaluateSweepSchedulePolicyInput
+): ExecutionWritePolicyDecision {
+  return {
+    decision: "allowed",
+    details: {
+      cadence: input.cadence,
+      selectionStrategy: input.selectionStrategy
+    },
+    reason: "Plan-only sweep scheduling may proceed."
   };
 }

@@ -2,6 +2,7 @@ import { type Router as ExpressRouter, Router } from "express";
 import crypto from "node:crypto";
 import {
   createExecutionPlanResult,
+  evaluateExecutionPlanPolicy,
   evaluateExecutionWritePolicy,
   executeApprovedActions,
   type ExecutionLifecycleCallbacks,
@@ -208,6 +209,29 @@ async function recordExecutionPolicyDecision(input: {
   });
 }
 
+async function recordExecutionPlanPolicyDecision(input: {
+  actorUserId: string;
+  decision: ExecutionWritePolicyDecision;
+  githubInstallationId: string | null;
+  policyDecisionRepository: PolicyDecisionRepositoryLike;
+  repositoryFullName: string;
+  runId: string;
+  workspaceId: string;
+}): Promise<void> {
+  await input.policyDecisionRepository.recordDecision({
+    actionType: "generate_pr_candidates",
+    actorUserId: input.actorUserId,
+    decision: input.decision.decision,
+    details: input.decision.details,
+    githubInstallationId: input.githubInstallationId,
+    reason: input.decision.reason,
+    repositoryFullName: input.repositoryFullName,
+    runId: input.runId,
+    scopeType: "repository",
+    workspaceId: input.workspaceId
+  });
+}
+
 function createLifecycleCallbacks(input: {
   actorUserId: string | null;
   claimedPlan: ClaimedExecutionPlan;
@@ -274,6 +298,26 @@ export function createExecutionRouter(
       const workspaceId =
         parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
       const run = await runRepository.getRun(parsedRequest.data.analysisRunId, workspaceId);
+      const policyDecision = evaluateExecutionPlanPolicy({
+        selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
+        selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds
+      });
+
+      await recordExecutionPlanPolicyDecision({
+        actorUserId: request.authContext!.user.id,
+        decision: policyDecision,
+        githubInstallationId: run.run.githubInstallationId ?? null,
+        policyDecisionRepository,
+        repositoryFullName: run.run.analysis.repository.fullName,
+        runId: parsedRequest.data.analysisRunId,
+        workspaceId
+      });
+
+      if (policyDecision.decision !== "allowed") {
+        response.status(403).json({ error: policyDecision.reason });
+        return;
+      }
+
       const resolvedDependencies: ExecutionServiceDependencies = dependencies.readClient
         ? dependencies
         : {

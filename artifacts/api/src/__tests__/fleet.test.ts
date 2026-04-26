@@ -308,6 +308,9 @@ function createTestApp(
           returnedCount: 0
         })
       },
+      policyDecisionRepository: {
+        recordDecision: vi.fn().mockResolvedValue({})
+      },
       ...input
     })
   );
@@ -545,6 +548,9 @@ describe("fleet routes", () => {
         schedule
       })
     });
+    const policyDecisionRepository = {
+      recordDecision: vi.fn().mockResolvedValue({})
+    };
     const app = createTestApp({
       analysisJobStore: {
         listJobs: vi.fn().mockResolvedValue([sweepJob])
@@ -563,7 +569,8 @@ describe("fleet routes", () => {
         createRepository: vi.fn(),
         getRepository: vi.fn(),
         listRepositories: vi.fn().mockResolvedValue([])
-      }
+      },
+      policyDecisionRepository
     });
 
     const fleetStatusResponse = await request(app)
@@ -592,6 +599,16 @@ describe("fleet routes", () => {
     expect(createScheduleResponse.body).toEqual({
       schedule
     });
+    expect(policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "schedule_sweep",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: "Plan-only sweep scheduling may proceed.",
+        scopeType: "workspace",
+        workspaceId: "workspace_local_default"
+      })
+    );
 
     const triggerResponse = await request(app)
       .post("/sweep-schedules/sweep_one/trigger")

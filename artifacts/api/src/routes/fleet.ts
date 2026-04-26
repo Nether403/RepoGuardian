@@ -1,10 +1,12 @@
 import { type Router as ExpressRouter, Router } from "express";
+import { evaluateSweepSchedulePolicy } from "@repo-guardian/execution";
 import { normalizeRepoInput } from "@repo-guardian/github";
 import {
   isPersistenceError,
   type AnalysisJobRepository,
   type AnalysisRunRepository,
   type ExecutionPlanRepository,
+  type PolicyDecisionRepository,
   type RepositoryActivityRepository,
   type TrackedPullRequestRepository,
   type TrackedRepositoryRepository
@@ -35,6 +37,7 @@ import {
   getAnalysisRunRepository,
   getExecutionPlanRepository,
   getGitHubInstallationRepository,
+  getPolicyDecisionRepository,
   getRepositoryActivityRepository,
   getTrackedPullRequestRepository,
   getTrackedRepositoryRepository
@@ -72,6 +75,11 @@ type RepositoryActivityStore = Pick<
   | "getActivityByRepositoryFullName"
   | "listActivitiesByRepositoryFullName"
   | "listTimelineByRepositoryFullName"
+>;
+
+type PolicyDecisionRepositoryLike = Pick<
+  PolicyDecisionRepository,
+  "recordDecision"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -259,12 +267,15 @@ export function createFleetRouter(input: {
   analysisJobStore: AnalysisJobStore;
   analysisJobProcessor: AnalysisJobProcessorLike;
   executionPlanStore: ExecutionPlanStore;
+  policyDecisionRepository?: PolicyDecisionRepositoryLike;
   repositoryActivityStore: RepositoryActivityStore;
   runStore: AnalysisRunStore;
   trackedPullRequestStore: TrackedPullRequestStore;
   trackedRepositoryStore: TrackedRepositoryStore;
 }): ExpressRouter {
   const fleetRouter: ExpressRouter = Router();
+  const policyDecisionRepository =
+    input.policyDecisionRepository ?? getPolicyDecisionRepository();
 
   fleetRouter.use(requireAuth);
 
@@ -754,6 +765,26 @@ export function createFleetRouter(input: {
     }
 
     try {
+      const policyDecision = evaluateSweepSchedulePolicy({
+        cadence: parsedRequest.data.cadence,
+        selectionStrategy: parsedRequest.data.selectionStrategy
+      });
+
+      await policyDecisionRepository.recordDecision({
+        actionType: "schedule_sweep",
+        actorUserId: request.authContext!.user.id,
+        decision: policyDecision.decision,
+        details: policyDecision.details,
+        reason: policyDecision.reason,
+        scopeType: "workspace",
+        workspaceId: request.authContext!.activeWorkspaceId
+      });
+
+      if (policyDecision.decision !== "allowed") {
+        response.status(403).json({ error: policyDecision.reason });
+        return;
+      }
+
       response.status(201).json({
         schedule: await input.analysisJobProcessor.createSweepSchedule(parsedRequest.data)
       });
@@ -803,6 +834,7 @@ export default function createDefaultFleetRouter(): ExpressRouter {
     analysisJobStore: getAnalysisJobRepository(),
     analysisJobProcessor: getAnalysisJobProcessor({ readClient }),
     executionPlanStore: getExecutionPlanRepository(),
+    policyDecisionRepository: getPolicyDecisionRepository(),
     repositoryActivityStore: getRepositoryActivityRepository(),
     runStore: getAnalysisRunRepository(),
     trackedPullRequestStore: getTrackedPullRequestRepository(),

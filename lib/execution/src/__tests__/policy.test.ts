@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { evaluateExecutionWritePolicy } from "../policy.js";
+import {
+  evaluateExecutionPlanPolicy,
+  evaluateExecutionWritePolicy,
+  evaluateSweepSchedulePolicy
+} from "../policy.js";
 
 describe("evaluateExecutionWritePolicy", () => {
   it("allows planned execution when the approved plan hash matches", () => {
@@ -60,6 +64,55 @@ describe("evaluateExecutionWritePolicy", () => {
     expect(decision).toMatchObject({
       decision: "denied",
       reason: "Execution is denied because the plan status is expired."
+    });
+  });
+});
+
+describe("evaluateExecutionPlanPolicy", () => {
+  it("allows plan generation when at least one candidate is selected", () => {
+    const decision = evaluateExecutionPlanPolicy({
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+    });
+
+    expect(decision).toEqual({
+      decision: "allowed",
+      reason: "Execution plan generation may proceed for selected candidates.",
+      details: {
+        issueSelections: 0,
+        prSelections: 1,
+        totalSelections: 1
+      }
+    });
+  });
+
+  it("denies plan generation when no candidates are selected", () => {
+    const decision = evaluateExecutionPlanPolicy({
+      selectedIssueCandidateIds: [],
+      selectedPRCandidateIds: []
+    });
+
+    expect(decision).toMatchObject({
+      decision: "denied",
+      reason: "Execution plan generation is denied because no candidates were selected."
+    });
+  });
+});
+
+describe("evaluateSweepSchedulePolicy", () => {
+  it("allows supervised plan-only sweep schedules", () => {
+    const decision = evaluateSweepSchedulePolicy({
+      cadence: "weekly",
+      selectionStrategy: "all_executable_prs"
+    });
+
+    expect(decision).toEqual({
+      decision: "allowed",
+      reason: "Plan-only sweep scheduling may proceed.",
+      details: {
+        cadence: "weekly",
+        selectionStrategy: "all_executable_prs"
+      }
     });
   });
 });
