@@ -8,6 +8,7 @@ export * from "./github-installations.js";
 export * from "./legacy-import.js";
 export * from "./lifecycle.js";
 export * from "./migrations.js";
+export * from "./policy-decisions.js";
 export * from "./repository-activities.js";
 export * from "./scope.js";
 export * from "./sweep-schedules.js";

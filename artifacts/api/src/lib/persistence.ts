@@ -5,6 +5,7 @@ import {
   ExecutionPlanRepository,
   FleetStatusRepository,
   GitHubInstallationRepositoryStore,
+  PolicyDecisionRepository,
   PostgresClient,
   RepositoryActivityRepository,
   SweepScheduleRepository,
@@ -20,6 +21,7 @@ let fleetStatusRepository: FleetStatusRepository | null = null;
 let githubInstallationRepository: GitHubInstallationRepositoryStore | null = null;
 let runRepository: AnalysisRunRepository | null = null;
 let planRepository: ExecutionPlanRepository | null = null;
+let policyDecisionRepository: PolicyDecisionRepository | null = null;
 let repositoryActivityRepository: RepositoryActivityRepository | null = null;
 let sweepScheduleRepository: SweepScheduleRepository | null = null;
 let trackedPullRequestRepository: TrackedPullRequestRepository | null = null;
@@ -67,6 +69,11 @@ export function getExecutionPlanRepository(): ExecutionPlanRepository {
   return planRepository;
 }
 
+export function getPolicyDecisionRepository(): PolicyDecisionRepository {
+  policyDecisionRepository ??= new PolicyDecisionRepository(getPostgresClient());
+  return policyDecisionRepository;
+}
+
 export function getRepositoryActivityRepository(): RepositoryActivityRepository {
   repositoryActivityRepository ??= new RepositoryActivityRepository(getPostgresClient());
   return repositoryActivityRepository;
@@ -108,6 +115,7 @@ export async function resetPersistenceCaches(): Promise<void> {
   githubInstallationRepository = null;
   runRepository = null;
   planRepository = null;
+  policyDecisionRepository = null;
   repositoryActivityRepository = null;
   sweepScheduleRepository = null;
   trackedPullRequestRepository = null;

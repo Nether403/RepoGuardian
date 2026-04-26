@@ -15,6 +15,7 @@ import {
   type ClaimedExecutionPlan,
   type StoredExecutionPlan
 } from "../execution-plans.js";
+import { PolicyDecisionRepository } from "../policy-decisions.js";
 import { runMigrations } from "../migrations.js";
 import { TrackedRepositoryRepository } from "../tracked-repositories.js";
 import { createIsolatedTestDatabase } from "./postgres-test-database.js";
@@ -233,6 +234,7 @@ describeIf("Postgres persistence integration", () => {
   let disposeDatabase: () => Promise<void>;
   let runRepository: AnalysisRunRepository;
   let planRepository: ExecutionPlanRepository;
+  let policyDecisionRepository: PolicyDecisionRepository;
   let trackedRepositoryRepository: TrackedRepositoryRepository;
   let analysisJobRepository: AnalysisJobRepository;
 
@@ -246,6 +248,7 @@ describeIf("Postgres persistence integration", () => {
     });
     runRepository = new AnalysisRunRepository(client);
     planRepository = new ExecutionPlanRepository(client);
+    policyDecisionRepository = new PolicyDecisionRepository(client);
     trackedRepositoryRepository = new TrackedRepositoryRepository(client);
     analysisJobRepository = new AnalysisJobRepository(client);
     await runMigrations(client);
@@ -253,7 +256,7 @@ describeIf("Postgres persistence integration", () => {
 
   beforeEach(async () => {
     await client.query(
-      "TRUNCATE analysis_jobs, tracked_repositories, execution_audit_events, execution_attempts, execution_plan_actions, execution_plans, analysis_runs RESTART IDENTITY CASCADE"
+      "TRUNCATE policy_decision_events, analysis_jobs, tracked_repositories, execution_audit_events, execution_attempts, execution_plan_actions, execution_plans, analysis_runs RESTART IDENTITY CASCADE"
     );
   });
 
@@ -276,7 +279,8 @@ describeIf("Postgres persistence integration", () => {
         "0002_execution_plan_action_order_unique.sql",
         "0003_analysis_queue_foundation.sql",
         "0004_scheduling_and_pr_lifecycle.sql",
-        "0005_workspaces_and_installations.sql"
+        "0005_workspaces_and_installations.sql",
+        "0006_policy_decision_events.sql"
       ]);
       await expect(runMigrations(migrationClient)).resolves.toEqual([]);
     } finally {
@@ -284,6 +288,77 @@ describeIf("Postgres persistence integration", () => {
       await isolatedDatabase.dispose();
     }
   }, 15_000);
+
+  it("records policy decisions and lists them within a workspace boundary", async () => {
+    await client.query(
+      `INSERT INTO workspaces (
+        workspace_id,
+        name,
+        slug,
+        is_default,
+        created_at,
+        updated_at
+      ) VALUES (
+        'workspace_other',
+        'Other Workspace',
+        'other-workspace',
+        FALSE,
+        NOW(),
+        NOW()
+      ) ON CONFLICT (workspace_id) DO NOTHING`
+    );
+
+    const allowed = await policyDecisionRepository.recordDecision({
+      actionType: "execute_write",
+      actorUserId: "usr_local_default",
+      decision: "allowed",
+      details: {
+        matchedRule: "deterministic_dependency_patch",
+        risk: "low"
+      },
+      reason: "Deterministic dependency patch is allowed for maintainers.",
+      repositoryFullName: "openai/openai-node",
+      scopeType: "repository",
+      workspaceId: "workspace_local_default"
+    });
+    await policyDecisionRepository.recordDecision({
+      actionType: "schedule_sweep",
+      decision: "denied",
+      details: {
+        matchedRule: "installation_missing"
+      },
+      reason: "No trusted installation is linked to the workspace.",
+      repositoryFullName: "openai/other-repo",
+      scopeType: "workspace",
+      workspaceId: "workspace_other"
+    });
+
+    const decisions = await policyDecisionRepository.listRecentDecisions({
+      workspaceId: "workspace_local_default"
+    });
+
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toEqual({
+      actionType: "execute_write",
+      actorUserId: "usr_local_default",
+      createdAt: allowed.createdAt,
+      decision: "allowed",
+      details: {
+        matchedRule: "deterministic_dependency_patch",
+        risk: "low"
+      },
+      eventId: allowed.eventId,
+      githubInstallationId: null,
+      jobId: null,
+      planId: null,
+      reason: "Deterministic dependency patch is allowed for maintainers.",
+      repositoryFullName: "openai/openai-node",
+      runId: null,
+      scopeType: "repository",
+      sweepScheduleId: null,
+      workspaceId: "workspace_local_default"
+    });
+  });
 
   it("persists runs and enriches summaries with durable execution metadata", async () => {
     const run = createRun("integration-run");

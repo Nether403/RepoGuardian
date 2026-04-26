@@ -972,6 +972,47 @@ export const SyncGitHubInstallationResponseSchema = z.object({
   repositories: z.array(GitHubInstallationRepositorySchema)
 });
 
+export const PolicyActionTypeSchema = z.enum([
+  "analyze_repository",
+  "schedule_sweep",
+  "generate_pr_candidates",
+  "execute_write"
+]);
+
+export const PolicyDecisionSchema = z.enum([
+  "allowed",
+  "denied",
+  "manual_review"
+]);
+
+export const PolicyScopeTypeSchema = z.enum([
+  "workspace",
+  "installation",
+  "repository"
+]);
+
+export const PolicyDecisionEventSchema = z.object({
+  eventId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  actorUserId: z.string().min(1).nullable(),
+  githubInstallationId: z.string().min(1).nullable(),
+  repositoryFullName: z.string().min(3).nullable(),
+  runId: z.string().min(1).nullable(),
+  planId: z.string().min(1).nullable(),
+  jobId: z.string().min(1).nullable(),
+  sweepScheduleId: z.string().min(1).nullable(),
+  actionType: PolicyActionTypeSchema,
+  decision: PolicyDecisionSchema,
+  scopeType: PolicyScopeTypeSchema,
+  reason: z.string().min(1),
+  details: z.record(z.unknown()),
+  createdAt: z.string().datetime()
+});
+
+export const ListPolicyDecisionEventsResponseSchema = z.object({
+  decisions: z.array(PolicyDecisionEventSchema)
+});
+
 export const TrackedRepositorySchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1).optional(),
@@ -1735,6 +1776,13 @@ export type ListGitHubInstallationsResponse = z.infer<
 >;
 export type SyncGitHubInstallationResponse = z.infer<
   typeof SyncGitHubInstallationResponseSchema
+>;
+export type PolicyActionType = z.infer<typeof PolicyActionTypeSchema>;
+export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
+export type PolicyScopeType = z.infer<typeof PolicyScopeTypeSchema>;
+export type PolicyDecisionEvent = z.infer<typeof PolicyDecisionEventSchema>;
+export type ListPolicyDecisionEventsResponse = z.infer<
+  typeof ListPolicyDecisionEventsResponseSchema
 >;
 export type TrackedRepository = z.infer<typeof TrackedRepositorySchema>;
 export type CreateTrackedRepositoryRequest = z.infer<
