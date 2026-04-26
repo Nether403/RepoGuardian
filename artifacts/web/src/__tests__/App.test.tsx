@@ -1189,6 +1189,26 @@ function createFleetStatusFixture() {
         scopeType: "repository",
         sweepScheduleId: null,
         workspaceId: "workspace_local_default"
+      },
+      {
+        actionType: "schedule_sweep",
+        actorUserId: "usr_authenticated",
+        createdAt: "2026-04-12T10:05:00.000Z",
+        decision: "denied",
+        details: {
+          cadence: "hourly",
+          selectionStrategy: "all_executable_prs"
+        },
+        eventId: "policy_decision_two",
+        githubInstallationId: null,
+        jobId: null,
+        planId: null,
+        repositoryFullName: null,
+        reason: "Autonomous hourly sweep scheduling is outside the current policy.",
+        runId: null,
+        scopeType: "workspace",
+        sweepScheduleId: "sweep_one",
+        workspaceId: "workspace_local_default"
       }
     ],
     recentJobs: [
@@ -3272,7 +3292,7 @@ describe("App", () => {
     const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
     expect(policyDecisionsPanel.getByText("Approved write execution may proceed.")).toBeInTheDocument();
     expect(policyDecisionsPanel.getByText("openai/openai-node")).toBeInTheDocument();
-    expect(policyDecisionsPanel.getByText("execute write")).toBeInTheDocument();
+    expect(policyDecisionsPanel.getAllByText("execute write").length).toBeGreaterThan(0);
     expect(policyDecisionsPanel.getByText("allowed")).toBeInTheDocument();
     expect(screen.getByText("Tracked repositories")).toBeInTheDocument();
     expect(screen.getByText("Tracked pull requests")).toBeInTheDocument();
@@ -3281,6 +3301,80 @@ describe("App", () => {
         name: /Harden workflow permissions/i
       })
     ).toBeInTheDocument();
+  });
+
+  it("filters policy decisions and expands policy decision details in fleet admin", async () => {
+    const user = userEvent.setup();
+    const fleetStatus = createFleetStatusFixture();
+
+    vi.stubGlobal(
+      "fetch",
+      mockAuthenticatedFetch(async (url) => {
+        if (url === "/api/tracked-repositories") {
+          return createJsonResponse(
+            ListTrackedRepositoriesResponseSchema.parse({
+              repositories: [createTrackedRepositoryFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/fleet/status") {
+          return createJsonResponse(fleetStatus);
+        }
+
+        if (url === "/api/analyze/jobs") {
+          return createJsonResponse(
+            ListAnalysisJobsResponseSchema.parse({
+              jobs: fleetStatus.recentJobs
+            })
+          );
+        }
+
+        if (url === "/api/sweep-schedules") {
+          return createJsonResponse(
+            ListSweepSchedulesResponseSchema.parse({
+              schedules: [createSweepScheduleFixture()]
+            })
+          );
+        }
+
+        return createJsonResponse({ error: "Unhandled" }, false, 500);
+      })
+    );
+
+    render(<App />);
+
+    await openFleetAdmin(user);
+
+    const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
+    expect(
+      policyDecisionsPanel.getByText("Approved write execution may proceed.")
+    ).toBeInTheDocument();
+    expect(
+      policyDecisionsPanel.getByText(
+        "Autonomous hourly sweep scheduling is outside the current policy."
+      )
+    ).toBeInTheDocument();
+
+    await user.selectOptions(policyDecisionsPanel.getByLabelText("Decision filter"), "denied");
+    expect(
+      policyDecisionsPanel.queryByText("Approved write execution may proceed.")
+    ).not.toBeInTheDocument();
+    expect(
+      policyDecisionsPanel.getByText(
+        "Autonomous hourly sweep scheduling is outside the current policy."
+      )
+    ).toBeInTheDocument();
+
+    await user.selectOptions(policyDecisionsPanel.getByLabelText("Action filter"), "schedule_sweep");
+    await user.click(policyDecisionsPanel.getByText("Decision details"));
+
+    expect(policyDecisionsPanel.getByText(/Event\s+policy_decision_two/)).toBeInTheDocument();
+    expect(policyDecisionsPanel.getByText(/Actor\s+usr_authenticated/)).toBeInTheDocument();
+    expect(
+      policyDecisionsPanel.getByText(/Workspace\s+workspace_local_default/)
+    ).toBeInTheDocument();
+    expect(policyDecisionsPanel.getByText(/selectionStrategy/)).toBeInTheDocument();
   });
 
   it("registers a tracked repository and enqueues manual analysis from fleet admin", async () => {
