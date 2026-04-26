@@ -8,13 +8,16 @@ It accepts a GitHub repository URL or `owner/repo` slug, analyzes dependency and
 
 This product is not an autonomous maintainer. It is an engineering assistant with explicit user approval before write actions.
 
+Future controlled autonomy must be opt-in, policy-scoped, observable, and reversible. The product may later automate analysis, plan-only sweeps, or tightly bounded deterministic PR opening, but only after fleet metrics, policy decisions, audit events, and supervised batch execution have been proven reliable.
+
 Current implementation status:
-- Milestone 8A stabilization alpha, not a finished V1
+- Milestone 8A stabilization alpha moving into Milestone 9A planning, not a finished V1
 - canonical supervised analysis and execution routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
 - security-hardened two-phase execution model with GitHub OAuth session context and a local-development legacy API-key fallback
 - GitHub write-back expansion for all supported ecosystems (now including Gradle and Yarn)
 - Fleet Admin and fleet-operations reads are implemented for tracked repositories, async jobs, sweep schedules, and repository timelines
 - workspace, membership, GitHub App installation, and installation-repository persistence is implemented for the first 8A access boundary
+- the next product phase is fleet remediation intelligence and explicit policy gates before any controlled-autonomy expansion
 
 ---
 
@@ -419,13 +422,27 @@ Initial foundation and basic write-back slices.
 - added cursor-native timeline paging and on-demand event expansion
 - added typed timeline detail rendering for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 
-### Milestone 8A (GitHub App Installations and Tenant Scopes) [IN PROGRESS]
+### Milestone 8A (GitHub App Installations and Tenant Scopes) [COMPLETE]
 - added workspace, user, membership, GitHub installation, and installation-repository persistence with legacy data backfilled into a local workspace
 - added GitHub OAuth session routes, signed session cookies, and OAuth state validation
 - added workspace-scoped installation listing and repository sync routes
 - added installation-token GitHub read/write client resolution with local-development fallback behavior
 - added Workspace Access web UI and generated API-client coverage for workspace and installation reads
 - stabilized active-workspace enforcement for explicit analysis workspace ids
+
+### Milestone 9A (Fleet Remediation Intelligence and Policy Gates) [NEXT]
+- add workspace-scoped fleet remediation metrics for repository coverage, finding severity mix, executable plans, blocked plans, failed jobs, opened PR lifecycle, and installation coverage
+- add policy records for workspace, repository, and installation scopes
+- evaluate policy for analysis, scheduled plan-only sweeps, PR candidate generation, and write execution
+- persist policy-decision events with actor, workspace, repository, installation, decision, and reason
+- expose Fleet Overview attention queues and remediation health metrics
+- keep all GitHub write execution supervised and approval-gated
+
+### Post-9A controlled autonomy path
+- Milestone 9B: simulate proposed autonomy rules and show would-allow, would-block, and manual-review outcomes without unattended writes
+- Milestone 9C: introduce supervised batch execution with explicit approval for bounded sets of selected deterministic plans
+- Milestone 9D: consider opt-in controlled autonomy profiles for low-risk deterministic actions, starting with analysis and plan-only sweeps before any policy-gated PR opening
+- continue to prohibit auto-merge, broad refactors, force-pushes, and open-ended autonomous repository rewriting
 
 ---
 

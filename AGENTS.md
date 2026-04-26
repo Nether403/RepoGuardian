@@ -146,17 +146,21 @@ Do not inherit:
 
 ## Milestone discipline
 
-### Active milestone: Milestone 8A / Stabilization
+### Active milestone: Milestone 9A / Fleet Remediation Intelligence and Policy Gates
 Allowed:
 - keep `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*` as the canonical public contract
 - ensure deterministic patch PR generation for already supported ecosystems (including Gradle and Yarn) stays stable
 - maintain the two-phase approval-gated and authenticated GitHub write behavior
-- stabilize workspace-scoped auth, GitHub OAuth sessions, GitHub App installation reads, and tenant-aware persistence boundaries
+- preserve workspace-scoped auth, GitHub OAuth sessions, GitHub App installation reads, and tenant-aware persistence boundaries
+- add workspace-scoped fleet remediation metrics and attention queues
+- add explicit policy gates for analysis, scheduling, PR candidate generation, and write execution decisions
+- persist policy-decision audit events with actor, workspace, repository, installation, decision, and reason
 - keep the legacy shared-secret path as a local-development fallback only
 
 Not allowed in this milestone unless explicitly requested:
 - broaden GitHub write-back beyond the existing bounded slices (now including the new 6F targets)
-- add autonomous or background execution
+- add unattended GitHub write execution
+- add controlled-autonomy profiles beyond policy simulation and supervised batch planning
 - add billing, subscriptions, or enterprise controls
 - change top-level API response shapes without a compatibility reason
 
