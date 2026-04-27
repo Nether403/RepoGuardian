@@ -1183,6 +1183,40 @@ function createFleetStatusFixture() {
   const latestJob = createAnalysisJobFixture();
 
   return FleetStatusResponseSchema.parse({
+    attentionQueues: {
+      blockedPlanRepositories: ["openai/openai-node"],
+      failedJobs: [
+        createAnalysisJobFixture({
+          errorMessage: "rate limited",
+          failedAt: "2026-04-12T10:04:00.000Z",
+          jobId: "job_failed",
+          jobKind: "generate_execution_plan",
+          planId: "plan_failed",
+          status: "failed",
+          trackedRepositoryId: null
+        })
+      ],
+      openPullRequests: [
+        {
+          branchName: "repo-guardian/harden-workflow",
+          closedAt: null,
+          createdAt: "2026-04-12T10:01:00.000Z",
+          executionId: "exec_one",
+          lifecycleStatus: "open",
+          mergedAt: null,
+          owner: "openai",
+          planId: "plan_one",
+          pullRequestNumber: 19,
+          pullRequestUrl: "https://github.com/openai/openai-node/pull/19",
+          repo: "openai-node",
+          repositoryFullName: "openai/openai-node",
+          title: "Harden workflow permissions",
+          trackedPullRequestId: "tpr_one",
+          updatedAt: "2026-04-12T10:04:00.000Z"
+        }
+      ],
+      staleRepositories: ["openai/openai-node"]
+    },
     generatedAt: "2026-04-12T10:05:00.000Z",
     policyDecisions: [
       {
@@ -1245,6 +1279,26 @@ function createFleetStatusFixture() {
         status: "completed"
       })
     ],
+    remediationHealth: {
+      ecosystemCoverage: [
+        {
+          ecosystem: "node",
+          repositories: 1
+        }
+      ],
+      findingSeverityMix: {
+        critical: 0,
+        high: 1,
+        info: 0,
+        low: 0,
+        medium: 2
+      },
+      installationCoverage: {
+        installationBackedRepositories: 0,
+        totalRepositories: 1,
+        unlinkedRepositories: 1
+      }
+    },
     summary: {
       blockedPatchPlans: 1,
       executablePatchPlans: 4,
@@ -3304,6 +3358,9 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: /Fleet status/i })).toBeInTheDocument();
     expect(screen.getByText("Executable Plans")).toBeInTheDocument();
+    expect(screen.getByText("Finding Mix")).toBeInTheDocument();
+    expect(screen.getByText("Stale queue")).toBeInTheDocument();
+    expect(screen.getByText("Installation coverage")).toBeInTheDocument();
     const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
     expect(policyDecisionsPanel.getByText("Approved write execution may proceed.")).toBeInTheDocument();
     expect(policyDecisionsPanel.getByText("openai/openai-node")).toBeInTheDocument();

@@ -1,4 +1,5 @@
 import type {
+  AsyncPlanSelectionStrategy,
   ExecutionActionPlan,
   ExecutionPlanLifecycleStatus,
   PolicyDecision
@@ -22,8 +23,13 @@ export type EvaluateExecutionWritePolicyInput = {
 };
 
 export type EvaluateExecutionPlanPolicyInput = {
+  selectionStrategy?: AsyncPlanSelectionStrategy;
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
+};
+
+export type EvaluateAnalysisPolicyInput = {
+  repositoryFullName: string;
 };
 
 export type EvaluateSweepSchedulePolicyInput = {
@@ -38,6 +44,19 @@ function isWriteAction(actionType: ExecutionActionPlan["actionType"]): boolean {
     actionType === "commit_patch" ||
     actionType === "create_pr"
   );
+}
+
+export function evaluateAnalysisPolicy(
+  input: EvaluateAnalysisPolicyInput
+): ExecutionWritePolicyDecision {
+  return {
+    decision: "allowed",
+    details: {
+      policyRecordId: "default:workspace:supervised-analysis",
+      repositoryFullName: input.repositoryFullName
+    },
+    reason: "Supervised repository analysis may proceed."
+  };
 }
 
 export function evaluateExecutionWritePolicy(
@@ -84,10 +103,20 @@ export function evaluateExecutionPlanPolicy(
 ): ExecutionWritePolicyDecision {
   const details = {
     issueSelections: input.selectedIssueCandidateIds.length,
+    policyRecordId: "default:repository:deterministic-pr-candidates",
     prSelections: input.selectedPRCandidateIds.length,
+    selectionStrategy: input.selectionStrategy ?? "provided_candidates",
     totalSelections:
       input.selectedIssueCandidateIds.length + input.selectedPRCandidateIds.length
   };
+
+  if (input.selectionStrategy === "all_executable_prs") {
+    return {
+      decision: "allowed",
+      details,
+      reason: "Execution plan generation may proceed for executable PR candidates."
+    };
+  }
 
   if (details.totalSelections === 0) {
     return {
@@ -111,6 +140,7 @@ export function evaluateSweepSchedulePolicy(
     decision: "allowed",
     details: {
       cadence: input.cadence,
+      policyRecordId: "default:workspace:plan-only-sweeps",
       selectionStrategy: input.selectionStrategy
     },
     reason: "Plan-only sweep scheduling may proceed."

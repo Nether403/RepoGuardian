@@ -1228,8 +1228,53 @@ export const FleetTrackedRepositoryStatusSchema = z.object({
   stale: z.boolean()
 });
 
+export const FleetEcosystemCoverageEntrySchema = z.object({
+  ecosystem: EcosystemIdSchema,
+  repositories: z.number().int().nonnegative()
+});
+
+export const FleetInstallationCoverageSchema = z.object({
+  installationBackedRepositories: z.number().int().nonnegative(),
+  totalRepositories: z.number().int().nonnegative(),
+  unlinkedRepositories: z.number().int().nonnegative()
+});
+
+export const FleetRemediationHealthSchema = z.object({
+  ecosystemCoverage: z.array(FleetEcosystemCoverageEntrySchema),
+  findingSeverityMix: FindingsBySeveritySchema,
+  installationCoverage: FleetInstallationCoverageSchema
+});
+
+export const FleetAttentionQueuesSchema = z.object({
+  blockedPlanRepositories: z.array(z.string().min(3)),
+  failedJobs: z.array(AnalysisJobSchema),
+  openPullRequests: z.array(TrackedPullRequestSchema),
+  staleRepositories: z.array(z.string().min(3))
+});
+
 export const FleetStatusResponseSchema = z.object({
+  attentionQueues: FleetAttentionQueuesSchema.default({
+    blockedPlanRepositories: [],
+    failedJobs: [],
+    openPullRequests: [],
+    staleRepositories: []
+  }),
   generatedAt: z.string().datetime(),
+  remediationHealth: FleetRemediationHealthSchema.default({
+    ecosystemCoverage: [],
+    findingSeverityMix: {
+      critical: 0,
+      high: 0,
+      info: 0,
+      low: 0,
+      medium: 0
+    },
+    installationCoverage: {
+      installationBackedRepositories: 0,
+      totalRepositories: 0,
+      unlinkedRepositories: 0
+    }
+  }),
   summary: z.object({
     blockedPatchPlans: z.number().int().nonnegative(),
     executablePatchPlans: z.number().int().nonnegative(),
@@ -1845,6 +1890,14 @@ export type TrackedPullRequest = z.infer<typeof TrackedPullRequestSchema>;
 export type FleetTrackedRepositoryStatus = z.infer<
   typeof FleetTrackedRepositoryStatusSchema
 >;
+export type FleetEcosystemCoverageEntry = z.infer<
+  typeof FleetEcosystemCoverageEntrySchema
+>;
+export type FleetInstallationCoverage = z.infer<
+  typeof FleetInstallationCoverageSchema
+>;
+export type FleetRemediationHealth = z.infer<typeof FleetRemediationHealthSchema>;
+export type FleetAttentionQueues = z.infer<typeof FleetAttentionQueuesSchema>;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;

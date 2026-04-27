@@ -396,6 +396,17 @@ describe("fleet routes", () => {
       }),
       getJob: vi.fn().mockResolvedValue(job)
     });
+    const policyDecisionRepository = {
+      listDecisions: vi.fn().mockResolvedValue({
+        decisions: [],
+        page: 1,
+        pageSize: 25,
+        totalDecisions: 0,
+        totalPages: 0
+      }),
+      listRecentDecisions: vi.fn().mockResolvedValue([]),
+      recordDecision: vi.fn().mockResolvedValue({})
+    };
     const app = createTestApp({
       analysisJobStore: {
         listJobs: vi.fn().mockResolvedValue([job])
@@ -404,6 +415,7 @@ describe("fleet routes", () => {
       executionPlanStore: {
         listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
+      policyDecisionRepository,
       runStore: {
         listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
@@ -412,7 +424,7 @@ describe("fleet routes", () => {
       },
       trackedRepositoryStore: {
         createRepository: vi.fn(),
-        getRepository: vi.fn(),
+        getRepository: vi.fn().mockResolvedValue(createTrackedRepository()),
         listRepositories: vi.fn().mockResolvedValue([])
       }
     });
@@ -431,6 +443,20 @@ describe("fleet routes", () => {
       repoInput: "openai/openai-node",
       requestedByUserId: "usr_authenticated"
     });
+    expect(policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "analyze_repository",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: "Supervised repository analysis may proceed.",
+        repositoryFullName: "openai/openai-node",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(
+      policyDecisionRepository.recordDecision.mock.invocationCallOrder[0]
+    ).toBeLessThan(analysisJobProcessor.enqueueAdHoc.mock.invocationCallOrder[0]!);
 
     const trackedEnqueueResponse = await request(app)
       .post("/analyze/jobs")
@@ -481,6 +507,17 @@ describe("fleet routes", () => {
         status: "queued"
       })
     });
+    const policyDecisionRepository = {
+      listDecisions: vi.fn().mockResolvedValue({
+        decisions: [],
+        page: 1,
+        pageSize: 25,
+        totalDecisions: 0,
+        totalPages: 0
+      }),
+      listRecentDecisions: vi.fn().mockResolvedValue([]),
+      recordDecision: vi.fn().mockResolvedValue({})
+    };
     const app = createTestApp({
       analysisJobStore: {
         listJobs: vi.fn().mockResolvedValue([listJob])
@@ -489,6 +526,7 @@ describe("fleet routes", () => {
       executionPlanStore: {
         listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
+      policyDecisionRepository,
       runStore: {
         listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
       },
@@ -537,6 +575,22 @@ describe("fleet routes", () => {
       selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"],
       selectionStrategy: "provided_candidates"
     });
+    expect(policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "generate_pr_candidates",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: "Execution plan generation may proceed for selected candidates.",
+        runId: "run_one",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(
+      policyDecisionRepository.recordDecision.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      analysisJobProcessor.enqueueExecutionPlanJob.mock.invocationCallOrder[0]!
+    );
   });
 
   it("returns fleet status and manages sweep schedules", async () => {

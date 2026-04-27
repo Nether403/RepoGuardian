@@ -6,9 +6,11 @@ export {
   type ExecutionServiceDependencies
 } from "./service.js";
 export {
+  evaluateAnalysisPolicy,
   evaluateExecutionPlanPolicy,
   evaluateExecutionWritePolicy,
   evaluateSweepSchedulePolicy,
+  type EvaluateAnalysisPolicyInput,
   type EvaluateExecutionPlanPolicyInput,
   type EvaluateExecutionWritePolicyInput,
   type EvaluateSweepSchedulePolicyInput,

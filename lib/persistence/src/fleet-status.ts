@@ -1,24 +1,30 @@
 import type { QueryResultRow } from "pg";
 import {
   AnalysisJobSchema,
+  AnalyzeRepoResponseSchema,
   FleetStatusResponseSchema,
   SavedAnalysisRunSummarySchema,
   TrackedPullRequestSchema,
   TrackedRepositorySchema,
   type AnalysisJob,
+  type AnalyzeRepoResponse,
   type FleetStatusResponse,
+  type FindingsBySeverity,
   type SavedAnalysisRunSummary,
   type TrackedPullRequest
 } from "@repo-guardian/shared-types";
 import type { PostgresClient } from "./client.js";
 
 type FleetTrackedRepositoryRow = QueryResultRow & {
+  analysis_payload: unknown;
   blocked_patch_plans: number | null;
   created_at: Date | string;
   default_branch: string | null;
   executable_patch_plans: number | null;
   fetched_at: Date | string | null;
+  github_installation_id: string | null;
   high_severity_findings: number | null;
+  installation_repository_id: string | null;
   is_active: boolean;
   issue_candidates: number | null;
   job_attempt_count: number | null;
@@ -148,6 +154,38 @@ function parseTrackedPullRequest(row: TrackedPullRequestRow): TrackedPullRequest
   });
 }
 
+function createEmptySeverityMix(): FindingsBySeverity {
+  return {
+    critical: 0,
+    high: 0,
+    info: 0,
+    low: 0,
+    medium: 0
+  };
+}
+
+function parseAnalysisPayload(payload: unknown): AnalyzeRepoResponse | null {
+  const parsed = AnalyzeRepoResponseSchema.safeParse(payload);
+
+  return parsed.success ? parsed.data : null;
+}
+
+function addSeverityMix(
+  target: FindingsBySeverity,
+  analysis: AnalyzeRepoResponse | null
+): void {
+  if (!analysis) {
+    return;
+  }
+
+  for (const finding of [
+    ...analysis.dependencyFindings,
+    ...analysis.codeReviewFindings
+  ]) {
+    target[finding.severity] += 1;
+  }
+}
+
 function parseLatestRun(row: FleetTrackedRepositoryRow): SavedAnalysisRunSummary | null {
   if (!row.run_id || !row.run_created_at || !row.fetched_at || row.total_findings === null) {
     return null;
@@ -193,6 +231,8 @@ export class FleetStatusRepository {
           tracked.repository_owner,
           tracked.repository_repo,
           tracked.canonical_url,
+          tracked.github_installation_id,
+          tracked.installation_repository_id,
           tracked.label,
           tracked.is_active,
           tracked.created_at,
@@ -208,6 +248,7 @@ export class FleetStatusRepository {
           runs.pr_candidates,
           runs.executable_patch_plans,
           runs.blocked_patch_plans,
+          runs.analysis_payload,
           plans.plan_id AS latest_plan_id,
           plans.status AS latest_plan_status,
           plans.completed_at AS latest_execution_completed_at,
@@ -328,7 +369,9 @@ export class FleetStatusRepository {
         canonicalUrl: row.canonical_url,
         createdAt: toIsoString(row.created_at),
         fullName: row.repository_full_name,
+        githubInstallationId: row.github_installation_id,
         id: row.tracked_repository_id,
+        installationRepositoryId: row.installation_repository_id,
         isActive: row.is_active,
         label: row.label,
         lastQueuedAt: toIsoString(row.last_queued_at),
@@ -389,9 +432,53 @@ export class FleetStatusRepository {
 
     const recentJobs = recentJobsResult.rows.map(parseAnalysisJob);
     const trackedPullRequests = trackedPullRequestsResult.rows.map(parseTrackedPullRequest);
+    const findingSeverityMix = createEmptySeverityMix();
+    const ecosystemCoverage = new Map<string, Set<string>>();
+
+    for (const row of trackedRows.rows) {
+      const analysis = parseAnalysisPayload(row.analysis_payload);
+      addSeverityMix(findingSeverityMix, analysis);
+
+      for (const ecosystem of analysis?.ecosystems ?? []) {
+        const repositories =
+          ecosystemCoverage.get(ecosystem.ecosystem) ?? new Set<string>();
+        repositories.add(row.repository_full_name);
+        ecosystemCoverage.set(ecosystem.ecosystem, repositories);
+      }
+    }
 
     return FleetStatusResponseSchema.parse({
+      attentionQueues: {
+        blockedPlanRepositories: trackedRepositories
+          .filter((repository) => repository.patchPlanCounts.blocked > 0)
+          .map((repository) => repository.trackedRepository.fullName),
+        failedJobs: recentJobs.filter((job) => job.status === "failed"),
+        openPullRequests: trackedPullRequests.filter(
+          (pullRequest) => pullRequest.lifecycleStatus === "open"
+        ),
+        staleRepositories: trackedRepositories
+          .filter((repository) => repository.stale)
+          .map((repository) => repository.trackedRepository.fullName)
+      },
       generatedAt: new Date().toISOString(),
+      remediationHealth: {
+        ecosystemCoverage: [...ecosystemCoverage.entries()]
+          .map(([ecosystem, repositories]) => ({
+            ecosystem,
+            repositories: repositories.size
+          }))
+          .sort((left, right) => left.ecosystem.localeCompare(right.ecosystem)),
+        findingSeverityMix,
+        installationCoverage: {
+          installationBackedRepositories: trackedRepositories.filter(
+            (repository) => repository.trackedRepository.githubInstallationId
+          ).length,
+          totalRepositories: trackedRepositories.length,
+          unlinkedRepositories: trackedRepositories.filter(
+            (repository) => !repository.trackedRepository.githubInstallationId
+          ).length
+        }
+      },
       recentJobs,
       summary: {
         blockedPatchPlans: trackedRepositories.reduce(

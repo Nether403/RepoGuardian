@@ -299,6 +299,7 @@ export function createExecutionRouter(
         parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
       const run = await runRepository.getRun(parsedRequest.data.analysisRunId, workspaceId);
       const policyDecision = evaluateExecutionPlanPolicy({
+        selectionStrategy: "provided_candidates",
         selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
         selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds
       });

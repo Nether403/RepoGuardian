@@ -1,11 +1,20 @@
 import { type Router as ExpressRouter, Router } from "express";
-import { type GitHubReadErrorCode, isGitHubReadError } from "@repo-guardian/github";
+import { evaluateAnalysisPolicy } from "@repo-guardian/execution";
+import {
+  type GitHubReadErrorCode,
+  isGitHubReadError,
+  normalizeRepoInput
+} from "@repo-guardian/github";
+import type { PolicyDecisionRepository } from "@repo-guardian/persistence";
 import { AnalyzeRepoRequestSchema } from "@repo-guardian/shared-types";
 import { analyzeRepository } from "../lib/analyze-repository.js";
 import { createInstallationReadClient } from "../lib/github-installations.js";
+import { getPolicyDecisionRepository } from "../lib/persistence.js";
 import { requireAuth } from "../middleware/auth.js";
 
-const analyzeRouter: ExpressRouter = Router();
+type AnalyzeRepository = typeof analyzeRepository;
+type CreateReadClient = typeof createInstallationReadClient;
+type PolicyDecisionRepositoryLike = Pick<PolicyDecisionRepository, "recordDecision">;
 
 function mapErrorCodeToStatus(code: GitHubReadErrorCode): number {
   switch (code) {
@@ -22,49 +31,107 @@ function mapErrorCodeToStatus(code: GitHubReadErrorCode): number {
   }
 }
 
-analyzeRouter.post("/analyze", requireAuth, async (request, response, next) => {
-  const parsedRequest = AnalyzeRepoRequestSchema.safeParse(request.body);
+function normalizeRepositoryFullName(repoInput: string): string {
+  return normalizeRepoInput(repoInput).fullName;
+}
 
-  if (!parsedRequest.success) {
-    response.status(400).json({
-      error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
-    });
-    return;
-  }
-
+async function recordPolicyDecision(input: {
+  policyDecisionRepository?: PolicyDecisionRepositoryLike;
+  record: Parameters<PolicyDecisionRepositoryLike["recordDecision"]>[0];
+}): Promise<void> {
   try {
-    const workspaceId =
-      parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
-
-    if (workspaceId !== request.authContext!.activeWorkspaceId) {
-      response.status(403).json({
-        error: "Forbidden: workspace mismatch."
-      });
-      return;
-    }
-
-    const intake = await analyzeRepository(
-      await createInstallationReadClient({
-        repositoryFullName: parsedRequest.data.repoInput.includes("/")
-          ? parsedRequest.data.repoInput.replace(/^https:\/\/github\.com\//u, "").replace(/\/+$/u, "")
-          : parsedRequest.data.repoInput,
-        workspaceId
-      }),
-      parsedRequest.data.repoInput
+    await (input.policyDecisionRepository ?? getPolicyDecisionRepository()).recordDecision(
+      input.record
     );
-
-    response.json(intake);
   } catch (error) {
-    if (isGitHubReadError(error)) {
-      response.status(mapErrorCodeToStatus(error.code)).json({
-        details: error.details ?? null,
-        error: error.message
+    if (
+      !input.policyDecisionRepository &&
+      error instanceof Error &&
+      error.message === "DATABASE_URL must be configured before using durable persistence."
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+export function createAnalyzeRouter(input: {
+  analyzeRepository?: AnalyzeRepository;
+  createReadClient?: CreateReadClient;
+  policyDecisionRepository?: PolicyDecisionRepositoryLike;
+} = {}): ExpressRouter {
+  const analyzeRouter: ExpressRouter = Router();
+  const analyze = input.analyzeRepository ?? analyzeRepository;
+  const createReadClient = input.createReadClient ?? createInstallationReadClient;
+  const policyDecisionRepository = input.policyDecisionRepository;
+
+  analyzeRouter.post("/analyze", requireAuth, async (request, response, next) => {
+    const parsedRequest = AnalyzeRepoRequestSchema.safeParse(request.body);
+
+    if (!parsedRequest.success) {
+      response.status(400).json({
+        error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
       });
       return;
     }
 
-    next(error);
-  }
-});
+    try {
+      const workspaceId =
+        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
 
-export default analyzeRouter;
+      if (workspaceId !== request.authContext!.activeWorkspaceId) {
+        response.status(403).json({
+          error: "Forbidden: workspace mismatch."
+        });
+        return;
+      }
+
+      const repositoryFullName = normalizeRepositoryFullName(parsedRequest.data.repoInput);
+      const policyDecision = evaluateAnalysisPolicy({ repositoryFullName });
+
+      await recordPolicyDecision({
+        policyDecisionRepository,
+        record: {
+          actionType: "analyze_repository",
+          actorUserId: request.authContext!.user.id,
+          decision: policyDecision.decision,
+          details: policyDecision.details,
+          reason: policyDecision.reason,
+          repositoryFullName,
+          scopeType: "repository",
+          workspaceId
+        }
+      });
+
+      if (policyDecision.decision !== "allowed") {
+        response.status(403).json({ error: policyDecision.reason });
+        return;
+      }
+
+      const intake = await analyze(
+        await createReadClient({
+          repositoryFullName,
+          workspaceId
+        }),
+        parsedRequest.data.repoInput
+      );
+
+      response.json(intake);
+    } catch (error) {
+      if (isGitHubReadError(error)) {
+        response.status(mapErrorCodeToStatus(error.code)).json({
+          details: error.details ?? null,
+          error: error.message
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  return analyzeRouter;
+}
+
+export default createAnalyzeRouter();

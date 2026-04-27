@@ -2,7 +2,7 @@
 
 ## Current status
 
-Repo Guardian is currently moving from Milestone 8A stabilization into Milestone 9A planning. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration and workspace-scoped GitHub App access layered alongside it:
+Repo Guardian has completed Milestone 9A fleet remediation intelligence and policy gates. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration, workspace-scoped GitHub App access, fleet health metrics, and policy-decision audit history layered alongside it:
 
 - `GET /api/auth/session`
 - `GET /api/auth/github/start`
@@ -28,6 +28,7 @@ Repo Guardian is currently moving from Milestone 8A stabilization into Milestone
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
 - `GET /api/fleet/status`
+- `GET /api/policy-decisions`
 - `GET /api/analyze/jobs`
 - `POST /api/analyze/jobs`
 - `GET /api/analyze/jobs/{jobId}`
@@ -46,9 +47,10 @@ The current platform focus is still bounded, deterministic, and approval-gated:
 - explicit approval before any GitHub write-capable execution step
 - durable saved-run history, plan detail reads, and execution audit history for supervised review workflows
 - tracked repositories, async analysis jobs, and sweep schedules for multi-repository oversight
-- Fleet Admin web surfaces for fleet status, job control, schedule control, and repository timeline drill-downs
+- Fleet Admin web surfaces for fleet status, remediation health, attention queues, job control, schedule control, and repository timeline drill-downs
 - cursor-native repository timelines with on-demand typed event detail expansion
 - workspace, membership, installation, and installation-repository persistence for the first 8A boundary
+- server-side filtered and paginated policy-decision history
 
 ## Current priorities
 
@@ -118,16 +120,17 @@ Implemented foundation:
 
 This milestone does **not** broaden patch synthesis or introduce semantic code migration.
 
-### Milestone 9A: Fleet Remediation Intelligence and Policy Gates [NEXT]
+### Milestone 9A: Fleet Remediation Intelligence and Policy Gates [COMPLETE]
 
 Milestone 9A turns the durable fleet foundation into an operator-facing remediation control plane.
 
-Focus:
+Implemented:
 
 - workspace-scoped fleet remediation metrics: tracked repositories, stale analyses, finding severity mix, ecosystem coverage, executable plans, blocked plans, failed jobs, open PR lifecycle, and installation coverage
-- policy records for workspace, repository, and installation scopes
+- default policy records for workspace, repository, and installation-aware decision scopes
 - policy evaluation for analysis, scheduled plan-only sweeps, PR candidate generation, and write execution
 - durable policy-decision events with actor, workspace, repository, installation, decision, and reason
+- server-side policy-decision filtering and pagination via `GET /api/policy-decisions`
 - Fleet Overview UI that prioritizes attention queues and remediation health over broad analytics
 - installation and webhook boundary hardening where policy decisions depend on installation trust
 

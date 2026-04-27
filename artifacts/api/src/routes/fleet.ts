@@ -1,5 +1,9 @@
 import { type Router as ExpressRouter, Router } from "express";
-import { evaluateSweepSchedulePolicy } from "@repo-guardian/execution";
+import {
+  evaluateAnalysisPolicy,
+  evaluateExecutionPlanPolicy,
+  evaluateSweepSchedulePolicy
+} from "@repo-guardian/execution";
 import { normalizeRepoInput } from "@repo-guardian/github";
 import {
   isPersistenceError,
@@ -579,6 +583,32 @@ export function createFleetRouter(input: {
     }
 
     try {
+      const repositoryFullName = parsedRequest.data.trackedRepositoryId
+        ? (
+            await input.trackedRepositoryStore.getRepository(
+              parsedRequest.data.trackedRepositoryId,
+              request.authContext?.activeWorkspaceId
+            )
+          ).fullName
+        : normalizeRepoInput(parsedRequest.data.repoInput!).fullName;
+      const policyDecision = evaluateAnalysisPolicy({ repositoryFullName });
+
+      await policyDecisionRepository.recordDecision({
+        actionType: "analyze_repository",
+        actorUserId: request.authContext!.user.id,
+        decision: policyDecision.decision,
+        details: policyDecision.details,
+        reason: policyDecision.reason,
+        repositoryFullName,
+        scopeType: "repository",
+        workspaceId: request.authContext!.activeWorkspaceId
+      });
+
+      if (policyDecision.decision !== "allowed") {
+        response.status(403).json({ error: policyDecision.reason });
+        return;
+      }
+
       const job = parsedRequest.data.trackedRepositoryId
         ? await input.analysisJobProcessor.enqueueTrackedRepositoryAnalysis({
             requestedByUserId: "usr_authenticated",
@@ -709,6 +739,28 @@ export function createFleetRouter(input: {
     }
 
     try {
+      const policyDecision = evaluateExecutionPlanPolicy({
+        selectionStrategy: parsedRequest.data.selectionStrategy,
+        selectedIssueCandidateIds: parsedRequest.data.selectedIssueCandidateIds,
+        selectedPRCandidateIds: parsedRequest.data.selectedPRCandidateIds
+      });
+
+      await policyDecisionRepository.recordDecision({
+        actionType: "generate_pr_candidates",
+        actorUserId: request.authContext!.user.id,
+        decision: policyDecision.decision,
+        details: policyDecision.details,
+        reason: policyDecision.reason,
+        runId: parsedRequest.data.analysisRunId,
+        scopeType: "repository",
+        workspaceId: request.authContext!.activeWorkspaceId
+      });
+
+      if (policyDecision.decision !== "allowed") {
+        response.status(403).json({ error: policyDecision.reason });
+        return;
+      }
+
       const job = await input.analysisJobProcessor.enqueueExecutionPlanJob({
         analysisRunId: parsedRequest.data.analysisRunId,
         requestedByUserId: "usr_authenticated",

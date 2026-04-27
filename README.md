@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 8A stabilization alpha moving into Milestone 9A planning rather than a finished V1: it implements the Milestone 1 through 7B foundation plus 8A workspace-scoped auth, GitHub OAuth sessions, GitHub App installation repository sync, and generated API-client coverage for workspace and installation reads.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9A alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, and generated API-client coverage for workspace and installation reads.
 
 ## Current scope
 
@@ -23,9 +23,10 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - Vite + React UI for analysis, candidate selection, two-phase execution previews, and results
 - Fleet Admin mode for tracked repositories, fleet status, async job control, sweep schedules, and tracked PR visibility
 - Workspace Access UI for GitHub sign-in state, workspace selection, GitHub App installation sync, and installation-backed tracked repository registration
-- planned Milestone 9A direction for fleet remediation metrics and explicit policy gates before controlled autonomy
+- Milestone 9A fleet remediation metrics and explicit policy gates before controlled autonomy
 - repository history and cursor-native timeline reads for Fleet Admin drill-downs
 - server-side paginated policy-decision history via `GET /api/policy-decisions`
+- server-side policy-decision filtering by action, decision, repository, and occurrence window
 - on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
 - Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode
@@ -109,6 +110,6 @@ Current 8A foundation behavior:
 
 ## Roadmap
 
-The current state reflects **Milestone 8A stabilization moving into Milestone 9A planning**. The platform now layers workspace-scoped access and GitHub App installation repository visibility on top of the completed 7B fleet foundation while keeping write execution supervised.
+The current state reflects **Milestone 9A fleet remediation intelligence and policy gates**. The platform now layers workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history on top of the completed 7B fleet foundation while keeping write execution supervised.
 
-The next goals are fleet remediation intelligence, policy-gated analysis/planning/execution decisions, and installation boundary hardening. The controlled-autonomy path after that should proceed through simulation, supervised batch execution, and only then opt-in policy-scoped automation. See `docs/roadmap.md`.
+The next goals are autonomy simulation and recommendations without unattended writes. The controlled-autonomy path after that should proceed through supervised batch execution and only then opt-in policy-scoped automation. See `docs/roadmap.md`.

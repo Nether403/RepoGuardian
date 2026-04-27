@@ -1,7 +1,9 @@
 import request from "supertest";
+import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnalyzeRepoResponseSchema } from "@repo-guardian/shared-types";
 import app from "../app.js";
+import { createAnalyzeRouter } from "../routes/analyze.js";
 
 function createJsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -45,6 +47,62 @@ describe("POST /api/analyze", () => {
       error: "Forbidden: workspace mismatch."
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("records an allowed analysis policy decision before repository analysis", async () => {
+    const analyzeRepository = vi.fn().mockResolvedValue(
+      {
+        codeReviewFindings: [],
+        dependencyFindings: [],
+        repository: {
+          canonicalUrl: "https://github.com/openai/openai-node",
+          defaultBranch: "main",
+          description: null,
+          forks: 0,
+          fullName: "openai/openai-node",
+          htmlUrl: "https://github.com/openai/openai-node",
+          owner: "openai",
+          primaryLanguage: "TypeScript",
+          repo: "openai-node",
+          stars: 0
+        }
+      }
+    );
+    const policyDecisionRepository = {
+      recordDecision: vi.fn().mockResolvedValue({})
+    };
+    const readClient = {};
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use(
+      "/api",
+      createAnalyzeRouter({
+        analyzeRepository,
+        createReadClient: vi.fn().mockResolvedValue(readClient),
+        policyDecisionRepository
+      })
+    );
+
+    const response = await request(testApp)
+      .post("/api/analyze")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({ repoInput: "github.com/openai/openai-node" });
+
+    expect(response.status).toBe(200);
+    expect(policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "analyze_repository",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: "Supervised repository analysis may proceed.",
+        repositoryFullName: "openai/openai-node",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(
+      policyDecisionRepository.recordDecision.mock.invocationCallOrder[0]
+    ).toBeLessThan(analyzeRepository.mock.invocationCallOrder[0]!);
   });
 
   it("returns the current analysis payload", async () => {

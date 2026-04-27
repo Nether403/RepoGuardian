@@ -24,6 +24,19 @@ function renderMetricCard(input: {
   );
 }
 
+function renderQueueCard(input: {
+  items: string[];
+  label: string;
+}) {
+  return (
+    <article className="fleet-metric-card" key={input.label}>
+      <span>{input.label}</span>
+      <strong>{input.items.length}</strong>
+      <p>{input.items.length > 0 ? input.items.slice(0, 3).join(", ") : "Clear"}</p>
+    </article>
+  );
+}
+
 export function FleetOverviewPanel({
   errorMessage,
   fleetStatus,
@@ -75,6 +88,34 @@ export function FleetOverviewPanel({
         }
       ]
     : [];
+  const health = fleetStatus?.remediationHealth;
+  const queues = fleetStatus?.attentionQueues;
+  const severityTotal = health
+    ? Object.values(health.findingSeverityMix).reduce((sum, value) => sum + value, 0)
+    : 0;
+  const queueCards = queues
+    ? [
+        {
+          items: queues.staleRepositories,
+          label: "Stale queue"
+        },
+        {
+          items: queues.blockedPlanRepositories,
+          label: "Blocked queue"
+        },
+        {
+          items: queues.failedJobs.map((job) => job.jobId),
+          label: "Failed job queue"
+        },
+        {
+          items: queues.openPullRequests.map(
+            (pullRequest) =>
+              `${pullRequest.repositoryFullName}#${pullRequest.pullRequestNumber}`
+          ),
+          label: "Open PR queue"
+        }
+      ]
+    : [];
 
   return (
     <Panel
@@ -117,9 +158,43 @@ export function FleetOverviewPanel({
           </p>
         ) : null}
         {fleetStatus ? (
-          <div className="fleet-metric-grid">
-            {metrics.map(renderMetricCard)}
-          </div>
+          <>
+            <div className="fleet-metric-grid">
+              {metrics.map(renderMetricCard)}
+            </div>
+            {health ? (
+              <div className="fleet-metric-grid">
+                {renderMetricCard({
+                  description: `${health.findingSeverityMix.critical} critical, ${health.findingSeverityMix.high} high, ${health.findingSeverityMix.medium} medium.`,
+                  label: "Finding Mix",
+                  value: severityTotal
+                })}
+                {renderMetricCard({
+                  description:
+                    health.ecosystemCoverage.length > 0
+                      ? health.ecosystemCoverage
+                          .map(
+                            (entry) => `${entry.ecosystem}: ${entry.repositories}`
+                          )
+                          .join(", ")
+                      : "No ecosystems in the latest fleet snapshot.",
+                  label: "Ecosystems",
+                  value: health.ecosystemCoverage.length
+                })}
+                {renderMetricCard({
+                  description: `${health.installationCoverage.unlinkedRepositories} repositories still need installation-backed access.`,
+                  label: "Installation coverage",
+                  value:
+                    health.installationCoverage.installationBackedRepositories
+                })}
+              </div>
+            ) : null}
+            {queueCards.length > 0 ? (
+              <div className="fleet-metric-grid">
+                {queueCards.map(renderQueueCard)}
+              </div>
+            ) : null}
+          </>
         ) : (
           <p className="empty-copy">
             Switch to Fleet Admin and refresh to load tracked repositories, jobs,
