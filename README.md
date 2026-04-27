@@ -25,6 +25,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - Workspace Access UI for GitHub sign-in state, workspace selection, GitHub App installation sync, and installation-backed tracked repository registration
 - planned Milestone 9A direction for fleet remediation metrics and explicit policy gates before controlled autonomy
 - repository history and cursor-native timeline reads for Fleet Admin drill-downs
+- server-side paginated policy-decision history via `GET /api/policy-decisions`
 - on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
 - Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode

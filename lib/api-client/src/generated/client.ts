@@ -28,6 +28,7 @@ import type {
   ListAnalysisJobsResponse,
   ListAnalysisRunsResponse,
   ListGitHubInstallationsResponse,
+  ListPolicyDecisionEventsResponse,
   ListSweepSchedulesResponse,
   ListTrackedRepositoriesResponse,
   ListWorkspacesResponse,
@@ -260,6 +261,15 @@ export async function getFleetStatus(options: RepoGuardianApiRequestOptions = {}
   return requestJson<FleetStatusResponse>({
     method: "GET",
     path: `/api/fleet/status`,
+    options
+  });
+}
+
+export async function listPolicyDecisions(query: { "page"?: string | number | boolean | readonly (string | number | boolean)[]; "pageSize"?: string | number | boolean | readonly (string | number | boolean)[]; "actionType"?: string | number | boolean | readonly (string | number | boolean)[]; "decision"?: string | number | boolean | readonly (string | number | boolean)[]; "repositoryFullName"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<ListPolicyDecisionEventsResponse> {
+  return requestJson<ListPolicyDecisionEventsResponse>({
+    method: "GET",
+    path: `/api/policy-decisions`,
+    query,
     options
   });
 }

@@ -309,6 +309,13 @@ function createTestApp(
         })
       },
       policyDecisionRepository: {
+        listDecisions: vi.fn().mockResolvedValue({
+          decisions: [],
+          page: 1,
+          pageSize: 25,
+          totalDecisions: 0,
+          totalPages: 0
+        }),
         listRecentDecisions: vi.fn().mockResolvedValue([]),
         recordDecision: vi.fn().mockResolvedValue({})
       },
@@ -649,6 +656,113 @@ describe("fleet routes", () => {
       requestedByUserId: "usr_authenticated",
       scheduleId: "sweep_one"
     });
+  });
+
+  it("lists policy decisions with server-side pagination and filters", async () => {
+    const policyDecision = {
+      actionType: "execute_write",
+      actorUserId: "usr_authenticated",
+      createdAt: "2026-04-12T10:06:00.000Z",
+      decision: "denied",
+      details: {
+        selectedActionCount: 2
+      },
+      eventId: "policy_decision_two",
+      githubInstallationId: null,
+      jobId: null,
+      planId: "plan_two",
+      repositoryFullName: "openai/openai-node",
+      reason: "Write execution requires explicit approval.",
+      runId: "run_two",
+      scopeType: "repository",
+      sweepScheduleId: null,
+      workspaceId: "workspace_local_default"
+    };
+    const policyDecisionRepository = {
+      listDecisions: vi.fn().mockResolvedValue({
+        decisions: [policyDecision],
+        page: 2,
+        pageSize: 5,
+        totalDecisions: 6,
+        totalPages: 2
+      }),
+      listRecentDecisions: vi.fn().mockResolvedValue([]),
+      recordDecision: vi.fn().mockResolvedValue({})
+    };
+    const app = createTestApp({
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      policyDecisionRepository,
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn(),
+        listRepositories: vi.fn().mockResolvedValue([])
+      }
+    });
+
+    const response = await request(app)
+      .get(
+        "/policy-decisions?page=2&pageSize=5&actionType=execute_write&decision=denied&repositoryFullName=openai%2Fopenai-node"
+      )
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      decisions: [policyDecision],
+      page: 2,
+      pageSize: 5,
+      totalDecisions: 6,
+      totalPages: 2
+    });
+    expect(policyDecisionRepository.listDecisions).toHaveBeenCalledWith({
+      actionType: "execute_write",
+      decision: "denied",
+      page: 2,
+      pageSize: 5,
+      repositoryFullName: "openai/openai-node",
+      workspaceId: "workspace_local_default"
+    });
+  });
+
+  it("rejects invalid policy decision pagination query params", async () => {
+    const app = createTestApp({
+      analysisJobProcessor: createAnalysisJobProcessor(),
+      analysisJobStore: {
+        listJobs: vi.fn().mockResolvedValue([])
+      },
+      executionPlanStore: {
+        listPlanSummariesByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      runStore: {
+        listRunsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedPullRequestStore: {
+        listTrackedPullRequestsByRepositoryFullName: vi.fn().mockResolvedValue([])
+      },
+      trackedRepositoryStore: {
+        createRepository: vi.fn(),
+        getRepository: vi.fn(),
+        listRepositories: vi.fn().mockResolvedValue([])
+      }
+    });
+
+    const response = await request(app)
+      .get("/policy-decisions?page=0")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Invalid policy decision query params");
   });
 
   it("returns tracked repository history", async () => {

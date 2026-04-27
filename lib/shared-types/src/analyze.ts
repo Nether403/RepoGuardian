@@ -1010,7 +1010,11 @@ export const PolicyDecisionEventSchema = z.object({
 });
 
 export const ListPolicyDecisionEventsResponseSchema = z.object({
-  decisions: z.array(PolicyDecisionEventSchema)
+  decisions: z.array(PolicyDecisionEventSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  totalDecisions: z.number().int().min(0),
+  totalPages: z.number().int().min(0)
 });
 
 export const TrackedRepositorySchema = z.object({

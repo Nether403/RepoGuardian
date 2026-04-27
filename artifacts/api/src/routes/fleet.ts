@@ -18,6 +18,9 @@ import {
   EnqueueAnalysisJobRequestSchema,
   EnqueueExecutionPlanJobRequestSchema,
   FleetStatusResponseSchema,
+  ListPolicyDecisionEventsResponseSchema,
+  PolicyActionTypeSchema,
+  PolicyDecisionSchema,
   RepositoryActivityCursorDirectionSchema,
   RepositoryActivityEventSchema,
   RepositoryActivityFeedSchema,
@@ -80,7 +83,7 @@ type RepositoryActivityStore = Pick<
 
 type PolicyDecisionRepositoryLike = Pick<
   PolicyDecisionRepository,
-  "listRecentDecisions" | "recordDecision"
+  "listDecisions" | "listRecentDecisions" | "recordDecision"
 >;
 
 type AnalysisJobProcessorLike = Pick<
@@ -149,6 +152,14 @@ const trackedRepositoryHistoryQuerySchema = z.object({
       );
     })
     .pipe(z.array(z.string().min(1)))
+});
+
+const policyDecisionQuerySchema = z.object({
+  actionType: PolicyActionTypeSchema.optional(),
+  decision: PolicyDecisionSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  repositoryFullName: z.string().trim().min(3).optional()
 });
 
 const trackedRepositoryTimelineQuerySchema = z.object({
@@ -741,6 +752,41 @@ export function createFleetRouter(input: {
       if (status) {
         response.status(status).json({
           error: error instanceof Error ? error.message : "Fleet status request failed"
+        });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  fleetRouter.get("/policy-decisions", async (request, response, next) => {
+    const parsedQuery = policyDecisionQuerySchema.safeParse(request.query);
+
+    if (!parsedQuery.success) {
+      response.status(400).json({
+        error: "Invalid policy decision query params"
+      });
+      return;
+    }
+
+    try {
+      const page = await policyDecisionRepository.listDecisions({
+        actionType: parsedQuery.data.actionType,
+        decision: parsedQuery.data.decision,
+        page: parsedQuery.data.page,
+        pageSize: parsedQuery.data.pageSize,
+        repositoryFullName: parsedQuery.data.repositoryFullName,
+        workspaceId: request.authContext?.activeWorkspaceId
+      });
+
+      response.json(ListPolicyDecisionEventsResponseSchema.parse(page));
+    } catch (error) {
+      const status = mapPersistenceError(error);
+
+      if (status) {
+        response.status(status).json({
+          error: error instanceof Error ? error.message : "Policy decision request failed"
         });
         return;
       }

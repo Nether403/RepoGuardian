@@ -45,8 +45,21 @@ export type RecordPolicyDecisionInput = {
 };
 
 export type ListPolicyDecisionInput = {
+  actionType?: PolicyActionType;
+  decision?: PolicyDecision;
   limit?: number;
+  page?: number;
+  pageSize?: number;
+  repositoryFullName?: string;
   workspaceId?: string | null;
+};
+
+export type ListPolicyDecisionPage = {
+  decisions: PolicyDecisionEvent[];
+  page: number;
+  pageSize: number;
+  totalDecisions: number;
+  totalPages: number;
 };
 
 function toIsoString(value: Date | string): string {
@@ -171,5 +184,72 @@ export class PolicyDecisionRepository {
     );
 
     return result.rows.map(parsePolicyDecisionEvent);
+  }
+
+  async listDecisions(input: ListPolicyDecisionInput = {}): Promise<ListPolicyDecisionPage> {
+    const workspaceId = resolveWorkspaceId(input.workspaceId);
+    const page = Math.max(input.page ?? 1, 1);
+    const pageSize = Math.min(Math.max(input.pageSize ?? input.limit ?? 25, 1), 100);
+    const offset = (page - 1) * pageSize;
+    const values: Array<string | number> = [workspaceId];
+    const whereClauses = ["workspace_id = $1"];
+
+    if (input.actionType) {
+      values.push(input.actionType);
+      whereClauses.push(`action_type = $${values.length}`);
+    }
+
+    if (input.decision) {
+      values.push(input.decision);
+      whereClauses.push(`decision = $${values.length}`);
+    }
+
+    if (input.repositoryFullName) {
+      values.push(input.repositoryFullName);
+      whereClauses.push(`repository_full_name = $${values.length}`);
+    }
+
+    const whereSql = whereClauses.join(" AND ");
+    const countResult = await this.client.query<{ total_decisions: string }>(
+      `SELECT COUNT(*)::text AS total_decisions
+      FROM policy_decision_events
+      WHERE ${whereSql}`,
+      values
+    );
+    const totalDecisions = Number.parseInt(countResult.rows[0]?.total_decisions ?? "0", 10);
+    const totalPages = totalDecisions === 0 ? 0 : Math.ceil(totalDecisions / pageSize);
+    const listValues = [...values, pageSize, offset];
+    const result = await this.client.query<PolicyDecisionEventRow>(
+      `SELECT
+        policy_decision_event_id,
+        workspace_id,
+        actor_user_id,
+        github_installation_id,
+        repository_full_name,
+        run_id,
+        plan_id,
+        job_id,
+        sweep_schedule_id,
+        action_type,
+        decision,
+        scope_type,
+        reason,
+        details,
+        created_at
+      FROM policy_decision_events
+      WHERE ${whereSql}
+      ORDER BY created_at DESC, policy_decision_event_id DESC
+      LIMIT $${values.length + 1}
+      OFFSET $${values.length + 2}`,
+      listValues
+    );
+
+    return {
+      decisions: result.rows.map(parsePolicyDecisionEvent),
+      page,
+      pageSize,
+      totalDecisions,
+      totalPages
+    };
   }
 }

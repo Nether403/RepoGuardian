@@ -360,6 +360,54 @@ describeIf("Postgres persistence integration", () => {
     });
   });
 
+  it("paginates and filters policy decisions within a workspace boundary", async () => {
+    await policyDecisionRepository.recordDecision({
+      actionType: "schedule_sweep",
+      decision: "allowed",
+      reason: "Plan-only sweep scheduling may proceed.",
+      repositoryFullName: "openai/other-repo",
+      scopeType: "workspace",
+      workspaceId: "workspace_local_default"
+    });
+    const denied = await policyDecisionRepository.recordDecision({
+      actionType: "execute_write",
+      actorUserId: "usr_local_default",
+      decision: "denied",
+      details: {
+        selectedActionCount: 2
+      },
+      reason: "Write execution requires explicit approval.",
+      repositoryFullName: "openai/openai-node",
+      scopeType: "repository",
+      workspaceId: "workspace_local_default"
+    });
+    await policyDecisionRepository.recordDecision({
+      actionType: "execute_write",
+      decision: "allowed",
+      reason: "Approved write execution may proceed.",
+      repositoryFullName: "openai/openai-node",
+      scopeType: "repository",
+      workspaceId: "workspace_local_default"
+    });
+
+    const page = await policyDecisionRepository.listDecisions({
+      actionType: "execute_write",
+      decision: "denied",
+      page: 1,
+      pageSize: 1,
+      repositoryFullName: "openai/openai-node",
+      workspaceId: "workspace_local_default"
+    });
+
+    expect(page).toEqual({
+      decisions: [denied],
+      page: 1,
+      pageSize: 1,
+      totalDecisions: 1,
+      totalPages: 1
+    });
+  });
+
   it("persists runs and enriches summaries with durable execution metadata", async () => {
     const run = createRun("integration-run");
     await runRepository.upsertRun(run);
