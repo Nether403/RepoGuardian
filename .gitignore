@@ -3,6 +3,9 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
+.env
+.env.*
+!example.env
 .repo-guardian/
 RepoRadar-main/
 VISUALGIT-main/

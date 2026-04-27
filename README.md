@@ -38,6 +38,8 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 
 Repo Guardian now requires Postgres for durable run and execution persistence.
 
+Use `example.env` as the checklist for local and deployment variables. The app reads environment variables from the running process or hosting platform; if you keep a private `.env`, load it before running API commands and never commit it.
+
 Set:
 
 ```bash
