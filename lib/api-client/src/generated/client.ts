@@ -265,7 +265,7 @@ export async function getFleetStatus(options: RepoGuardianApiRequestOptions = {}
   });
 }
 
-export async function listPolicyDecisions(query: { "page"?: string | number | boolean | readonly (string | number | boolean)[]; "pageSize"?: string | number | boolean | readonly (string | number | boolean)[]; "actionType"?: string | number | boolean | readonly (string | number | boolean)[]; "decision"?: string | number | boolean | readonly (string | number | boolean)[]; "repositoryFullName"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<ListPolicyDecisionEventsResponse> {
+export async function listPolicyDecisions(query: { "page"?: string | number | boolean | readonly (string | number | boolean)[]; "pageSize"?: string | number | boolean | readonly (string | number | boolean)[]; "actionType"?: string | number | boolean | readonly (string | number | boolean)[]; "decision"?: string | number | boolean | readonly (string | number | boolean)[]; "repositoryFullName"?: string | number | boolean | readonly (string | number | boolean)[]; "occurredAfter"?: string | number | boolean | readonly (string | number | boolean)[]; "occurredBefore"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<ListPolicyDecisionEventsResponse> {
   return requestJson<ListPolicyDecisionEventsResponse>({
     method: "GET",
     path: `/api/policy-decisions`,

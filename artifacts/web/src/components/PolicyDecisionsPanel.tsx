@@ -1,11 +1,27 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { PolicyDecisionEvent } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
 type PolicyDecisionsPanelProps = {
+  actionFilter: PolicyActionFilter;
   decisions: PolicyDecisionEvent[];
+  decisionFilter: PolicyDecisionFilter;
+  isLoading?: boolean;
+  onActionFilterChange: (actionFilter: PolicyActionFilter) => void;
+  onDecisionFilterChange: (decisionFilter: PolicyDecisionFilter) => void;
+  onOccurredAfterChange: (occurredAfter: string) => void;
+  onOccurredBeforeChange: (occurredBefore: string) => void;
+  onPageChange: (page: number) => void;
+  onRepositoryFilterChange: (repositoryFilter: string) => void;
+  occurredAfter: string;
+  occurredBefore: string;
+  page: number;
+  pageSize: number;
+  repositoryFilter: string;
+  totalDecisions: number;
+  totalPages: number;
 };
 
 type PolicyActionFilter = PolicyDecisionEvent["actionType"] | "all";
@@ -104,21 +120,41 @@ function renderPolicyDecision(decision: PolicyDecisionEvent) {
   );
 }
 
-export function PolicyDecisionsPanel({ decisions }: PolicyDecisionsPanelProps) {
-  const [actionFilter, setActionFilter] = useState<PolicyActionFilter>("all");
-  const [decisionFilter, setDecisionFilter] = useState<PolicyDecisionFilter>("all");
+export function PolicyDecisionsPanel({
+  actionFilter,
+  decisions,
+  decisionFilter,
+  isLoading = false,
+  onActionFilterChange,
+  onDecisionFilterChange,
+  onOccurredAfterChange,
+  onOccurredBeforeChange,
+  onPageChange,
+  onRepositoryFilterChange,
+  occurredAfter,
+  occurredBefore,
+  page,
+  pageSize,
+  repositoryFilter,
+  totalDecisions,
+  totalPages
+}: PolicyDecisionsPanelProps) {
   const actionOptions = useMemo(
-    () => Array.from(new Set(decisions.map((decision) => decision.actionType))).sort(),
-    [decisions]
-  );
-  const visibleDecisions = useMemo(
     () =>
-      decisions.filter(
-        (decision) =>
-          (actionFilter === "all" || decision.actionType === actionFilter) &&
-          (decisionFilter === "all" || decision.decision === decisionFilter)
-      ),
-    [actionFilter, decisionFilter, decisions]
+      [
+        "analyze_repository",
+        "schedule_sweep",
+        "generate_pr_candidates",
+        "execute_write"
+      ] as PolicyDecisionEvent["actionType"][],
+    []
+  );
+  const pageSummary = useMemo(
+    () =>
+      totalPages > 0
+        ? `Page ${page} of ${totalPages}, ${totalDecisions} policy decisions`
+        : `${totalDecisions} policy decisions`,
+    [page, totalDecisions, totalPages]
   );
 
   return (
@@ -128,8 +164,8 @@ export function PolicyDecisionsPanel({ decisions }: PolicyDecisionsPanelProps) {
       footer={
         <div className="badge-row">
           <StatusBadge
-            label={`${decisions.length} recent decisions`}
-            tone={decisions.length > 0 ? "active" : "muted"}
+            label={isLoading ? "Loading decisions" : pageSummary}
+            tone={totalDecisions > 0 ? "active" : "muted"}
           />
         </div>
       }
@@ -143,11 +179,39 @@ export function PolicyDecisionsPanel({ decisions }: PolicyDecisionsPanelProps) {
           </p>
           <div className="fleet-inline-actions">
             <label className="fleet-filter">
+              <span>Repository filter</span>
+              <input
+                aria-label="Repository filter"
+                onChange={(event) => onRepositoryFilterChange(event.target.value)}
+                placeholder="owner/repo"
+                type="text"
+                value={repositoryFilter}
+              />
+            </label>
+            <label className="fleet-filter">
+              <span>Occurred after</span>
+              <input
+                aria-label="Occurred after"
+                onChange={(event) => onOccurredAfterChange(event.target.value)}
+                type="date"
+                value={occurredAfter}
+              />
+            </label>
+            <label className="fleet-filter">
+              <span>Occurred before</span>
+              <input
+                aria-label="Occurred before"
+                onChange={(event) => onOccurredBeforeChange(event.target.value)}
+                type="date"
+                value={occurredBefore}
+              />
+            </label>
+            <label className="fleet-filter">
               <span>Decision filter</span>
               <select
                 aria-label="Decision filter"
                 onChange={(event) =>
-                  setDecisionFilter(event.target.value as PolicyDecisionFilter)
+                  onDecisionFilterChange(event.target.value as PolicyDecisionFilter)
                 }
                 value={decisionFilter}
               >
@@ -162,7 +226,7 @@ export function PolicyDecisionsPanel({ decisions }: PolicyDecisionsPanelProps) {
               <select
                 aria-label="Action filter"
                 onChange={(event) =>
-                  setActionFilter(event.target.value as PolicyActionFilter)
+                  onActionFilterChange(event.target.value as PolicyActionFilter)
                 }
                 value={actionFilter}
               >
@@ -177,21 +241,45 @@ export function PolicyDecisionsPanel({ decisions }: PolicyDecisionsPanelProps) {
           </div>
         </div>
         {decisions.length > 0 ? (
-          visibleDecisions.length > 0 ? (
-            <>
-              <p className="empty-copy">
-                Showing {visibleDecisions.length} of {decisions.length} recent policy
-                decisions.
-              </p>
-              <div className="fleet-card-list">
-                {visibleDecisions.map(renderPolicyDecision)}
-              </div>
-            </>
-          ) : (
-            <p className="empty-copy">No policy decisions match the current filters.</p>
-          )
+          <>
+            <p className="empty-copy">
+              Showing {decisions.length} of {totalDecisions} policy decisions.
+            </p>
+            <div className="fleet-card-list">
+              {decisions.map(renderPolicyDecision)}
+            </div>
+            <div className="fleet-inline-actions">
+              <button
+                className="secondary-button"
+                disabled={page <= 1 || isLoading}
+                onClick={() => onPageChange(page - 1)}
+                type="button"
+              >
+                Previous
+              </button>
+              <span className="empty-copy">
+                Page {page} of {Math.max(totalPages, 1)} · {pageSize} per page
+              </span>
+              <button
+                className="secondary-button"
+                disabled={totalPages === 0 || page >= totalPages || isLoading}
+                onClick={() => onPageChange(page + 1)}
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+          </>
         ) : (
-          <p className="empty-copy">No policy decisions have been recorded yet.</p>
+          <p className="empty-copy">
+            {actionFilter !== "all" ||
+            decisionFilter !== "all" ||
+            repositoryFilter.trim().length > 0 ||
+            occurredAfter ||
+            occurredBefore
+              ? "No policy decisions match the current filters."
+              : "No policy decisions have been recorded yet."}
+          </p>
         )}
       </div>
     </Panel>

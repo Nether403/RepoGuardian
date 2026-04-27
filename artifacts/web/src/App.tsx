@@ -13,6 +13,9 @@ import type {
   GitHubInstallation,
   GitHubInstallationRepository,
   GetAnalysisRunResponse,
+  ListPolicyDecisionEventsResponse,
+  PolicyActionType,
+  PolicyDecision,
   RepositoryActivityEvent,
   RepositoryActivityKind,
   RepositoryTimelinePage,
@@ -86,6 +89,7 @@ import {
   getTrackedRepositoryTimelineEvent,
   listAnalysisJobs,
   listExecutionPlanEvents,
+  listPolicyDecisions,
   listSweepSchedules,
   listTrackedRepositories,
   retryAnalysisJob,
@@ -116,9 +120,13 @@ type FleetInspectorSelection =
 type FleetAdminSnapshot = {
   analysisJobs: AnalysisJob[];
   fleetStatus: FleetStatusResponse;
+  policyDecisions: ListPolicyDecisionEventsResponse;
   sweepSchedules: SweepSchedule[];
   trackedRepositories: TrackedRepository[];
 };
+
+type PolicyActionFilter = PolicyActionType | "all";
+type PolicyDecisionFilter = PolicyDecision | "all";
 
 type WorkspaceAccessSnapshot = {
   authSession: AuthSession | null;
@@ -150,6 +158,7 @@ const fleetRepositoryTimelineExpansionModes = [
   ...RepositoryTimelineExpansionModeSchema.options
 ] as const;
 const fleetRepositoryActivityStorageKey = "repo-guardian-fleet-activity-query";
+const policyDecisionPageSize = 12;
 
 const defaultFleetRepositoryActivityQuery: FleetRepositoryActivityQuery = {
   activityCursor: null,
@@ -286,19 +295,38 @@ function loadFleetRepositoryActivityQuery(): FleetRepositoryActivityQuery {
 }
 
 async function loadFleetAdminSnapshot(): Promise<FleetAdminSnapshot> {
-  const [trackedRepositories, fleetStatus, analysisJobs, sweepSchedules] = await Promise.all([
+  const [
+    trackedRepositories,
+    fleetStatus,
+    analysisJobs,
+    sweepSchedules,
+    policyDecisions
+  ] = await Promise.all([
     listTrackedRepositories(),
     getFleetStatus(),
     listAnalysisJobs(),
-    listSweepSchedules()
+    listSweepSchedules(),
+    listPolicyDecisions({
+      page: 1,
+      pageSize: policyDecisionPageSize
+    })
   ]);
 
   return {
     analysisJobs,
     fleetStatus,
+    policyDecisions,
     sweepSchedules,
     trackedRepositories
   };
+}
+
+function toPolicyOccurredAfter(value: string): string | undefined {
+  return value ? `${value}T00:00:00.000Z` : undefined;
+}
+
+function toPolicyOccurredBefore(value: string): string | undefined {
+  return value ? `${value}T23:59:59.999Z` : undefined;
 }
 
 function createFallbackTrackedRepositoryStatus(
@@ -411,6 +439,22 @@ function App() {
   const [fleetStatus, setFleetStatus] = useState<FleetStatusResponse | null>(null);
   const [fleetErrorMessage, setFleetErrorMessage] = useState<string | null>(null);
   const [isFleetLoading, setIsFleetLoading] = useState(false);
+  const [isPolicyDecisionsLoading, setIsPolicyDecisionsLoading] = useState(false);
+  const [policyActionFilter, setPolicyActionFilter] =
+    useState<PolicyActionFilter>("all");
+  const [policyDecisionFilter, setPolicyDecisionFilter] =
+    useState<PolicyDecisionFilter>("all");
+  const [policyRepositoryFilter, setPolicyRepositoryFilter] = useState("");
+  const [policyOccurredAfter, setPolicyOccurredAfter] = useState("");
+  const [policyOccurredBefore, setPolicyOccurredBefore] = useState("");
+  const [policyDecisionsPage, setPolicyDecisionsPage] =
+    useState<ListPolicyDecisionEventsResponse>({
+      decisions: [],
+      page: 1,
+      pageSize: policyDecisionPageSize,
+      totalDecisions: 0,
+      totalPages: 0
+    });
   const [isCreatingSweepSchedule, setIsCreatingSweepSchedule] = useState(false);
   const [isCreatingTrackedRepository, setIsCreatingTrackedRepository] =
     useState(false);
@@ -587,6 +631,7 @@ function App() {
   function applyFleetAdminSnapshot(snapshot: FleetAdminSnapshot) {
     setAnalysisJobs(snapshot.analysisJobs);
     setFleetStatus(snapshot.fleetStatus);
+    setPolicyDecisionsPage(snapshot.policyDecisions);
     setSweepSchedules(snapshot.sweepSchedules);
     setTrackedRepositories(snapshot.trackedRepositories);
   }
@@ -916,6 +961,18 @@ function App() {
       setGitHubInstallations([]);
       setInstallationRepositories([]);
       setFleetStatus(null);
+      setPolicyDecisionsPage({
+        decisions: [],
+        page: 1,
+        pageSize: policyDecisionPageSize,
+        totalDecisions: 0,
+        totalPages: 0
+      });
+      setPolicyActionFilter("all");
+      setPolicyDecisionFilter("all");
+      setPolicyRepositoryFilter("");
+      setPolicyOccurredAfter("");
+      setPolicyOccurredBefore("");
       setTrackedRepositories([]);
       setAnalysisJobs([]);
       setSweepSchedules([]);
@@ -933,6 +990,18 @@ function App() {
     setStoredActiveWorkspaceId(workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setFleetStatus(null);
+    setPolicyDecisionsPage({
+      decisions: [],
+      page: 1,
+      pageSize: policyDecisionPageSize,
+      totalDecisions: 0,
+      totalPages: 0
+    });
+    setPolicyActionFilter("all");
+    setPolicyDecisionFilter("all");
+    setPolicyRepositoryFilter("");
+    setPolicyOccurredAfter("");
+    setPolicyOccurredBefore("");
     setTrackedRepositories([]);
     setAnalysisJobs([]);
     setSweepSchedules([]);
@@ -1006,6 +1075,92 @@ function App() {
     } finally {
       setIsFleetLoading(false);
     }
+  }
+
+  async function loadPolicyDecisionHistory(input: {
+    actionFilter?: PolicyActionFilter;
+    decisionFilter?: PolicyDecisionFilter;
+    occurredAfter?: string;
+    occurredBefore?: string;
+    page?: number;
+    repositoryFilter?: string;
+  }) {
+    const nextActionFilter = input.actionFilter ?? policyActionFilter;
+    const nextDecisionFilter = input.decisionFilter ?? policyDecisionFilter;
+    const nextRepositoryFilter = input.repositoryFilter ?? policyRepositoryFilter;
+    const nextOccurredAfter = input.occurredAfter ?? policyOccurredAfter;
+    const nextOccurredBefore = input.occurredBefore ?? policyOccurredBefore;
+    const trimmedRepositoryFilter = nextRepositoryFilter.trim();
+
+    setFleetErrorMessage(null);
+    setIsPolicyDecisionsLoading(true);
+
+    try {
+      setPolicyDecisionsPage(
+        await listPolicyDecisions({
+          actionType: nextActionFilter === "all" ? undefined : nextActionFilter,
+          decision: nextDecisionFilter === "all" ? undefined : nextDecisionFilter,
+          repositoryFullName:
+            trimmedRepositoryFilter.length > 0 ? trimmedRepositoryFilter : undefined,
+          occurredAfter: toPolicyOccurredAfter(nextOccurredAfter),
+          occurredBefore: toPolicyOccurredBefore(nextOccurredBefore),
+          page: input.page ?? 1,
+          pageSize: policyDecisionPageSize
+        })
+      );
+    } catch (error) {
+      setFleetErrorMessage(
+        error instanceof FleetClientError
+          ? error.message
+          : "Repo Guardian could not load policy decisions."
+      );
+    } finally {
+      setIsPolicyDecisionsLoading(false);
+    }
+  }
+
+  function handlePolicyActionFilterChange(actionFilter: PolicyActionFilter) {
+    setPolicyActionFilter(actionFilter);
+    void loadPolicyDecisionHistory({
+      actionFilter,
+      page: 1
+    });
+  }
+
+  function handlePolicyDecisionFilterChange(decisionFilter: PolicyDecisionFilter) {
+    setPolicyDecisionFilter(decisionFilter);
+    void loadPolicyDecisionHistory({
+      decisionFilter,
+      page: 1
+    });
+  }
+
+  function handlePolicyRepositoryFilterChange(repositoryFilter: string) {
+    setPolicyRepositoryFilter(repositoryFilter);
+    void loadPolicyDecisionHistory({
+      page: 1,
+      repositoryFilter
+    });
+  }
+
+  function handlePolicyOccurredAfterChange(occurredAfter: string) {
+    setPolicyOccurredAfter(occurredAfter);
+    void loadPolicyDecisionHistory({
+      occurredAfter,
+      page: 1
+    });
+  }
+
+  function handlePolicyOccurredBeforeChange(occurredBefore: string) {
+    setPolicyOccurredBefore(occurredBefore);
+    void loadPolicyDecisionHistory({
+      occurredBefore,
+      page: 1
+    });
+  }
+
+  function handlePolicyDecisionPageChange(page: number) {
+    void loadPolicyDecisionHistory({ page });
   }
 
   async function handleCreateTrackedRepository(input: {
@@ -1740,7 +1895,25 @@ function App() {
             isLoading={isFleetLoading}
             onRefresh={handleRefreshFleetAdmin}
           />
-          <PolicyDecisionsPanel decisions={fleetStatus?.policyDecisions ?? []} />
+          <PolicyDecisionsPanel
+            actionFilter={policyActionFilter}
+            decisions={policyDecisionsPage.decisions}
+            decisionFilter={policyDecisionFilter}
+            isLoading={isPolicyDecisionsLoading}
+            onActionFilterChange={handlePolicyActionFilterChange}
+            onDecisionFilterChange={handlePolicyDecisionFilterChange}
+            onOccurredAfterChange={handlePolicyOccurredAfterChange}
+            onOccurredBeforeChange={handlePolicyOccurredBeforeChange}
+            onPageChange={handlePolicyDecisionPageChange}
+            onRepositoryFilterChange={handlePolicyRepositoryFilterChange}
+            occurredAfter={policyOccurredAfter}
+            occurredBefore={policyOccurredBefore}
+            page={policyDecisionsPage.page}
+            pageSize={policyDecisionsPage.pageSize}
+            repositoryFilter={policyRepositoryFilter}
+            totalDecisions={policyDecisionsPage.totalDecisions}
+            totalPages={policyDecisionsPage.totalPages}
+          />
           <TrackedRepositoriesPanel
             availableRepositories={availableInstallationRepositories}
             canUseRepoInputFallback={canUseRepoInputFallback}

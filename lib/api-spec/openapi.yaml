@@ -884,6 +884,18 @@ paths:
           schema:
             type: string
             minLength: 3
+        - name: occurredAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: occurredBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Paginated policy-decision audit history.

@@ -157,6 +157,8 @@ const trackedRepositoryHistoryQuerySchema = z.object({
 const policyDecisionQuerySchema = z.object({
   actionType: PolicyActionTypeSchema.optional(),
   decision: PolicyDecisionSchema.optional(),
+  occurredAfter: z.string().datetime().optional(),
+  occurredBefore: z.string().datetime().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   repositoryFullName: z.string().trim().min(3).optional()
@@ -774,6 +776,8 @@ export function createFleetRouter(input: {
       const page = await policyDecisionRepository.listDecisions({
         actionType: parsedQuery.data.actionType,
         decision: parsedQuery.data.decision,
+        occurredAfter: parsedQuery.data.occurredAfter,
+        occurredBefore: parsedQuery.data.occurredBefore,
         page: parsedQuery.data.page,
         pageSize: parsedQuery.data.pageSize,
         repositoryFullName: parsedQuery.data.repositoryFullName,

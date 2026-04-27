@@ -22,6 +22,7 @@ import {
   GetAnalysisRunResponseSchema,
   ListAnalysisJobsResponseSchema,
   ListGitHubInstallationsResponseSchema,
+  ListPolicyDecisionEventsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   SweepScheduleSchema,
@@ -98,6 +99,20 @@ function mockAuthenticatedFetch(inner: (url: string, init?: RequestInit) => Prom
         }, true, 201);
       }
       return createJsonResponse({ runs: [] });
+    }
+
+    if (url.startsWith("/api/policy-decisions")) {
+      const policyDecisions = createFleetStatusFixture().policyDecisions;
+
+      return createJsonResponse(
+        ListPolicyDecisionEventsResponseSchema.parse({
+          decisions: policyDecisions,
+          page: 1,
+          pageSize: 12,
+          totalDecisions: policyDecisions.length,
+          totalPages: 1
+        })
+      );
     }
 
     return testResponse;
@@ -3306,6 +3321,7 @@ describe("App", () => {
   it("filters policy decisions and expands policy decision details in fleet admin", async () => {
     const user = userEvent.setup();
     const fleetStatus = createFleetStatusFixture();
+    const policyDecisionRequests: string[] = [];
 
     vi.stubGlobal(
       "fetch",
@@ -3319,7 +3335,39 @@ describe("App", () => {
         }
 
         if (url === "/api/fleet/status") {
-          return createJsonResponse(fleetStatus);
+          return createJsonResponse({
+            ...fleetStatus,
+            policyDecisions: []
+          });
+        }
+
+        if (url.startsWith("/api/policy-decisions")) {
+          policyDecisionRequests.push(url);
+          const query = new URL(`http://repo-guardian.test${url}`).searchParams;
+          const decision = query.get("decision");
+          const actionType = query.get("actionType");
+          const repositoryFullName = query.get("repositoryFullName");
+          const occurredAfter = query.get("occurredAfter");
+          const occurredBefore = query.get("occurredBefore");
+          const decisions = fleetStatus.policyDecisions.filter(
+            (policyDecision) =>
+              (!decision || policyDecision.decision === decision) &&
+              (!actionType || policyDecision.actionType === actionType) &&
+              (!repositoryFullName ||
+                policyDecision.repositoryFullName === repositoryFullName) &&
+              (!occurredAfter || policyDecision.createdAt >= occurredAfter) &&
+              (!occurredBefore || policyDecision.createdAt <= occurredBefore)
+          );
+
+          return createJsonResponse(
+            ListPolicyDecisionEventsResponseSchema.parse({
+              decisions,
+              page: 1,
+              pageSize: 12,
+              totalDecisions: decisions.length,
+              totalPages: decisions.length > 0 ? 1 : 0
+            })
+          );
         }
 
         if (url === "/api/analyze/jobs") {
@@ -3347,6 +3395,7 @@ describe("App", () => {
     await openFleetAdmin(user);
 
     const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
+    expect(policyDecisionRequests[0]).toBe("/api/policy-decisions?page=1&pageSize=12");
     expect(
       policyDecisionsPanel.getByText("Approved write execution may proceed.")
     ).toBeInTheDocument();
@@ -3356,7 +3405,45 @@ describe("App", () => {
       )
     ).toBeInTheDocument();
 
+    await user.type(
+      policyDecisionsPanel.getByLabelText("Repository filter"),
+      "openai/openai-node"
+    );
+    await waitFor(() =>
+      expect(policyDecisionRequests).toContain(
+        "/api/policy-decisions?page=1&pageSize=12&repositoryFullName=openai%2Fopenai-node"
+      )
+    );
+    expect(
+      policyDecisionsPanel.queryByText(
+        "Autonomous hourly sweep scheduling is outside the current policy."
+      )
+    ).not.toBeInTheDocument();
+
+    await user.type(policyDecisionsPanel.getByLabelText("Occurred after"), "2026-04-12");
+    await waitFor(() =>
+      expect(policyDecisionRequests).toContain(
+        "/api/policy-decisions?page=1&pageSize=12&repositoryFullName=openai%2Fopenai-node&occurredAfter=2026-04-12T00%3A00%3A00.000Z"
+      )
+    );
+
+    await user.type(policyDecisionsPanel.getByLabelText("Occurred before"), "2026-04-13");
+    await waitFor(() =>
+      expect(policyDecisionRequests).toContain(
+        "/api/policy-decisions?page=1&pageSize=12&repositoryFullName=openai%2Fopenai-node&occurredAfter=2026-04-12T00%3A00%3A00.000Z&occurredBefore=2026-04-13T23%3A59%3A59.999Z"
+      )
+    );
+
+    await user.clear(policyDecisionsPanel.getByLabelText("Repository filter"));
+    await user.clear(policyDecisionsPanel.getByLabelText("Occurred after"));
+    await user.clear(policyDecisionsPanel.getByLabelText("Occurred before"));
+
     await user.selectOptions(policyDecisionsPanel.getByLabelText("Decision filter"), "denied");
+    await waitFor(() =>
+      expect(policyDecisionRequests).toContain(
+        "/api/policy-decisions?page=1&pageSize=12&decision=denied"
+      )
+    );
     expect(
       policyDecisionsPanel.queryByText("Approved write execution may proceed.")
     ).not.toBeInTheDocument();
@@ -3367,6 +3454,11 @@ describe("App", () => {
     ).toBeInTheDocument();
 
     await user.selectOptions(policyDecisionsPanel.getByLabelText("Action filter"), "schedule_sweep");
+    await waitFor(() =>
+      expect(policyDecisionRequests).toContain(
+        "/api/policy-decisions?page=1&pageSize=12&actionType=schedule_sweep&decision=denied"
+      )
+    );
     await user.click(policyDecisionsPanel.getByText("Decision details"));
 
     expect(policyDecisionsPanel.getByText(/Event\s+policy_decision_two/)).toBeInTheDocument();
@@ -3375,7 +3467,7 @@ describe("App", () => {
       policyDecisionsPanel.getByText(/Workspace\s+workspace_local_default/)
     ).toBeInTheDocument();
     expect(policyDecisionsPanel.getByText(/selectionStrategy/)).toBeInTheDocument();
-  });
+  }, 30000);
 
   it("registers a tracked repository and enqueues manual analysis from fleet admin", async () => {
     const user = userEvent.setup();
@@ -3409,6 +3501,20 @@ describe("App", () => {
 
       if (url === "/api/fleet/status") {
         return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url.startsWith("/api/policy-decisions")) {
+        const policyDecisions = createFleetStatusFixture().policyDecisions;
+
+        return createJsonResponse(
+          ListPolicyDecisionEventsResponseSchema.parse({
+            decisions: policyDecisions,
+            page: 1,
+            pageSize: 12,
+            totalDecisions: policyDecisions.length,
+            totalPages: 1
+          })
+        );
       }
 
       if (url === "/api/analyze/jobs") {
@@ -3545,6 +3651,20 @@ describe("App", () => {
 
       if (url === "/api/fleet/status") {
         return createJsonResponse(createFleetStatusFixture());
+      }
+
+      if (url.startsWith("/api/policy-decisions")) {
+        const policyDecisions = createFleetStatusFixture().policyDecisions;
+
+        return createJsonResponse(
+          ListPolicyDecisionEventsResponseSchema.parse({
+            decisions: policyDecisions,
+            page: 1,
+            pageSize: 12,
+            totalDecisions: policyDecisions.length,
+            totalPages: 1
+          })
+        );
       }
 
       if (url === "/api/analyze/jobs") {

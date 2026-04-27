@@ -48,6 +48,8 @@ export type ListPolicyDecisionInput = {
   actionType?: PolicyActionType;
   decision?: PolicyDecision;
   limit?: number;
+  occurredAfter?: string;
+  occurredBefore?: string;
   page?: number;
   pageSize?: number;
   repositoryFullName?: string;
@@ -207,6 +209,16 @@ export class PolicyDecisionRepository {
     if (input.repositoryFullName) {
       values.push(input.repositoryFullName);
       whereClauses.push(`repository_full_name = $${values.length}`);
+    }
+
+    if (input.occurredAfter) {
+      values.push(input.occurredAfter);
+      whereClauses.push(`created_at >= $${values.length}`);
+    }
+
+    if (input.occurredBefore) {
+      values.push(input.occurredBefore);
+      whereClauses.push(`created_at <= $${values.length}`);
     }
 
     const whereSql = whereClauses.join(" AND ");

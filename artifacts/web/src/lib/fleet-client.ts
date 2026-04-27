@@ -11,6 +11,7 @@ import {
   FleetStatusResponseSchema,
   GetAnalysisJobResponseSchema,
   ListAnalysisJobsResponseSchema,
+  ListPolicyDecisionEventsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
   RepositoryActivityEventSchema,
@@ -29,6 +30,9 @@ import {
   type ExecutionPlanDetailResponse,
   type ExecutionPlanEventsResponse,
   type FleetStatusResponse,
+  type ListPolicyDecisionEventsResponse,
+  type PolicyActionType,
+  type PolicyDecision,
   type SweepSchedule,
   type TrackedRepositoryHistoryResponse,
   type TrackedRepository
@@ -47,6 +51,7 @@ import {
   getTrackedRepositoryTimelineEvent as requestGetTrackedRepositoryTimelineEvent,
   listAnalysisJobs as requestListAnalysisJobs,
   listExecutionPlanEvents as requestListExecutionPlanEvents,
+  listPolicyDecisions as requestListPolicyDecisions,
   listSweepSchedules as requestListSweepSchedules,
   listTrackedRepositories as requestListTrackedRepositories,
   RepoGuardianApiError,
@@ -199,6 +204,34 @@ export async function getFleetStatus(): Promise<FleetStatusResponse> {
     return FleetStatusResponseSchema.parse(response);
   } catch (error) {
     throw toFleetClientError(error, "Repo Guardian could not load fleet status");
+  }
+}
+
+export async function listPolicyDecisions(input: {
+  actionType?: PolicyActionType;
+  decision?: PolicyDecision;
+  occurredAfter?: string;
+  occurredBefore?: string;
+  page?: number;
+  pageSize?: number;
+  repositoryFullName?: string;
+} = {}): Promise<ListPolicyDecisionEventsResponse> {
+  try {
+    const response = await requestListPolicyDecisions(
+      {
+        page: input.page ?? 1,
+        pageSize: input.pageSize ?? 12,
+        actionType: input.actionType,
+        decision: input.decision,
+        repositoryFullName: input.repositoryFullName,
+        occurredAfter: input.occurredAfter,
+        occurredBefore: input.occurredBefore
+      },
+      getApiOptions()
+    );
+    return ListPolicyDecisionEventsResponseSchema.parse(response);
+  } catch (error) {
+    throw toFleetClientError(error, "Repo Guardian could not load policy decisions");
   }
 }
 

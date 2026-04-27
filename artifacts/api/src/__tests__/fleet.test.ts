@@ -713,7 +713,7 @@ describe("fleet routes", () => {
 
     const response = await request(app)
       .get(
-        "/policy-decisions?page=2&pageSize=5&actionType=execute_write&decision=denied&repositoryFullName=openai%2Fopenai-node"
+        "/policy-decisions?page=2&pageSize=5&actionType=execute_write&decision=denied&repositoryFullName=openai%2Fopenai-node&occurredAfter=2026-04-12T00%3A00%3A00.000Z&occurredBefore=2026-04-13T00%3A00%3A00.000Z"
       )
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
@@ -728,6 +728,8 @@ describe("fleet routes", () => {
     expect(policyDecisionRepository.listDecisions).toHaveBeenCalledWith({
       actionType: "execute_write",
       decision: "denied",
+      occurredAfter: "2026-04-12T00:00:00.000Z",
+      occurredBefore: "2026-04-13T00:00:00.000Z",
       page: 2,
       pageSize: 5,
       repositoryFullName: "openai/openai-node",
@@ -758,7 +760,7 @@ describe("fleet routes", () => {
     });
 
     const response = await request(app)
-      .get("/policy-decisions?page=0")
+      .get("/policy-decisions?occurredAfter=not-a-date")
       .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
 
     expect(response.status).toBe(400);
