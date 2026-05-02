@@ -33,7 +33,7 @@ function ExecutionDiffFileView({ file }: { file: DiffPreviewFile }) {
           {isTruncated ? " (truncated)" : ""}
         </p>
         <div className="execution-diff-toggle" role="group" aria-label="Diff view mode">
-          <button
+          <Button
             aria-pressed={mode === "unified"}
             className={
               mode === "unified"
@@ -41,11 +41,11 @@ function ExecutionDiffFileView({ file }: { file: DiffPreviewFile }) {
                 : "execution-diff-toggle-button"
             }
             onClick={() => setMode("unified")}
-            type="button"
+            variant="unstyled"
           >
             Unified
-          </button>
-          <button
+          </Button>
+          <Button
             aria-pressed={mode === "before-after"}
             className={
               mode === "before-after"
@@ -53,10 +53,10 @@ function ExecutionDiffFileView({ file }: { file: DiffPreviewFile }) {
                 : "execution-diff-toggle-button"
             }
             onClick={() => setMode("before-after")}
-            type="button"
+            variant="unstyled"
           >
             Before / after
-          </button>
+          </Button>
         </div>
       </div>
       {mode === "unified" ? (

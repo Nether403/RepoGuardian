@@ -1,5 +1,6 @@
 export { Icon, type IconName } from "./Icon";
 export { Button, type ButtonProps } from "./Button";
+export { LinkButton, type LinkButtonProps } from "./LinkButton";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export {

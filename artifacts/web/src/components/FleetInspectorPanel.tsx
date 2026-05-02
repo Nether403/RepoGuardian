@@ -23,7 +23,7 @@ import {
 } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, LinkButton } from "./ui";
 
 type InspectorSelection =
   | {
@@ -872,14 +872,13 @@ export function FleetInspectorPanel({
                               </Button>
                             ) : null}
                             {expandedActivity.pullRequestUrl ? (
-                              <a
-                                className="secondary-button fleet-link-button"
+                              <LinkButton
+                                className="fleet-link-button"
                                 href={expandedActivity.pullRequestUrl}
-                                rel="noreferrer"
-                                target="_blank"
+                                external
                               >
                                 Open GitHub PR
-                              </a>
+                              </LinkButton>
                             ) : null}
                           </div>
                         </div>
@@ -1072,14 +1071,13 @@ export function FleetInspectorPanel({
                             Open plan
                           </Button>
                         ) : null}
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={pullRequest.pullRequestUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open GitHub PR
-                        </a>
+                        </LinkButton>
                       </div>
                     </article>
                   ))}
@@ -1224,53 +1222,51 @@ export function FleetInspectorPanel({
                     action.linkedIssueCandidateIds.length > 0 ? (
                       <div className="trace-chip-row">
                         {action.linkedPRCandidateIds.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-pr-candidates"
                           >
                             Linked PR candidates
-                          </a>
+                          </LinkButton>
                         ) : null}
                         {action.linkedIssueCandidateIds.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-issue-candidates"
                           >
                             Linked issue candidates
-                          </a>
+                          </LinkButton>
                         ) : null}
                         {(action.linkedPRCandidateIds.length > 0 ||
                           action.linkedIssueCandidateIds.length > 0) &&
                         planTraceability.findings.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-findings"
                           >
                             Originating findings
-                          </a>
+                          </LinkButton>
                         ) : null}
                       </div>
                     ) : null}
                     <div className="fleet-inline-actions">
                       {action.issueUrl ? (
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={action.issueUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open issue
-                        </a>
+                        </LinkButton>
                       ) : null}
                       {action.pullRequestUrl ? (
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={action.pullRequestUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open PR
-                        </a>
+                        </LinkButton>
                       ) : null}
                     </div>
                   </article>
