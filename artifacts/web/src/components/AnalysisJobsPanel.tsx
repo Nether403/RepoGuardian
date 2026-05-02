@@ -12,6 +12,7 @@ import {
   dedupeQueueNotifications
 } from "./queue-activity";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type AnalysisJobsPanelProps = {
   errorMessage: string | null;
@@ -103,14 +104,13 @@ export function AnalysisJobsPanel({
           <div className="queue-activity-header">
             <p className="subsection-label">Live activity</p>
             {visibleNotifications.length > 0 && onClearNotifications ? (
-              <button
-                className="secondary-button"
+              <Button
                 data-testid="queue-activity-clear"
+                icon="close"
                 onClick={onClearNotifications}
-                type="button"
               >
                 Clear activity
-              </button>
+              </Button>
             ) : null}
           </div>
           {visibleNotifications.length > 0 ? (
@@ -150,9 +150,10 @@ export function AnalysisJobsPanel({
                       </p>
                     ) : null}
                     <div className="fleet-inline-actions">
-                      <button
-                        className="secondary-button"
+                      <Button
                         data-testid="queue-activity-open-plan"
+                        icon="arrow-right"
+                        iconPosition="trailing"
                         onClick={() => {
                           onDismissNotification?.(
                             notification.planId,
@@ -160,24 +161,22 @@ export function AnalysisJobsPanel({
                           );
                           onOpenPlanDetails(notification.planId);
                         }}
-                        type="button"
                       >
                         Open plan
-                      </button>
+                      </Button>
                       {onDismissNotification ? (
-                        <button
-                          className="secondary-button"
+                        <Button
                           data-testid="queue-activity-dismiss"
+                          icon="x"
                           onClick={() =>
                             onDismissNotification(
                               notification.planId,
                               notification.status
                             )
                           }
-                          type="button"
                         >
                           Dismiss
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </li>
@@ -207,14 +206,14 @@ export function AnalysisJobsPanel({
               <option value="cancelled">Cancelled</option>
             </select>
           </label>
-          <button
-            className="secondary-button"
+          <Button
             disabled={isLoading}
+            icon={isLoading ? undefined : "refresh"}
+            loading={isLoading}
             onClick={onRefresh}
-            type="button"
           >
             {isLoading ? "Refreshing jobs..." : "Refresh jobs"}
-          </button>
+          </Button>
         </div>
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
@@ -259,50 +258,48 @@ export function AnalysisJobsPanel({
                   <p className="form-message form-message-error">{job.errorMessage}</p>
                 ) : null}
                 <div className="fleet-inline-actions">
-                  <button
-                    className="secondary-button"
+                  <Button
+                    icon="search"
                     onClick={() => onOpenJobDetails(job.jobId)}
-                    type="button"
                   >
                     View details
-                  </button>
+                  </Button>
                   {job.runId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenRunDetails(job.runId!)}
-                      type="button"
                     >
                       Open run
-                    </button>
+                    </Button>
                   ) : null}
                   {job.planId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenPlanDetails(job.planId!)}
-                      type="button"
                     >
                       Open plan
-                    </button>
+                    </Button>
                   ) : null}
                   {job.status === "queued" ? (
-                    <button
-                      className="secondary-button"
+                    <Button
                       disabled={pendingJobId === job.jobId}
+                      icon="x"
                       onClick={() => onCancelJob(job.jobId)}
-                      type="button"
                     >
                       {pendingJobId === job.jobId ? "Cancelling..." : "Cancel"}
-                    </button>
+                    </Button>
                   ) : null}
                   {job.status === "failed" || job.status === "cancelled" ? (
-                    <button
-                      className="secondary-button"
+                    <Button
                       disabled={pendingJobId === job.jobId}
+                      icon={pendingJobId === job.jobId ? undefined : "refresh"}
+                      loading={pendingJobId === job.jobId}
                       onClick={() => onRetryJob(job.jobId)}
-                      type="button"
                     >
                       {pendingJobId === job.jobId ? "Retrying..." : "Retry"}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </article>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 import type { DiffPreviewFile, ExecutionPlanResponse } from "@repo-guardian/shared-types";
 
 export type ExecutionValidationFailure = {
@@ -254,17 +255,19 @@ export function ExecutionPlannerPanel({
               </>
             ) : null}
             {onRegeneratePlanFromValidationFailure ? (
-              <button
-                className="submit-button execution-submit-button"
+              <Button
+                className="execution-submit-button"
                 data-testid="execution-validation-regenerate"
                 disabled={isSubmittingPlan}
+                icon={isSubmittingPlan ? undefined : "refresh"}
+                loading={isSubmittingPlan}
                 onClick={() =>
                   onRegeneratePlanFromValidationFailure(validationFailure)
                 }
-                type="button"
+                variant="primary"
               >
                 {isSubmittingPlan ? "Regenerating plan..." : "Regenerate plan"}
-              </button>
+              </Button>
             ) : null}
           </div>
         ) : null}
@@ -276,28 +279,32 @@ export function ExecutionPlannerPanel({
         ) : null}
 
         <div className="fleet-inline-actions">
-          <button
-            className="submit-button execution-submit-button"
+          <Button
+            className="execution-submit-button"
             disabled={isPlanDisabled}
+            icon={isSubmittingPlan ? undefined : "spark"}
+            loading={isSubmittingPlan}
             onClick={onRequestPlan}
-            type="button"
+            variant="primary"
           >
             {isSubmittingPlan
               ? "Generating plan..."
               : executionPlan
                 ? "Regenerate plan"
                 : "Generate plan"}
-          </button>
+          </Button>
 
           {executionPlan ? (
-            <button
-              className="submit-button execution-submit-button"
+            <Button
+              className="execution-submit-button"
               disabled={isExecuteDisabled}
+              icon={isSubmittingExecute ? undefined : "play"}
+              loading={isSubmittingExecute}
               onClick={onRequestExecute}
-              type="button"
+              variant="primary"
             >
               {isSubmittingExecute ? "Executing..." : "Execute approved actions"}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

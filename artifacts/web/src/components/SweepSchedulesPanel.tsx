@@ -3,6 +3,7 @@ import type { SweepSchedule } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type SweepSchedulesPanelProps = {
   errorMessage: string | null;
@@ -58,21 +59,23 @@ export function SweepSchedulesPanel({
             />
           </label>
           <div className="fleet-form-actions">
-            <button
-              className="submit-button"
+            <Button
               disabled={isCreating}
+              icon={isCreating ? undefined : "refresh"}
+              loading={isCreating}
               type="submit"
+              variant="primary"
             >
               {isCreating ? "Creating..." : "Create weekly sweep"}
-            </button>
-            <button
-              className="secondary-button"
+            </Button>
+            <Button
               disabled={isLoading}
+              icon={isLoading ? undefined : "refresh"}
+              loading={isLoading}
               onClick={onRefresh}
-              type="button"
             >
               {isLoading ? "Refreshing..." : "Refresh schedules"}
-            </button>
+            </Button>
           </div>
         </form>
         {errorMessage ? (
@@ -108,16 +111,18 @@ export function SweepSchedulesPanel({
                     strategy {schedule.selectionStrategy.replace(/_/gu, " ")}
                   </span>
                 </div>
-                <button
-                  className="secondary-button"
+                <Button
                   disabled={pendingScheduleId === schedule.scheduleId}
+                  icon={
+                    pendingScheduleId === schedule.scheduleId ? undefined : "play"
+                  }
+                  loading={pendingScheduleId === schedule.scheduleId}
                   onClick={() => onTriggerSchedule(schedule.scheduleId)}
-                  type="button"
                 >
                   {pendingScheduleId === schedule.scheduleId
                     ? "Triggering..."
                     : "Trigger now"}
-                </button>
+                </Button>
               </article>
             ))}
           </div>

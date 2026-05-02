@@ -295,11 +295,18 @@ p {
 }
 
 .eyebrow::before,
-.panel-eyebrow::before {
+.panel-eyebrow:not(:has(svg))::before {
   content: "";
   width: 1.4rem;
   height: 1px;
   background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+.panel-eyebrow svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke: var(--accent);
+  flex-shrink: 0;
 }
 
 .field-label,
@@ -440,6 +447,23 @@ p {
 .panel-header {
   display: grid;
   gap: var(--space-2);
+}
+
+.panel-header-text {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.panel-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.panel-header:has(.panel-header-actions) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
 }
 
 .panel h2 {
@@ -2399,4 +2423,169 @@ p {
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   UI primitives — Button (ghost variant + spinner)
+   ────────────────────────────────────────────────────────────── */
+.ghost-button {
+  min-height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  background: transparent;
+  color: var(--text-strong);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-base) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out),
+    color var(--motion-base) var(--ease-out);
+}
+
+.ghost-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border);
+}
+
+.ghost-button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.button-spinner {
+  width: 1rem;
+  height: 1rem;
+  animation: button-spin 900ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   UI primitives — IconButton (compact, label via aria-label)
+   ────────────────────────────────────────────────────────────── */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    background var(--motion-base) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out),
+    color var(--motion-base) var(--ease-out);
+}
+
+.icon-button svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+}
+
+.icon-button-sm {
+  width: 1.85rem;
+  height: 1.85rem;
+}
+
+.icon-button-sm svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.icon-button-ghost:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.icon-button-subtle {
+  background: var(--surface-3);
+  border-color: var(--border-subtle);
+  color: var(--text-strong);
+}
+
+.icon-button-subtle:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.icon-button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   UI primitives — Badge (icon + text wrapper)
+   ────────────────────────────────────────────────────────────── */
+.status-badge-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   UI primitives — EmptyState
+   ────────────────────────────────────────────────────────────── */
+.empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent);
+}
+
+.empty-state-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.empty-state-body {
+  color: var(--text-muted);
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }

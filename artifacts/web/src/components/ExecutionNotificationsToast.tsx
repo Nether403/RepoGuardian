@@ -2,7 +2,7 @@ import type {
   ExecutionPlanNotification,
   ExecutionPlanNotificationType
 } from "../lib/notifications-client";
-import { Icon, type IconName } from "./ui";
+import { Button, Icon, IconButton, type IconName } from "./ui";
 
 const STATUS_LABEL: Record<ExecutionPlanNotificationType, string> = {
   "plan.created": "New execution plan ready for review",
@@ -71,14 +71,13 @@ export function ExecutionNotificationsToast({
               <Icon name={STATUS_ICON[notification.status]} />
               {STATUS_LABEL[notification.status]}
             </strong>
-            <button
-              aria-label="Dismiss notification"
+            <IconButton
               className="execution-toast-dismiss"
+              icon="x"
+              label="Dismiss notification"
               onClick={() => onDismiss(notification.planId, notification.status)}
-              type="button"
-            >
-              <Icon name="x" />
-            </button>
+              size="sm"
+            />
           </header>
           <div className="execution-toast-meta">
             <code>{notification.repositoryFullName}</code>
@@ -97,15 +96,16 @@ export function ExecutionNotificationsToast({
           ) : null}
           {onOpenPlan ? (
             <div className="execution-toast-actions">
-              <button
+              <Button
                 className="execution-toast-open"
                 data-testid="execution-notification-open-plan"
+                icon="arrow-right"
+                iconPosition="trailing"
                 onClick={() => onOpenPlan(notification.planId)}
-                type="button"
+                variant="ghost"
               >
                 Open plan
-                <Icon name="arrow-right" />
-              </button>
+              </Button>
             </div>
           ) : null}
         </article>

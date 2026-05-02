@@ -2,6 +2,7 @@ import type { AuthSession, GitHubInstallation, GitHubInstallationRepository } fr
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type WorkspaceAccessPanelProps = {
   authErrorMessage: string | null;
@@ -90,26 +91,24 @@ export function WorkspaceAccessPanel({
             synced installation visibility.
           </p>
           <div className="fleet-inline-actions">
-            <button
-              className="secondary-button"
+            <Button
               disabled={isSessionLoading || isInstallationsLoading}
+              icon={
+                isSessionLoading || isInstallationsLoading ? undefined : "refresh"
+              }
+              loading={isSessionLoading || isInstallationsLoading}
               onClick={onRefresh}
-              type="button"
             >
               {isSessionLoading || isInstallationsLoading ? "Refreshing..." : "Refresh access"}
-            </button>
+            </Button>
             {authSession ? (
-              <button
-                className="secondary-button"
-                onClick={onLogout}
-                type="button"
-              >
+              <Button icon="x" onClick={onLogout}>
                 {authSession.authMode === "session" ? "Sign out" : "Leave local mode"}
-              </button>
+              </Button>
             ) : (
-              <button className="submit-button" onClick={onSignIn} type="button">
+              <Button icon="github" onClick={onSignIn} variant="primary">
                 Sign in with GitHub
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -185,14 +184,18 @@ export function WorkspaceAccessPanel({
                       {formatTimestamp(installation.installedAt)}.
                     </p>
                     <div className="fleet-inline-actions">
-                      <button
-                        className="secondary-button"
+                      <Button
                         disabled={pendingInstallationId === installation.id || isInstallationsLoading}
+                        icon={
+                          pendingInstallationId === installation.id
+                            ? undefined
+                            : "refresh"
+                        }
+                        loading={pendingInstallationId === installation.id}
                         onClick={() => onSyncInstallation(installation.id)}
-                        type="button"
                       >
                         {pendingInstallationId === installation.id ? "Syncing..." : "Sync repositories"}
-                      </button>
+                      </Button>
                     </div>
                   </article>
                 ))}

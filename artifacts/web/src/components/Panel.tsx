@@ -1,4 +1,5 @@
 import type { PropsWithChildren, ReactNode } from "react";
+import { Card, resolveEyebrowIcon, type IconName } from "./ui";
 
 type PanelProps = PropsWithChildren<{
   title: string;
@@ -6,6 +7,7 @@ type PanelProps = PropsWithChildren<{
   footer?: ReactNode;
   className?: string;
   id?: string;
+  icon?: IconName;
 }>;
 
 export function Panel({
@@ -13,17 +15,20 @@ export function Panel({
   className,
   eyebrow,
   footer,
+  icon,
   id,
   title
 }: PanelProps) {
   return (
-    <section className={className ? `panel ${className}` : "panel"} id={id}>
-      <div className="panel-header">
-        {eyebrow ? <p className="panel-eyebrow">{eyebrow}</p> : null}
-        <h2>{title}</h2>
-      </div>
-      <div className="panel-body">{children}</div>
-      {footer ? <div className="panel-footer">{footer}</div> : null}
-    </section>
+    <Card
+      className={className}
+      eyebrow={eyebrow}
+      footer={footer}
+      icon={icon ?? resolveEyebrowIcon(eyebrow)}
+      id={id}
+      title={title}
+    >
+      {children}
+    </Card>
   );
 }
