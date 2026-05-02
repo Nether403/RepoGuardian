@@ -62,12 +62,17 @@ export function useExecutionNotifications(
   const [notifications, setNotifications] = useState<ExecutionPlanNotification[]>([]);
   const [connectionState, setConnectionState] =
     useState<UseExecutionNotificationsResult["connectionState"]>("idle");
+  // Tracks the highest notification id seen on the current workspace stream so
+  // that exponential-backoff reconnects can request a replay of any events the
+  // server buffered while the connection was down.
+  const lastEventIdRef = useRef<number | null>(null);
 
   // Clear the buffered notifications whenever the workspace changes or the
   // hook is disabled, so stale events from a previous workspace cannot remain
   // visible after the user signs out or switches contexts.
   useEffect(() => {
     setNotifications([]);
+    lastEventIdRef.current = null;
   }, [enabled, workspaceId]);
 
   useEffect(() => {
@@ -87,7 +92,18 @@ export function useExecutionNotifications(
         if (payload.workspaceId !== workspaceId) {
           return;
         }
+        if (typeof payload.id === "number" && Number.isFinite(payload.id)) {
+          lastEventIdRef.current = payload.id;
+        }
         setNotifications((current) => {
+          // Dedupe by id so that replayed events after a reconnect do not
+          // appear twice in the user-visible toast buffer.
+          if (
+            typeof payload.id === "number" &&
+            current.some((entry) => entry.id === payload.id)
+          ) {
+            return current;
+          }
           const next = [payload, ...current];
           return next.slice(0, MAX_BUFFER);
         });
@@ -121,7 +137,9 @@ export function useExecutionNotifications(
         return;
       }
       setConnectionState("connecting");
-      const url = buildNotificationStreamUrl(workspaceId);
+      const url = buildNotificationStreamUrl(workspaceId, {
+        lastEventId: lastEventIdRef.current
+      });
       const source = factoryRef.current(url);
       activeSource = source;
       source.addEventListener("ready", handleReady);

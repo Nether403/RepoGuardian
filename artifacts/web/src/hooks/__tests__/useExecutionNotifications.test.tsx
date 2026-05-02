@@ -51,14 +51,19 @@ class FakeEventSource implements EventSourceLike {
   }
 }
 
+let notificationIdCounter = 0;
+
 function makeNotification(
   workspaceId: string,
   planId: string,
-  status: ExecutionPlanNotificationType = "plan.created"
+  status: ExecutionPlanNotificationType = "plan.created",
+  id?: number
 ): ExecutionPlanNotification {
+  notificationIdCounter += 1;
   return {
     createdAt: new Date().toISOString(),
     executionId: null,
+    id: id ?? notificationIdCounter,
     planId,
     reason: null,
     repositoryFullName: "octo/repo",
@@ -237,6 +242,70 @@ describe("useExecutionNotifications", () => {
       result.current.clear();
     });
     expect(result.current.notifications).toHaveLength(0);
+  });
+
+  it("requests a replay using the highest seen id after a backoff reconnect", () => {
+    const sources: FakeEventSource[] = [];
+    const factory = (url: string) => {
+      const source = new FakeEventSource(url);
+      sources.push(source);
+      return source;
+    };
+
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() =>
+        useExecutionNotifications({
+          enabled: true,
+          workspaceId: "workspace_a",
+          eventSourceFactory: factory
+        })
+      );
+
+      expect(sources).toHaveLength(1);
+      // First connect uses no cursor.
+      expect(sources[0]?.url).not.toContain("lastEventId=");
+
+      act(() => {
+        sources[0]?.dispatch(
+          "plan.created",
+          makeNotification("workspace_a", "plan_a1", "plan.created", 7)
+        );
+      });
+      expect(result.current.notifications).toHaveLength(1);
+
+      // Trigger an error to force the hook to close the source and schedule a
+      // reconnect via setTimeout.
+      act(() => {
+        sources[0]?.dispatch("error", { message: "network blip" });
+      });
+      act(() => {
+        vi.advanceTimersByTime(35_000);
+      });
+
+      expect(sources.length).toBeGreaterThanOrEqual(2);
+      const reconnected = sources[sources.length - 1]!;
+      expect(reconnected.url).toContain("lastEventId=7");
+
+      // A replayed event with the same id must NOT appear twice in the buffer.
+      act(() => {
+        reconnected.dispatch(
+          "plan.created",
+          makeNotification("workspace_a", "plan_a1", "plan.created", 7)
+        );
+        reconnected.dispatch(
+          "plan.completed",
+          makeNotification("workspace_a", "plan_a2", "plan.completed", 8)
+        );
+      });
+
+      expect(result.current.notifications).toHaveLength(2);
+      expect(result.current.notifications.map((n) => n.id).sort()).toEqual([
+        7, 8
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not leak listeners across reconnect cycles when the EventSource errors", () => {

@@ -8,13 +8,17 @@ import type {
   ExecutionPlanNotificationType
 } from "../../lib/notifications-client";
 
+let notificationIdCounter = 0;
+
 function makeNotification(
   planId: string,
   status: ExecutionPlanNotificationType = "plan.created"
 ): ExecutionPlanNotification {
+  notificationIdCounter += 1;
   return {
     createdAt: new Date().toISOString(),
     executionId: null,
+    id: notificationIdCounter,
     planId,
     reason: null,
     repositoryFullName: "octo/repo",

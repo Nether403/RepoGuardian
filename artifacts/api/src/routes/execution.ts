@@ -41,6 +41,7 @@ import {
   getExecutionNotificationBus,
   type ExecutionNotificationBus,
   type ExecutionPlanNotification,
+  type ExecutionPlanNotificationInput,
   type ExecutionPlanNotificationType
 } from "../lib/notifications.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
@@ -340,7 +341,7 @@ export function createExecutionRouter(
     status: ExecutionPlanNotificationType;
     workspaceId: string;
   }): void {
-    const notification: ExecutionPlanNotification = {
+    const notification: ExecutionPlanNotificationInput = {
       createdAt: new Date().toISOString(),
       executionId: input.executionId ?? null,
       planId: input.planId,
@@ -754,12 +755,44 @@ export function createExecutionRouter(
       }
 
       const workspaceId = activeWorkspaceId;
+
+      // The standard `Last-Event-ID` header is sent by the browser EventSource
+      // implementation when the connection drops and is automatically
+      // reconnected. We also accept a `lastEventId` query string fallback
+      // because our client uses exponential-backoff reconnects (it tears down
+      // the EventSource and creates a new one), and a brand-new EventSource
+      // does not include the header on its initial request.
+      const headerLastEventId = request.headers["last-event-id"];
+      const queryLastEventId = request.query.lastEventId;
+      const rawLastEventId = Array.isArray(headerLastEventId)
+        ? headerLastEventId[0]
+        : typeof headerLastEventId === "string"
+          ? headerLastEventId
+          : Array.isArray(queryLastEventId)
+            ? queryLastEventId[0]
+            : typeof queryLastEventId === "string"
+              ? queryLastEventId
+              : undefined;
+      const parsedLastEventId =
+        typeof rawLastEventId === "string" && rawLastEventId.trim().length > 0
+          ? Number.parseInt(rawLastEventId, 10)
+          : NaN;
+      const lastEventId = Number.isFinite(parsedLastEventId)
+        ? parsedLastEventId
+        : null;
+
       response.status(200);
       response.setHeader("Content-Type", "text/event-stream");
       response.setHeader("Cache-Control", "no-cache, no-transform");
       response.setHeader("Connection", "keep-alive");
       response.setHeader("X-Accel-Buffering", "no");
       response.flushHeaders?.();
+
+      const writeNotification = (notification: ExecutionPlanNotification): void => {
+        response.write(
+          `id: ${notification.id}\nevent: ${notification.status}\ndata: ${JSON.stringify(notification)}\n\n`
+        );
+      };
 
       response.write(
         `event: ready\ndata: ${JSON.stringify({
@@ -768,13 +801,20 @@ export function createExecutionRouter(
         })}\n\n`
       );
 
+      const seenIds = new Set<number>();
       let unsubscribe: (() => void) | null = null;
 
       try {
+        // Subscribe FIRST so that any event published between the replay read
+        // and the subscription cannot fall into a gap. The `seenIds` dedupe
+        // covers the (single-threaded but defensive) overlap between the
+        // replayed buffer and live subscription deliveries.
         unsubscribe = notificationBus.subscribe(workspaceId, (notification) => {
-          response.write(
-            `event: ${notification.status}\ndata: ${JSON.stringify(notification)}\n\n`
-          );
+          if (seenIds.has(notification.id)) {
+            return;
+          }
+          seenIds.add(notification.id);
+          writeNotification(notification);
         });
       } catch (error) {
         const message =
@@ -784,6 +824,17 @@ export function createExecutionRouter(
         );
         response.end();
         return;
+      }
+
+      if (lastEventId !== null) {
+        const replayed = notificationBus.replay(workspaceId, lastEventId);
+        for (const notification of replayed) {
+          if (seenIds.has(notification.id)) {
+            continue;
+          }
+          seenIds.add(notification.id);
+          writeNotification(notification);
+        }
       }
 
       const heartbeat = setInterval(() => {

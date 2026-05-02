@@ -37,14 +37,18 @@ function makeJob(overrides: Partial<AnalysisJob> = {}): AnalysisJob {
   } satisfies AnalysisJob;
 }
 
+let analysisJobsTestNotificationId = 0;
+
 function makeNotification(
   planId: string,
   status: ExecutionPlanNotificationType = "plan.created",
   overrides: Partial<ExecutionPlanNotification> = {}
 ): ExecutionPlanNotification {
+  analysisJobsTestNotificationId += 1;
   return {
     createdAt: "2026-05-01T11:00:00.000Z",
     executionId: null,
+    id: analysisJobsTestNotificationId,
     planId,
     reason: null,
     repositoryFullName: "octo/repo",

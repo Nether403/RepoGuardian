@@ -65,6 +65,92 @@ describe("ExecutionNotificationBus", () => {
     expect(received).toHaveLength(0);
     expect(bus.listenerCount("workspace_a")).toBe(0);
   });
+
+  it("assigns monotonically increasing ids across publishes", () => {
+    const bus = createExecutionNotificationBus();
+
+    const first = bus.publish({
+      createdAt: new Date().toISOString(),
+      executionId: null,
+      planId: "plan_1",
+      reason: null,
+      repositoryFullName: "octo/repo",
+      status: "plan.created",
+      workspaceId: "workspace_a"
+    });
+    const second = bus.publish({
+      createdAt: new Date().toISOString(),
+      executionId: null,
+      planId: "plan_2",
+      reason: null,
+      repositoryFullName: "octo/repo",
+      status: "plan.created",
+      workspaceId: "workspace_b"
+    });
+    const third = bus.publish({
+      createdAt: new Date().toISOString(),
+      executionId: null,
+      planId: "plan_3",
+      reason: null,
+      repositoryFullName: "octo/repo",
+      status: "plan.created",
+      workspaceId: "workspace_a"
+    });
+
+    expect(first.id).toBe(1);
+    expect(second.id).toBe(2);
+    expect(third.id).toBe(3);
+  });
+
+  it("buffers events per workspace and replays from a cursor in id order", () => {
+    const bus = createExecutionNotificationBus();
+
+    for (let index = 1; index <= 5; index += 1) {
+      bus.publish({
+        createdAt: new Date().toISOString(),
+        executionId: null,
+        planId: `plan_a_${index}`,
+        reason: null,
+        repositoryFullName: "octo/repo",
+        status: "plan.created",
+        workspaceId: "workspace_a"
+      });
+    }
+    bus.publish({
+      createdAt: new Date().toISOString(),
+      executionId: null,
+      planId: "plan_b_1",
+      reason: null,
+      repositoryFullName: "octo/repo",
+      status: "plan.created",
+      workspaceId: "workspace_b"
+    });
+
+    const fromZero = bus.replay("workspace_a", 0);
+    expect(fromZero.map((entry) => entry.planId)).toEqual([
+      "plan_a_1",
+      "plan_a_2",
+      "plan_a_3",
+      "plan_a_4",
+      "plan_a_5"
+    ]);
+
+    const fromTwo = bus.replay("workspace_a", 2);
+    expect(fromTwo.map((entry) => entry.planId)).toEqual([
+      "plan_a_3",
+      "plan_a_4",
+      "plan_a_5"
+    ]);
+
+    // Ring buffer is workspace-scoped: workspace_a replay does not include
+    // events published into workspace_b.
+    expect(fromZero.every((entry) => entry.workspaceId === "workspace_a")).toBe(
+      true
+    );
+
+    // Replay past the latest id returns nothing.
+    expect(bus.replay("workspace_a", 999)).toHaveLength(0);
+  });
 });
 
 describe("GET /api/execution/notifications/stream", () => {
@@ -137,20 +223,32 @@ describe("GET /api/execution/notifications/stream", () => {
 
   function streamRequest(
     port: number,
-    options: { authorization?: string }
+    options: {
+      authorization?: string;
+      lastEventIdHeader?: string;
+      lastEventIdQuery?: string;
+    }
   ): Promise<{ chunks: string[]; statusCode: number; close: () => void }> {
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = { Accept: "text/event-stream" };
       if (options.authorization) {
         headers.Authorization = options.authorization;
       }
+      if (options.lastEventIdHeader !== undefined) {
+        headers["Last-Event-ID"] = options.lastEventIdHeader;
+      }
+
+      const path =
+        options.lastEventIdQuery !== undefined
+          ? `/api/execution/notifications/stream?lastEventId=${encodeURIComponent(options.lastEventIdQuery)}`
+          : "/api/execution/notifications/stream";
 
       const req = http.request(
         {
           headers,
           host: "127.0.0.1",
           method: "GET",
-          path: "/api/execution/notifications/stream",
+          path,
           port
         },
         (response) => {
@@ -261,6 +359,126 @@ describe("GET /api/execution/notifications/stream", () => {
 
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
       expect(bus.listenerCount("workspace_local_default")).toBe(0);
+    } finally {
+      await close();
+    }
+  });
+
+  it("replays buffered events after a disconnect using Last-Event-ID", async () => {
+    // This test simulates the disconnect/reconnect scenario the bug fix
+    // targets: events are published while no client is connected, then a
+    // client reconnects with a Last-Event-ID and must receive every missed
+    // event in id order. We verify both the standard header and the query
+    // string fallback (used by EventSource on backoff-driven reconnects).
+    const { bus, close, port } = await createTestServer();
+    try {
+      for (let index = 1; index <= 3; index += 1) {
+        bus.publish({
+          createdAt: new Date().toISOString(),
+          executionId: null,
+          planId: `plan_buffered_${index}`,
+          reason: null,
+          repositoryFullName: "octo/repo",
+          status: "plan.created",
+          workspaceId: "workspace_local_default"
+        });
+      }
+
+      const result = await streamRequest(port, {
+        authorization: "Bearer dev-secret-key-do-not-use-in-production",
+        lastEventIdHeader: "1"
+      });
+      expect(result.statusCode).toBe(200);
+
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+      const combined = result.chunks.join("");
+
+      expect(combined).toContain("event: ready");
+      expect(combined).not.toContain("plan_buffered_1");
+      expect(combined).toContain("plan_buffered_2");
+      expect(combined).toContain("plan_buffered_3");
+      expect(combined).toContain("id: 2");
+      expect(combined).toContain("id: 3");
+
+      const indexTwo = combined.indexOf("plan_buffered_2");
+      const indexThree = combined.indexOf("plan_buffered_3");
+      expect(indexTwo).toBeGreaterThan(-1);
+      expect(indexThree).toBeGreaterThan(indexTwo);
+
+      result.close();
+    } finally {
+      await close();
+    }
+  });
+
+  it("delivers all N missed events in order across a disconnect/reconnect cycle", async () => {
+    // End-to-end coverage for the task acceptance criterion: disconnect,
+    // publish N events while disconnected, reconnect with the cursor, and
+    // assert all N arrive in order. Uses the ?lastEventId= query fallback so
+    // that this exercises the path our hook takes on exponential-backoff
+    // reconnects (where a fresh EventSource cannot include the header).
+    const { bus, close, port } = await createTestServer();
+    try {
+      // First connection observes a single event so we have a cursor.
+      const firstResult = await streamRequest(port, {
+        authorization: "Bearer dev-secret-key-do-not-use-in-production"
+      });
+      expect(firstResult.statusCode).toBe(200);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+
+      const baseline = bus.publish({
+        createdAt: new Date().toISOString(),
+        executionId: null,
+        planId: "plan_seen",
+        reason: null,
+        repositoryFullName: "octo/repo",
+        status: "plan.created",
+        workspaceId: "workspace_local_default"
+      });
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+      expect(firstResult.chunks.join("")).toContain("plan_seen");
+
+      // Disconnect.
+      firstResult.close();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+      expect(bus.listenerCount("workspace_local_default")).toBe(0);
+
+      // Publish N events while no one is listening.
+      const missedPlanIds: string[] = [];
+      for (let index = 1; index <= 4; index += 1) {
+        const planId = `plan_missed_${index}`;
+        missedPlanIds.push(planId);
+        bus.publish({
+          createdAt: new Date().toISOString(),
+          executionId: null,
+          planId,
+          reason: null,
+          repositoryFullName: "octo/repo",
+          status: "plan.completed",
+          workspaceId: "workspace_local_default"
+        });
+      }
+
+      // Reconnect with the cursor via the query fallback.
+      const secondResult = await streamRequest(port, {
+        authorization: "Bearer dev-secret-key-do-not-use-in-production",
+        lastEventIdQuery: String(baseline.id)
+      });
+      expect(secondResult.statusCode).toBe(200);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+      const replayed = secondResult.chunks.join("");
+
+      expect(replayed).toContain("event: ready");
+      expect(replayed).not.toContain("plan_seen");
+
+      let cursor = -1;
+      for (const planId of missedPlanIds) {
+        const at = replayed.indexOf(planId, cursor + 1);
+        expect(at, `expected ${planId} after position ${cursor}`).toBeGreaterThan(cursor);
+        cursor = at;
+      }
+
+      secondResult.close();
     } finally {
       await close();
     }
