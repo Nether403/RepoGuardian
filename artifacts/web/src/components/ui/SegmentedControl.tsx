@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon, type IconName } from "./Icon";
 
 export type SegmentedControlOption<T extends string> = {
@@ -15,6 +16,8 @@ export type SegmentedControlProps<T extends string> = {
   className?: string;
 };
 
+type IndicatorRect = { left: number; width: number } | null;
+
 export function SegmentedControl<T extends string>({
   ariaLabel,
   value,
@@ -24,11 +27,53 @@ export function SegmentedControl<T extends string>({
   className
 }: SegmentedControlProps<T>) {
   const itemRole = role === "tablist" ? "tab" : "radio";
-  const composedClassName = ["app-mode-toggle", className]
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [indicator, setIndicator] = useState<IndicatorRect>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    const active = container.querySelector<HTMLButtonElement>(
+      '[data-segmented-active="true"]'
+    );
+    if (!active) {
+      setIndicator(null);
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = active.getBoundingClientRect();
+    setIndicator({
+      left: buttonRect.left - containerRect.left,
+      width: buttonRect.width
+    });
+  }, [value, options]);
+
+  const composedClassName = ["app-mode-toggle", "segmented-control", className]
     .filter(Boolean)
     .join(" ");
+  const indicatorStyle: CSSProperties | undefined = indicator
+    ? {
+        transform: `translateX(${indicator.left}px)`,
+        width: `${indicator.width}px`
+      }
+    : undefined;
+
   return (
-    <div aria-label={ariaLabel} className={composedClassName} role={role}>
+    <div
+      aria-label={ariaLabel}
+      className={composedClassName}
+      ref={containerRef}
+      role={role}
+    >
+      {indicator ? (
+        <span
+          aria-hidden="true"
+          className="segmented-control-indicator"
+          style={indicatorStyle}
+        />
+      ) : null}
       {options.map((option) => {
         const isSelected = option.value === value;
         const ariaProps =
@@ -39,6 +84,7 @@ export function SegmentedControl<T extends string>({
           <button
             {...ariaProps}
             className="app-mode-toggle-button"
+            data-segmented-active={isSelected ? "true" : undefined}
             key={option.value}
             onClick={() => onChange(option.value)}
             role={itemRole}

@@ -1,20 +1,36 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
-export type BadgeTone = "active" | "muted" | "up-next" | "warning";
+export type BadgeTone =
+  | "active"
+  | "muted"
+  | "up-next"
+  | "warning"
+  | "success"
+  | "danger"
+  | "info"
+  | "neutral";
 
 const TONE_CLASS: Record<BadgeTone, string> = {
   active: "badge-active",
   muted: "badge-muted",
   "up-next": "badge-up-next",
-  warning: "badge-warning"
+  warning: "badge-warning",
+  success: "badge-success",
+  danger: "badge-danger",
+  info: "badge-info",
+  neutral: "badge-neutral"
 };
 
 const TONE_ICON: Record<BadgeTone, IconName> = {
   active: "check",
   muted: "circle-dot",
   "up-next": "activity",
-  warning: "warning"
+  warning: "warning",
+  success: "check",
+  danger: "alert",
+  info: "info",
+  neutral: "circle-dot"
 };
 
 export type BadgeProps = {

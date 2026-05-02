@@ -253,12 +253,77 @@ p {
   letter-spacing: 0.06em;
 }
 
+.app-topbar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .app-topbar-dot {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: var(--radius-pill);
   background: var(--success);
   box-shadow: 0 0 0 4px var(--success-soft);
+}
+
+.app-topbar-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.25rem var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  transition: border-color var(--motion-base) var(--ease-out);
+}
+
+.app-topbar-workspace:hover {
+  border-color: var(--border-accent);
+}
+
+.app-topbar-workspace svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--accent);
+}
+
+.app-topbar-workspace-label {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-topbar-notifications {
+  position: relative;
+  display: inline-flex;
+}
+
+.app-topbar-notification-count {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.15rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-strong, var(--accent));
+  color: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--surface-1);
+  pointer-events: none;
 }
 
 .page-shell {
@@ -544,6 +609,7 @@ p {
    Mode toggle (segmented)
    ────────────────────────────────────────────────────────────── */
 .app-mode-toggle {
+  position: relative;
   display: inline-flex;
   gap: var(--space-1);
   padding: var(--space-1);
@@ -553,7 +619,25 @@ p {
   box-shadow: var(--shadow-1);
 }
 
+.segmented-control-indicator {
+  position: absolute;
+  top: var(--space-1);
+  bottom: var(--space-1);
+  left: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-accent);
+  background: linear-gradient(180deg, rgba(140, 201, 255, 0.18), rgba(140, 201, 255, 0.08));
+  box-shadow: 0 0 0 1px rgba(140, 201, 255, 0.05) inset;
+  pointer-events: none;
+  transition:
+    transform var(--motion-base) var(--ease-out),
+    width var(--motion-base) var(--ease-out);
+  z-index: 0;
+}
+
 .app-mode-toggle-button {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -569,9 +653,7 @@ p {
   letter-spacing: 0.01em;
   cursor: pointer;
   transition:
-    background var(--motion-base) var(--ease-out),
-    color var(--motion-base) var(--ease-out),
-    border-color var(--motion-base) var(--ease-out);
+    color var(--motion-base) var(--ease-out);
 }
 
 .app-mode-toggle-button svg {
@@ -581,14 +663,22 @@ p {
 
 .app-mode-toggle-button:hover {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.04);
 }
 
-.app-mode-toggle-button[aria-selected="true"] {
-  border-color: var(--border-accent);
-  background: linear-gradient(180deg, rgba(140, 201, 255, 0.18), rgba(140, 201, 255, 0.08));
+.app-mode-toggle-button[aria-selected="true"],
+.app-mode-toggle-button[aria-checked="true"] {
   color: var(--accent-strong);
-  box-shadow: 0 0 0 1px rgba(140, 201, 255, 0.05) inset;
+}
+
+.app-mode-toggle-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-control-indicator {
+    transition: none;
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -2482,6 +2572,54 @@ p {
 }
 
 /* ──────────────────────────────────────────────────────────────
+   UI primitives — Button (danger variant)
+   ────────────────────────────────────────────────────────────── */
+.danger-button {
+  min-height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  background:
+    linear-gradient(180deg, rgba(243, 121, 121, 0.22), rgba(243, 121, 121, 0.08));
+  color: var(--text-strong);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-base) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.danger-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.danger-button:hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, rgba(243, 121, 121, 0.32), rgba(243, 121, 121, 0.16));
+  border-color: var(--danger-strong, var(--danger));
+  transform: translateY(-1px);
+}
+
+.danger-button:focus-visible {
+  outline: none;
+  border-color: var(--danger-strong, var(--danger));
+  box-shadow: 0 0 0 3px rgba(243, 121, 121, 0.28);
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ──────────────────────────────────────────────────────────────
    UI primitives — IconButton (compact, label via aria-label)
    ────────────────────────────────────────────────────────────── */
 .icon-button {
@@ -2546,11 +2684,51 @@ p {
 }
 
 /* ──────────────────────────────────────────────────────────────
-   UI primitives — Badge (icon + text wrapper)
+   UI primitives — Badge (icon + text wrapper, extended tones)
    ────────────────────────────────────────────────────────────── */
 .status-badge-label {
   display: inline-flex;
   align-items: center;
+}
+
+.badge-success {
+  color: var(--success);
+  background: rgba(86, 207, 130, 0.12);
+  border-color: rgba(86, 207, 130, 0.4);
+}
+
+.badge-success svg {
+  stroke: var(--success);
+}
+
+.badge-danger {
+  color: var(--danger);
+  background: rgba(243, 121, 121, 0.12);
+  border-color: rgba(243, 121, 121, 0.4);
+}
+
+.badge-danger svg {
+  stroke: var(--danger);
+}
+
+.badge-info {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(140, 201, 255, 0.4);
+}
+
+.badge-info svg {
+  stroke: var(--accent);
+}
+
+.badge-neutral {
+  color: var(--text-soft);
+  background: var(--surface-3);
+  border-color: var(--border-subtle);
+}
+
+.badge-neutral svg {
+  stroke: var(--text-soft);
 }
 
 /* ──────────────────────────────────────────────────────────────

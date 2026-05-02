@@ -4,6 +4,7 @@ export type IconName =
   | "activity"
   | "alert"
   | "arrow-right"
+  | "bell"
   | "check"
   | "chevron-right"
   | "circle-dot"
@@ -11,6 +12,7 @@ export type IconName =
   | "compass"
   | "fleet"
   | "github"
+  | "info"
   | "play"
   | "refresh"
   | "search"
@@ -39,6 +41,12 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M5 12h14" strokeLinecap="round" />
       <path d="M13 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 8a6 6 0 1 1 12 0c0 4.5 1.5 6 1.5 6h-15S6 12.5 6 8z" strokeLinejoin="round" />
+      <path d="M10.5 18a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
     </>
   ),
   check: <path d="M5 12.5l4.5 4.5L19 7" strokeLinecap="round" strokeLinejoin="round" />,
@@ -73,6 +81,13 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
       d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.69-.22.69-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1.01.07 1.54 1.04 1.54 1.04.9 1.53 2.36 1.09 2.93.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"
       strokeLinejoin="round"
     />
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6" strokeLinecap="round" />
+      <path d="M12 8h.01" strokeLinecap="round" />
+    </>
   ),
   play: (
     <path d="M8 5l11 7-11 7V5z" strokeLinejoin="round" fill="currentColor" stroke="none" />

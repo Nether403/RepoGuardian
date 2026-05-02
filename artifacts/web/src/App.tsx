@@ -1808,10 +1808,20 @@ function App() {
     };
   }, [appMode, authSession, fleetStatus, isSessionLoading]);
 
+  const activeWorkspaceName =
+    authSession?.workspaces.find(
+      (entry) => entry.workspace.id === selectedWorkspaceId
+    )?.workspace.name ?? null;
+  const liveNotificationCount = executionNotifications.notifications.length;
+  const handleOpenNotifications = () => {
+    if (typeof document === "undefined") return;
+    const queue = document.querySelector("[data-testid='queue-activity']");
+    queue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const heroAside =
     appMode === "analysis" ? (
       <div className="hero-stack">
-        <StatusBadge label={statusLabel} tone={statusTone} />
         <p className="aside-copy">
           Analysis stays supervised. Repo Guardian can surface issue and PR
           write-back readiness, preview dry-run execution plans, and only write to
@@ -1825,7 +1835,6 @@ function App() {
       </div>
     ) : (
       <div className="hero-stack">
-        <StatusBadge label={statusLabel} tone={statusTone} />
         <p className="aside-copy">
           Fleet Admin keeps tracked repositories, queue activity, schedule-driven
           planning, and remediation PR lifecycle visible without introducing any
@@ -1848,19 +1857,25 @@ function App() {
       aside={heroAside}
       eyebrow={appMode === "analysis" ? "Approval-Gated Analysis" : "Fleet Admin"}
       heading="Repo Guardian"
+      notificationCount={liveNotificationCount}
+      onOpenNotifications={
+        appMode === "fleet-admin" ? handleOpenNotifications : undefined
+      }
+      statusLabel={statusLabel}
+      statusTone={statusTone}
       summary={
         appMode === "analysis"
           ? "A supervised GitHub repository triage assistant that inspects public repositories, drafts findings and remediation candidates, and surfaces approval-gated GitHub write-back readiness before any execution step."
           : "Operational controls for tracked repositories, async queue visibility, scheduled plan-only sweeps, and remediation pull-request lifecycle reporting."
       }
       toolbar={<AppModeToggle mode={appMode} onChange={setAppMode} />}
+      workspaceName={activeWorkspaceName}
     >
       {appMode === "analysis" ? (
         <>
           <Panel
             className="panel-wide"
             eyebrow="Repository Intake"
-            footer={<StatusBadge label={statusLabel} tone={statusTone} />}
             title="Analyze a public GitHub repository"
           >
             <RepoInputForm
