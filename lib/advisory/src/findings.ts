@@ -6,6 +6,8 @@ import type {
   FindingsBySeverity
 } from "@repo-guardian/shared-types";
 import type { NormalizedAdvisory } from "./provider.js";
+import type { ReachabilityFileContents } from "./reachability.js";
+import { scoreReachability } from "./reachability.js";
 import type { AdvisoryLookupTarget } from "./targets.js";
 
 type AdvisoryMatch = {
@@ -96,10 +98,19 @@ function createFindingId(
 
 export function createDependencyFinding(
   match: AdvisoryMatch,
-  isPartial: boolean
+  isPartial: boolean,
+  fileContentsByPath?: ReachabilityFileContents
 ): DependencyFinding {
   const confidence = buildFindingConfidence(match.target, isPartial);
   const remediation = buildRecommendedAction(match.advisory, match.target);
+  const reachability = scoreReachability({
+    finding: {
+      confidence,
+      isDirect: match.target.isDirect,
+      packageName: match.target.packageName
+    },
+    fileContentsByPath
+  });
 
   return {
     advisoryId: match.advisory.id,
@@ -138,6 +149,7 @@ export function createDependencyFinding(
     lineSpans: [],
     packageName: match.target.packageName,
     paths: match.target.paths,
+    reachability,
     recommendedAction: remediation.text,
     referenceUrls: uniqueSorted(
       match.advisory.references.map((reference) => reference.url)
@@ -154,7 +166,8 @@ export function createDependencyFinding(
 export function matchAdvisoriesToTargets(
   targets: AdvisoryLookupTarget[],
   advisoriesByQueryKey: Map<string, NormalizedAdvisory[]>,
-  isPartial: boolean
+  isPartial: boolean,
+  fileContentsByPath?: ReachabilityFileContents
 ): DependencyFinding[] {
   const findings = new Map<string, DependencyFinding>();
 
@@ -165,7 +178,8 @@ export function matchAdvisoriesToTargets(
           advisory,
           target
         },
-        isPartial
+        isPartial,
+        fileContentsByPath
       );
 
       findings.set(finding.id, finding);

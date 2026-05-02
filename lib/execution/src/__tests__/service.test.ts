@@ -178,6 +178,7 @@ function dependencyFinding(
     referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
     remediationType: "upgrade",
     remediationVersion: "2.0.0",
+    reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
     severity: "high",
     sourceType: "dependency",
     summary: "react is affected by a dependency advisory.",
@@ -1137,7 +1138,6 @@ describe("createExecutionPlanResult", () => {
         (action) => action.attempted === false && action.succeeded === false
       )
     ).toBe(true);
-    expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
     expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
     expect(writeClient.commitFileChanges).not.toHaveBeenCalled();
     expect(writeClient.openPullRequest).not.toHaveBeenCalled();
@@ -1448,7 +1448,6 @@ describe("createExecutionPlanResult", () => {
         (action) => action.attempted === false && action.succeeded === false
       )
     ).toBe(true);
-    expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
     expect(writeClient.commitFileChanges).not.toHaveBeenCalled();

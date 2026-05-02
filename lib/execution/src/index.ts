@@ -6,6 +6,12 @@ export {
   type ExecutionServiceDependencies
 } from "./service.js";
 export {
+  buildDiffPreview,
+  buildDiffPreviewError,
+  buildUnifiedDiff,
+  type BuildDiffPreviewInput
+} from "./diff.js";
+export {
   evaluateAnalysisPolicy,
   evaluateExecutionPlanPolicy,
   evaluateExecutionWritePolicy,

@@ -74,6 +74,58 @@ export function ExecutionPlannerPanel({
                 {executionPlan.approval.confirmationText}
               </span>
             </label>
+            {executionPlan.actions.some((action) => action.diffPreview) ? (
+              <div className="execution-diff-previews">
+                <p className="subsection-label">Patch previews</p>
+                {executionPlan.actions
+                  .filter((action) => action.diffPreview)
+                  .map((action) => {
+                    const preview = action.diffPreview!;
+
+                    return (
+                      <details
+                        className="execution-diff-preview"
+                        key={`diff:${action.id}`}
+                      >
+                        <summary>
+                          <code>{action.title}</code>
+                          <span className="execution-diff-meta">
+                            {preview.synthesisError
+                              ? "synthesis failed"
+                              : `${preview.files.length} file${
+                                  preview.files.length === 1 ? "" : "s"
+                                }${preview.truncated ? " (truncated)" : ""}`}
+                          </span>
+                        </summary>
+                        {preview.synthesisError ? (
+                          <p className="form-message form-message-error">
+                            {preview.synthesisError}
+                          </p>
+                        ) : (
+                          preview.files.map((file) => (
+                            <div
+                              className="execution-diff-file"
+                              key={`diff-file:${action.id}:${file.path}`}
+                            >
+                              <p className="subsection-label">
+                                <code>{file.path}</code>
+                                {file.diffTruncated ||
+                                file.beforeTruncated ||
+                                file.afterTruncated
+                                  ? " (truncated)"
+                                  : ""}
+                              </p>
+                              <pre className="execution-diff-pre">
+                                <code>{file.unifiedDiff}</code>
+                              </pre>
+                            </div>
+                          ))
+                        )}
+                      </details>
+                    );
+                  })}
+              </div>
+            ) : null}
           </div>
         )}
 

@@ -309,6 +309,33 @@ export const AdvisoryReferenceSchema = z.object({
   url: z.string().url()
 });
 
+export const ReachabilityBandSchema = z.enum([
+  "unknown",
+  "unlikely",
+  "possible",
+  "likely"
+]);
+
+export const ReachabilitySignalSchema = z.object({
+  kind: z.enum([
+    "direct-dependency",
+    "transitive-dependency",
+    "confidence",
+    "import-reference",
+    "no-references-found",
+    "no-reviewed-files"
+  ]),
+  detail: z.string().min(1),
+  weight: z.number()
+});
+
+export const ReachabilityScoreSchema = z.object({
+  band: ReachabilityBandSchema,
+  score: z.number().min(0).max(100),
+  signals: z.array(ReachabilitySignalSchema),
+  referencedPaths: z.array(z.string().min(1))
+});
+
 export const DependencyFindingSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -332,7 +359,8 @@ export const DependencyFindingSchema = z.object({
   advisoryId: z.string().min(1),
   referenceUrls: z.array(z.string().url()),
   remediationVersion: z.string().min(1).nullable(),
-  remediationType: z.enum(["upgrade", "review", "none"])
+  remediationType: z.enum(["upgrade", "review", "none"]),
+  reachability: ReachabilityScoreSchema
 });
 
 export const FindingsBySeveritySchema = z.object({
@@ -647,6 +675,21 @@ export const ApprovalRequirementSchema = z.object({
   confirmationText: z.string().min(1)
 });
 
+export const DiffPreviewFileSchema = z.object({
+  path: z.string().min(1),
+  unifiedDiff: z.string(),
+  beforeTruncated: z.boolean(),
+  afterTruncated: z.boolean(),
+  diffTruncated: z.boolean()
+});
+
+export const DiffPreviewSchema = z.object({
+  files: z.array(DiffPreviewFileSchema),
+  truncated: z.boolean(),
+  generatedAt: z.string().datetime(),
+  synthesisError: z.string().min(1).nullable()
+});
+
 export const ExecutionActionPlanSchema = z.object({
   id: z.string().min(1),
   actionType: ExecutionActionTypeSchema,
@@ -672,7 +715,8 @@ export const ExecutionActionPlanSchema = z.object({
   branchName: z.string().min(1).nullable(),
   commitSha: z.string().min(1).nullable(),
   pullRequestNumber: z.number().int().positive().nullable(),
-  pullRequestUrl: z.string().url().nullable()
+  pullRequestUrl: z.string().url().nullable(),
+  diffPreview: DiffPreviewSchema.nullable().default(null)
 });
 
 export const ExecutionSummarySchema = z.object({
@@ -1697,7 +1741,12 @@ export type FindingSourceType = z.infer<typeof FindingSourceTypeSchema>;
 export type FindingEvidence = z.infer<typeof FindingEvidenceSchema>;
 export type FindingLineSpan = z.infer<typeof FindingLineSpanSchema>;
 export type AdvisoryReference = z.infer<typeof AdvisoryReferenceSchema>;
+export type ReachabilityBand = z.infer<typeof ReachabilityBandSchema>;
+export type ReachabilitySignal = z.infer<typeof ReachabilitySignalSchema>;
+export type ReachabilityScore = z.infer<typeof ReachabilityScoreSchema>;
 export type DependencyFinding = z.infer<typeof DependencyFindingSchema>;
+export type DiffPreviewFile = z.infer<typeof DiffPreviewFileSchema>;
+export type DiffPreview = z.infer<typeof DiffPreviewSchema>;
 export type FindingsBySeverity = z.infer<typeof FindingsBySeveritySchema>;
 export type DependencyFindingSummary = z.infer<
   typeof DependencyFindingSummarySchema

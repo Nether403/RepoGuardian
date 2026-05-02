@@ -62,3 +62,17 @@ export function getConfidenceTone(
 
   return confidence === "medium" ? "warning" : "muted";
 }
+
+export function getReachabilityTone(
+  band: "unknown" | "unlikely" | "possible" | "likely"
+): Extract<StatusTone, "active" | "muted" | "warning"> {
+  if (band === "likely") {
+    return "warning";
+  }
+
+  if (band === "possible") {
+    return "active";
+  }
+
+  return "muted";
+}

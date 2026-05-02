@@ -73,6 +73,7 @@ function createAnalysis(input?: {
       referenceUrls: ["https://osv.dev/vulnerability/test"],
       remediationType: "upgrade",
       remediationVersion: "1.0.1",
+      reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
       severity: "high",
       sourceType: "dependency",
       summary: `${id} summary`,

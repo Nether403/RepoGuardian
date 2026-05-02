@@ -291,13 +291,13 @@ export async function analyzeRepository(
     prefetchWarningDetails: dependencyFiles.prefetchWarningDetails,
     skippedFiles: dependencyFiles.skippedFiles
   });
-  const dependencyFindings = await createDependencyFindingResult(
+  const initialDependencyFindings = await createDependencyFindingResult(
     dependencySnapshot,
     advisoryProvider
   );
   const reviewSelection = selectReviewTargets({
     dependencyFindingPaths: uniqueSorted(
-      dependencyFindings.findings.flatMap((finding) => finding.paths)
+      initialDependencyFindings.findings.flatMap((finding) => finding.paths)
     ),
     signals: detection.signals,
     treeEntries: intake.treeEntries
@@ -312,6 +312,14 @@ export async function analyzeRepository(
     selection: reviewSelection,
     skippedFiles: reviewFiles.skippedFiles
   });
+  const reviewedFileContentsByPath = Object.fromEntries(
+    reviewFiles.reviewedFiles.map((file) => [file.path, file.content] as const)
+  );
+  const dependencyFindings = await createDependencyFindingResult(
+    dependencySnapshot,
+    advisoryProvider,
+    { fileContentsByPath: reviewedFileContentsByPath }
+  );
   const issueCandidates = createIssueCandidateResult({
     codeReviewFindings: codeReview.findings,
     dependencyFindings: dependencyFindings.findings

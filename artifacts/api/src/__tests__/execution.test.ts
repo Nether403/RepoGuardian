@@ -175,6 +175,7 @@ function createDependencyFinding(
     referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
     remediationType: "upgrade",
     remediationVersion: "2.0.0",
+    reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
     severity: "high",
     sourceType: "dependency",
     summary: "react is affected by a dependency advisory.",
@@ -931,7 +932,6 @@ describe("POST /api/execution/plan", () => {
         totalSelections: 2
       })
     });
-    expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
     expect(writeClient.commitFileChanges).not.toHaveBeenCalled();
@@ -1328,10 +1328,17 @@ describe("POST /api/execution/plan", () => {
   it("executes an approved dependency PR creation request", async () => {
     const testApp = createTestApp({
       readClient: {
-        fetchRepositoryFileText: vi
-          .fn()
-          .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
-          .mockResolvedValueOnce(createPackageLockContent())
+        fetchRepositoryFileText: vi.fn(async (request) => {
+          if (request.path === "package.json") {
+            return createPackageJsonContent("^1.0.0");
+          }
+
+          if (request.path === "package-lock.json") {
+            return createPackageLockContent();
+          }
+
+          return "";
+        })
       },
       writeClient: {
         createIssue: vi.fn(),
@@ -1384,10 +1391,17 @@ describe("POST /api/execution/plan", () => {
   it("executes an approved dependency PR creation request for package-lock.json v2", async () => {
     const testApp = createTestApp({
       readClient: {
-        fetchRepositoryFileText: vi
-          .fn()
-          .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
-          .mockResolvedValueOnce(createPackageLockContent(2))
+        fetchRepositoryFileText: vi.fn(async (request) => {
+          if (request.path === "package.json") {
+            return createPackageJsonContent("^1.0.0");
+          }
+
+          if (request.path === "package-lock.json") {
+            return createPackageLockContent(2);
+          }
+
+          return "";
+        })
       },
       writeClient: {
         createIssue: vi.fn(),
