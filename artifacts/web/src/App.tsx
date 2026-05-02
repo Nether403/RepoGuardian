@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AnalysisJob,
   AnalyzeRepoResponse,
@@ -387,13 +387,31 @@ function mergeTrackedRepositoryStatuses(input: {
 }
 
 function App() {
-  const [appMode, setAppMode] = useState<AppMode>(() => {
+  const [appMode, setAppModeState] = useState<AppMode>(() => {
     if (typeof window === "undefined") {
       return "analysis";
     }
     const params = new URLSearchParams(window.location.search);
     return params.get("mode") === "fleet-admin" ? "fleet-admin" : "analysis";
   });
+  const setAppMode = useCallback((next: AppMode) => {
+    setAppModeState(next);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (import.meta.env?.MODE === "test") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (next === "fleet-admin") {
+      params.set("mode", "fleet-admin");
+    } else {
+      params.delete("mode");
+    }
+    const search = params.toString();
+    const newUrl = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", newUrl);
+  }, []);
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [approvalGranted, setApprovalGranted] = useState(false);
   const [candidateTypeFilter, setCandidateTypeFilter] =

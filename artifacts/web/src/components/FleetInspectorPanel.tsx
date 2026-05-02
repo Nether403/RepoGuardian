@@ -1324,7 +1324,16 @@ export function FleetInspectorPanel({
                               <p className="subsection-label">{finding.sourceType}</p>
                               <h3>{finding.title}</h3>
                             </div>
-                            <StatusBadge label={finding.severity} tone="warning" />
+                            <StatusBadge
+                              label={finding.severity}
+                              tone={
+                                /^(critical|high)$/i.test(finding.severity)
+                                  ? "danger"
+                                  : /^medium$/i.test(finding.severity)
+                                  ? "warning"
+                                  : "info"
+                              }
+                            />
                           </div>
                           <p className="trace-copy">{finding.summary}</p>
                         </article>

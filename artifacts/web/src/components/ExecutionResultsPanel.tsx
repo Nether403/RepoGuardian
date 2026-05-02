@@ -4,7 +4,7 @@ import type {
 } from "@repo-guardian/shared-types";
 import type { ReactNode } from "react";
 import { Panel } from "./Panel";
-import { EmptyState } from "./ui";
+import { EmptyState, type BadgeTone } from "./ui";
 import { StatusBadge } from "./StatusBadge";
 
 type ExecutionResultsPanelProps = {
@@ -15,20 +15,30 @@ function formatValue(value: string): string {
   return value.replace(/_/gu, " ");
 }
 
-function getStatusTone(status: ExecutionResult["status"]): "active" | "muted" | "warning" {
-  if (status === "completed" || status === "planned") {
-    return "active";
+function getStatusTone(status: ExecutionResult["status"]): BadgeTone {
+  if (status === "completed") {
+    return "success";
   }
-
-  return status === "blocked" ? "warning" : "muted";
+  if (status === "planned") {
+    return "info";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  return "neutral";
 }
 
-function getActionTone(action: ExecutionActionPlan): "active" | "muted" | "warning" {
+function getActionTone(action: ExecutionActionPlan): BadgeTone {
   if (action.succeeded) {
-    return "active";
+    return "success";
   }
-
-  return action.blocked || action.errorMessage ? "warning" : "muted";
+  if (action.errorMessage) {
+    return "danger";
+  }
+  if (action.blocked) {
+    return "warning";
+  }
+  return "neutral";
 }
 
 function renderRemoteMetadata(action: ExecutionActionPlan) {
@@ -98,14 +108,14 @@ export function ExecutionResultsPanel({ result }: ExecutionResultsPanelProps) {
       footer={
         result ? (
           <div className="badge-row">
-            <StatusBadge label={`${result.summary.totalActions} actions`} tone="muted" />
+            <StatusBadge label={`${result.summary.totalActions} actions`} tone="neutral" />
             <StatusBadge
               label={`${result.summary.eligibleActions} eligible`}
-              tone="active"
+              tone="success"
             />
             <StatusBadge
               label={`${result.summary.blockedActions} blocked`}
-              tone={result.summary.blockedActions > 0 ? "warning" : "muted"}
+              tone={result.summary.blockedActions > 0 ? "danger" : "neutral"}
             />
           </div>
         ) : null
