@@ -34,7 +34,10 @@ import { AppModeToggle } from "./components/AppModeToggle";
 import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionNotificationsToast } from "./components/ExecutionNotificationsToast";
-import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
+import {
+  ExecutionPlannerPanel,
+  type ExecutionValidationFailure
+} from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
 import { FleetOverviewPanel } from "./components/FleetOverviewPanel";
 import { FleetInspectorPanel } from "./components/FleetInspectorPanel";
@@ -74,7 +77,11 @@ import {
   AnalyzeRepoClientError,
   analyzeRepository
 } from "./lib/api-client";
-import { requestExecutionPlan, requestExecutionExecute } from "./lib/execution-client";
+import {
+  ExecutionClientError,
+  requestExecutionPlan,
+  requestExecutionExecute
+} from "./lib/execution-client";
 import { setStoredActiveWorkspaceId } from "./lib/api-options";
 import {
   cancelAnalysisJob,
@@ -393,6 +400,8 @@ function App() {
     null
   );
   const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
+  const [executionValidationFailure, setExecutionValidationFailure] =
+    useState<ExecutionValidationFailure | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(
     null
   );
@@ -614,6 +623,7 @@ function App() {
     setApprovalGranted(false);
     setExecutionErrorMessage(null);
     setExecutionPlan(null);
+    setExecutionValidationFailure(null);
     setExecutionResult(null);
     setIsExecutionPlanLoading(false);
     setIsExecutionExecuteLoading(false);
@@ -805,6 +815,7 @@ function App() {
       updateSelectedIds(currentIds, candidateId, selected)
     );
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
   }
 
   function handlePRCandidateSelection(candidateId: string, selected: boolean) {
@@ -812,9 +823,12 @@ function App() {
       updateSelectedIds(currentIds, candidateId, selected)
     );
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
   }
 
-  async function handleRequestPlan() {
+  async function handleRequestPlan(
+    options: { regenerationContext?: ExecutionValidationFailure } = {}
+  ) {
     if (!analysis) {
       return;
     }
@@ -848,14 +862,26 @@ function App() {
         runIdToUse = response.summary.id;
       }
 
+      const regenerationContext = options.regenerationContext
+        ? {
+            trigger: "validation_failure" as const,
+            validationKind: options.regenerationContext.kind,
+            ...(options.regenerationContext.failedPlanId
+              ? { failedPlanId: options.regenerationContext.failedPlanId }
+              : {})
+          }
+        : undefined;
+
       const plan = await requestExecutionPlan({
         analysisRunId: runIdToUse,
         selectedIssueCandidateIds,
-        selectedPRCandidateIds
+        selectedPRCandidateIds,
+        ...(regenerationContext ? { regenerationContext } : {})
       });
 
       setExecutionPlan(plan);
       setApprovalGranted(false);
+      setExecutionValidationFailure(null);
     } catch (error) {
       setExecutionErrorMessage(
         error instanceof Error
@@ -867,6 +893,74 @@ function App() {
     }
   }
 
+  function buildValidationFailure(
+    failedPlanId: string,
+    error: ExecutionClientError
+  ): ExecutionValidationFailure | null {
+    const details =
+      typeof error.details === "object" && error.details !== null
+        ? (error.details as Record<string, unknown>)
+        : null;
+    if (!details) {
+      return null;
+    }
+
+    const kind = details.kind;
+    if (
+      kind !== "drift" &&
+      kind !== "synthesis_error" &&
+      kind !== "missing_preview"
+    ) {
+      return null;
+    }
+
+    const filePaths: string[] = [];
+    const candidateIds = new Set<string>();
+
+    if (kind === "drift" && Array.isArray(details.driftDetails)) {
+      for (const entry of details.driftDetails as Array<{
+        candidateId?: unknown;
+        driftPaths?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+        if (Array.isArray(entry?.driftPaths)) {
+          for (const path of entry.driftPaths) {
+            if (typeof path === "string" && !filePaths.includes(path)) {
+              filePaths.push(path);
+            }
+          }
+        }
+      }
+    } else if (kind === "synthesis_error" && Array.isArray(details.synthesisErrors)) {
+      for (const entry of details.synthesisErrors as Array<{
+        candidateId?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+      }
+    } else if (kind === "missing_preview" && Array.isArray(details.missingPreview)) {
+      for (const entry of details.missingPreview as Array<{
+        candidateId?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+      }
+    }
+
+    return {
+      kind,
+      message:
+        typeof details.error === "string" ? details.error : error.message,
+      filePaths,
+      candidateIds: Array.from(candidateIds),
+      failedPlanId
+    };
+  }
+
   async function handleRequestExecute() {
     if (!executionPlan) return;
 
@@ -876,6 +970,7 @@ function App() {
     }
 
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
     setIsExecutionExecuteLoading(true);
 
     try {
@@ -889,6 +984,19 @@ function App() {
 
       setExecutionResult(result);
     } catch (error) {
+      if (
+        error instanceof ExecutionClientError &&
+        (error.status === 409 || error.status === 422)
+      ) {
+        const failure = buildValidationFailure(executionPlan.planId, error);
+        if (failure) {
+          setExecutionValidationFailure(failure);
+          setApprovalGranted(false);
+          setExecutionErrorMessage(null);
+          return;
+        }
+      }
+
       setExecutionErrorMessage(
         error instanceof Error
           ? error.message
@@ -897,6 +1005,12 @@ function App() {
     } finally {
       setIsExecutionExecuteLoading(false);
     }
+  }
+
+  function handleRegeneratePlanFromValidationFailure(
+    failure: ExecutionValidationFailure
+  ): void {
+    void handleRequestPlan({ regenerationContext: failure });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1843,10 +1957,14 @@ function App() {
                 isSubmittingPlan={isExecutionPlanLoading}
                 isSubmittingExecute={isExecutionExecuteLoading}
                 onApprovalChange={setApprovalGranted}
-                onRequestPlan={handleRequestPlan}
+                onRequestPlan={() => void handleRequestPlan()}
+                onRegeneratePlanFromValidationFailure={
+                  handleRegeneratePlanFromValidationFailure
+                }
                 onRequestExecute={handleRequestExecute}
                 selectedIssueCount={selectedIssueCandidateIds.length}
                 selectedPRCount={selectedPRCandidateIds.length}
+                validationFailure={executionValidationFailure}
               />
               <ExecutionResultsPanel
                 result={

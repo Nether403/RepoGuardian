@@ -3,6 +3,20 @@ import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 import type { DiffPreviewFile, ExecutionPlanResponse } from "@repo-guardian/shared-types";
 
+export type ExecutionValidationFailure = {
+  kind: "drift" | "synthesis_error" | "missing_preview";
+  message: string;
+  filePaths: string[];
+  candidateIds: string[];
+  failedPlanId?: string | null;
+};
+
+const VALIDATION_KIND_LABELS: Record<ExecutionValidationFailure["kind"], string> = {
+  drift: "Repository drift",
+  synthesis_error: "Patch synthesis failed",
+  missing_preview: "Approved preview missing"
+};
+
 type DiffViewMode = "unified" | "before-after";
 
 function ExecutionDiffFileView({ file }: { file: DiffPreviewFile }) {
@@ -80,9 +94,13 @@ type ExecutionPlannerPanelProps = {
   isSubmittingExecute: boolean;
   onApprovalChange: (approvalGranted: boolean) => void;
   onRequestPlan: () => void;
+  onRegeneratePlanFromValidationFailure?: (
+    failure: ExecutionValidationFailure
+  ) => void;
   onRequestExecute: () => void;
   selectedIssueCount: number;
   selectedPRCount: number;
+  validationFailure?: ExecutionValidationFailure | null;
 };
 
 export function ExecutionPlannerPanel({
@@ -93,9 +111,11 @@ export function ExecutionPlannerPanel({
   isSubmittingExecute,
   onApprovalChange,
   onRequestPlan,
+  onRegeneratePlanFromValidationFailure,
   onRequestExecute,
   selectedIssueCount,
-  selectedPRCount
+  selectedPRCount,
+  validationFailure
 }: ExecutionPlannerPanelProps) {
   const totalSelections = selectedIssueCount + selectedPRCount;
   const isPlanDisabled = isSubmittingPlan || totalSelections === 0;
@@ -207,6 +227,47 @@ export function ExecutionPlannerPanel({
             ) : null}
           </div>
         )}
+
+        {validationFailure ? (
+          <div
+            className="form-message form-message-error execution-validation-banner"
+            data-testid="execution-validation-banner"
+            role="alert"
+          >
+            <p>
+              <strong>{VALIDATION_KIND_LABELS[validationFailure.kind]}:</strong>{" "}
+              {validationFailure.message}
+            </p>
+            {validationFailure.filePaths.length > 0 ? (
+              <>
+                <p className="subsection-label">Affected files</p>
+                <ul
+                  className="simple-list execution-validation-paths"
+                  data-testid="execution-validation-paths"
+                >
+                  {validationFailure.filePaths.map((path) => (
+                    <li key={path}>
+                      <code>{path}</code>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {onRegeneratePlanFromValidationFailure ? (
+              <button
+                className="submit-button execution-submit-button"
+                data-testid="execution-validation-regenerate"
+                disabled={isSubmittingPlan}
+                onClick={() =>
+                  onRegeneratePlanFromValidationFailure(validationFailure)
+                }
+                type="button"
+              >
+                {isSubmittingPlan ? "Regenerating plan..." : "Regenerate plan"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {executionErrorMessage ? (
           <p className="form-message form-message-error" role="alert">

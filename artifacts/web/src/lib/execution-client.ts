@@ -2,6 +2,7 @@ import {
   ExecutionPlanRequestSchema,
   ExecutionExecuteRequestSchema,
   ExecutionResultSchema,
+  type ExecutionPlanRegenerationContext,
   type ExecutionPlanResponse,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
@@ -28,6 +29,7 @@ export async function requestExecutionPlan(input: {
   analysisRunId: string;
   selectedIssueCandidateIds: string[];
   selectedPRCandidateIds: string[];
+  regenerationContext?: ExecutionPlanRegenerationContext;
 }): Promise<ExecutionPlanResponse> {
   let requestBody: ReturnType<typeof ExecutionPlanRequestSchema.parse>;
 

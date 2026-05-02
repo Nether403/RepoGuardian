@@ -977,6 +977,58 @@ describe("POST /api/execution/plan", () => {
     );
   });
 
+  it("records the regeneration context in the audit log when the plan is regenerated after a validation failure", async () => {
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        createIssue: vi.fn(),
+        openPullRequest: vi.fn()
+      }
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const response = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"],
+        regenerationContext: {
+          trigger: "validation_failure",
+          validationKind: "drift",
+          failedPlanId: "plan_previous"
+        }
+      });
+
+    expect(response.status).toBe(200);
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "generate_pr_candidates",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: expect.stringContaining(
+          "regeneration triggered by validation_failure: drift"
+        ),
+        details: expect.objectContaining({
+          regenerationContext: {
+            trigger: "validation_failure",
+            validationKind: "drift",
+            failedPlanId: "plan_previous"
+          }
+        }),
+        repositoryFullName: "openai/openai-node",
+        runId,
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+  });
+
   it("reopens persisted plan detail and ordered audit events", async () => {
     const testApp = createTestApp({
       readClient: {

@@ -2206,6 +2206,78 @@ describe("App", () => {
     // Exact string from the mock error
     expect(await screen.findByText("Execution service unavailable")).toBeInTheDocument();
   }, 10000);
+
+  it("shows a validation banner with file paths and regenerates the plan when execute returns 409 drift", async () => {
+    const user = userEvent.setup();
+    const planRequests: unknown[] = [];
+    const fetchMock = mockAuthenticatedFetch(async (url, init) => {
+      if (url === "/api/analyze") return createJsonResponse(successPayload);
+      if (url === "/api/execution/plan") {
+        planRequests.push(JSON.parse(String(init?.body ?? "{}")));
+        return createJsonResponse(createExecutionPlanResponse());
+      }
+      if (url === "/api/execution/execute") {
+        return createJsonResponse(
+          {
+            error: "Selected candidates drifted from the planned diff preview.",
+            kind: "drift",
+            driftDetails: [
+              {
+                candidateId: "pr:dependency-upgrade:react",
+                driftPaths: ["package.json", "package-lock.json"]
+              }
+            ]
+          },
+          false,
+          409
+        );
+      }
+      return createJsonResponse({ error: "Unexpected URL: " + url }, false, 500);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await submitRepository(user);
+
+    await screen.findByRole("heading", { name: /Execution planner/i });
+    await user.click(screen.getByRole("checkbox", { name: /Select issue candidate/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Select PR candidate/i }));
+    await user.click(screen.getByRole("button", { name: /Generate plan/i }));
+
+    await screen.findByRole("button", { name: /Execute approved actions/i });
+    await user.click(
+      screen.getByRole("checkbox", { name: /I approve this GitHub write-back plan/i })
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Execute approved actions/i })
+    );
+
+    const banner = await screen.findByTestId("execution-validation-banner");
+    expect(banner).toBeInTheDocument();
+    const paths = await screen.findByTestId("execution-validation-paths");
+    expect(paths).toHaveTextContent("package.json");
+    expect(paths).toHaveTextContent("package-lock.json");
+
+    const regenerate = await screen.findByTestId("execution-validation-regenerate");
+    await user.click(regenerate);
+
+    await waitFor(() => {
+      expect(planRequests.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(planRequests[planRequests.length - 1]).toMatchObject({
+      analysisRunId: expect.any(String),
+      selectedIssueCandidateIds: ["issue:dependency-upgrade:react"],
+      selectedPRCandidateIds: ["pr:dependency-upgrade:react"],
+      regenerationContext: {
+        trigger: "validation_failure",
+        validationKind: "drift",
+        failedPlanId: "plan-1"
+      }
+    });
+  }, 15000);
+
   it("renders same-page traceability anchors for patch plans, candidates, issues, and findings", async () => {
     const user = userEvent.setup();
     const patchPlanId = successPayload.prPatchPlans[0]!.id;

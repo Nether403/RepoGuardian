@@ -654,11 +654,18 @@ export const ExecutionPlanningContextSchema = z.object({
   prPatchPlans: z.array(PRPatchPlanSchema)
 });
 
+export const ExecutionPlanRegenerationContextSchema = z.object({
+  trigger: z.literal("validation_failure"),
+  validationKind: z.enum(["drift", "synthesis_error", "missing_preview"]),
+  failedPlanId: z.string().min(1).optional()
+});
+
 export const ExecutionPlanRequestSchema = z.object({
   analysisRunId: z.string().min(1),
   workspaceId: z.string().min(1).optional(),
   selectedIssueCandidateIds: z.array(z.string().min(1)).default([]),
-  selectedPRCandidateIds: z.array(z.string().min(1)).default([])
+  selectedPRCandidateIds: z.array(z.string().min(1)).default([]),
+  regenerationContext: ExecutionPlanRegenerationContextSchema.optional()
 });
 
 export const ExecutionExecuteRequestSchema = z.object({
@@ -1810,6 +1817,9 @@ export type ExecutionPlanningContext = z.infer<
   typeof ExecutionPlanningContextSchema
 >;
 export type ExecutionPlanRequest = z.infer<typeof ExecutionPlanRequestSchema>;
+export type ExecutionPlanRegenerationContext = z.infer<
+  typeof ExecutionPlanRegenerationContextSchema
+>;
 export type ExecutionExecuteRequest = z.infer<typeof ExecutionExecuteRequestSchema>;
 export type ApprovalRequirement = z.infer<typeof ApprovalRequirementSchema>;
 export type ExecutionPlanResponse = z.infer<typeof ExecutionPlanResponseSchema>;

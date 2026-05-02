@@ -24,6 +24,7 @@ import {
   ExecutionPlanRequestSchema,
   ExecutionResultSchema,
   type ExecutionActionPlan,
+  type ExecutionPlanRegenerationContext,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
 import {
@@ -222,17 +223,26 @@ async function recordExecutionPlanPolicyDecision(input: {
   decision: ExecutionWritePolicyDecision;
   githubInstallationId: string | null;
   policyDecisionRepository: PolicyDecisionRepositoryLike;
+  regenerationContext?: ExecutionPlanRegenerationContext;
   repositoryFullName: string;
   runId: string;
   workspaceId: string;
 }): Promise<void> {
+  const baseDetails = input.decision.details ?? {};
+  const details: Record<string, unknown> = input.regenerationContext
+    ? { ...baseDetails, regenerationContext: input.regenerationContext }
+    : baseDetails;
+  const reason = input.regenerationContext
+    ? `${input.decision.reason} (regeneration triggered by ${input.regenerationContext.trigger}: ${input.regenerationContext.validationKind})`
+    : input.decision.reason;
+
   await input.policyDecisionRepository.recordDecision({
     actionType: "generate_pr_candidates",
     actorUserId: input.actorUserId,
     decision: input.decision.decision,
-    details: input.decision.details,
+    details,
     githubInstallationId: input.githubInstallationId,
-    reason: input.decision.reason,
+    reason,
     repositoryFullName: input.repositoryFullName,
     runId: input.runId,
     scopeType: "repository",
@@ -376,6 +386,7 @@ export function createExecutionRouter(
         decision: policyDecision,
         githubInstallationId: run.run.githubInstallationId ?? null,
         policyDecisionRepository,
+        regenerationContext: parsedRequest.data.regenerationContext,
         repositoryFullName: run.run.analysis.repository.fullName,
         runId: parsedRequest.data.analysisRunId,
         workspaceId
