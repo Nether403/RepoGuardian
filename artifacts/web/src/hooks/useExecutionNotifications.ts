@@ -53,6 +53,13 @@ export function useExecutionNotifications(
   const [connectionState, setConnectionState] =
     useState<UseExecutionNotificationsResult["connectionState"]>("idle");
 
+  // Clear the buffered notifications whenever the workspace changes or the
+  // hook is disabled, so stale events from a previous workspace cannot remain
+  // visible after the user signs out or switches contexts.
+  useEffect(() => {
+    setNotifications([]);
+  }, [enabled, workspaceId]);
+
   useEffect(() => {
     if (!enabled || !workspaceId) {
       setConnectionState("idle");
