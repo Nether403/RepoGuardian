@@ -53,3 +53,8 @@ externalPort = 3000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/api run start & COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/web run build && node -e \"const http = require('http'); const fs = require('fs'); const path = require('path'); const server = http.createServer((req, res) => { const file = path.join('artifacts/web/dist', req.url === '/' ? 'index.html' : req.url); fs.readFile(file, (err, data) => { if (err) { fs.readFile(path.join('artifacts/web/dist', 'index.html'), (e, d) => res.end(d)); } else res.end(data); }); }); server.listen(5000);\""]
+build = ["bash", "-c", "COREPACK_ENABLE_STRICT=0 pnpm install --no-frozen-lockfile && COREPACK_ENABLE_STRICT=0 pnpm run build"]
