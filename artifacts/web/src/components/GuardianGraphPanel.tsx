@@ -16,6 +16,7 @@ import { GuardianGraph } from "./GuardianGraph";
 import { GraphInspector } from "./GraphInspector";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type GuardianGraphPanelProps = {
   analysis: AnalyzeRepoResponse;
@@ -111,7 +112,7 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
           <div className="guardian-graph-stats" aria-label="Guardian Graph summary">
             <span>{graph.summary.dependencyFindingCount} dependency findings</span>
             <span>{graph.summary.codeFindingCount} code findings</span>
-            <button
+            <Button
               aria-pressed={filters.eligibility === "executable"}
               className="guardian-graph-stat-button"
               disabled={graph.summary.executablePatchPlans === 0}
@@ -122,11 +123,11 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
                     current.eligibility === "executable" ? "all" : "executable"
                 }))
               }
-              type="button"
+              variant="unstyled"
             >
               {graph.summary.executablePatchPlans} executable patch plans
-            </button>
-            <button
+            </Button>
+            <Button
               aria-pressed={filters.eligibility === "blocked"}
               className="guardian-graph-stat-button"
               disabled={graph.summary.blockedPatchPlans === 0}
@@ -137,11 +138,11 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
                     current.eligibility === "blocked" ? "all" : "blocked"
                 }))
               }
-              type="button"
+              variant="unstyled"
             >
               {graph.summary.blockedPatchPlans} blocked patch plans
-            </button>
-            <button
+            </Button>
+            <Button
               aria-pressed={filters.severity === "high-severity"}
               className="guardian-graph-stat-button"
               disabled={graph.summary.highSeverityFindingCount === 0}
@@ -152,10 +153,10 @@ export function GuardianGraphPanel({ analysis }: GuardianGraphPanelProps) {
                     current.severity === "high-severity" ? "all" : "high-severity"
                 }))
               }
-              type="button"
+              variant="unstyled"
             >
               {graph.summary.highSeverityFindingCount} high-severity findings
-            </button>
+            </Button>
           </div>
           <div className="guardian-graph-legend" aria-label="Guardian Graph legend">
             <span className="guardian-graph-legend-item">

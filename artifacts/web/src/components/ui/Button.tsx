@@ -1,13 +1,14 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "unstyled";
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary: "submit-button",
   secondary: "secondary-button",
   ghost: "ghost-button",
-  danger: "danger-button"
+  danger: "danger-button",
+  unstyled: ""
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

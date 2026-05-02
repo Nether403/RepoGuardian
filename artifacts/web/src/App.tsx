@@ -50,7 +50,6 @@ import { PRCandidatesPanel } from "./components/PRCandidatesPanel";
 import { RepoInputForm } from "./components/RepoInputForm";
 import { RepositorySummaryPanel } from "./components/RepositorySummaryPanel";
 import { SavedRunsPanel } from "./components/SavedRunsPanel";
-import { StatusBadge } from "./components/StatusBadge";
 import { SweepSchedulesPanel } from "./components/SweepSchedulesPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { TrackedPullRequestsPanel } from "./components/TrackedPullRequestsPanel";
@@ -388,7 +387,13 @@ function mergeTrackedRepositoryStatuses(input: {
 }
 
 function App() {
-  const [appMode, setAppMode] = useState<AppMode>("analysis");
+  const [appMode, setAppMode] = useState<AppMode>(() => {
+    if (typeof window === "undefined") {
+      return "analysis";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "fleet-admin" ? "fleet-admin" : "analysis";
+  });
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [approvalGranted, setApprovalGranted] = useState(false);
   const [candidateTypeFilter, setCandidateTypeFilter] =
