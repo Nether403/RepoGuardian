@@ -11,4 +11,5 @@ export {
 export { SectionHeader, type SectionHeaderProps } from "./SectionHeader";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { Card, type CardProps } from "./Card";
+export { UiGallery } from "./UiGallery";
 export { resolveEyebrowIcon, EYEBROW_ICONS } from "./eyebrow-icons";
