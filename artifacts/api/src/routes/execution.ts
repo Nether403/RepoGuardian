@@ -319,6 +319,11 @@ export function createExecutionRouter(
         return;
       }
 
+      // Dry-run diff previews are produced inside createExecutionPlanResult via
+      // attachDryRunDiffPreviews, which requires either a readClient or a
+      // fileContentsByPath cache. We don't persist analysis-time file contents
+      // across runs, so the GitHub installation read client is the canonical
+      // wiring; planRepository itself does not store file blobs.
       const resolvedDependencies: ExecutionServiceDependencies = dependencies.readClient
         ? dependencies
         : {

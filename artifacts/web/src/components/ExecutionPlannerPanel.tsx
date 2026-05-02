@@ -144,44 +144,65 @@ export function ExecutionPlannerPanel({
                 {executionPlan.approval.confirmationText}
               </span>
             </label>
-            {executionPlan.actions.some((action) => action.diffPreview) ? (
+            {executionPlan.actions.length > 0 ? (
               <div className="execution-diff-previews">
                 <p className="subsection-label">Patch previews</p>
-                {executionPlan.actions
-                  .filter((action) => action.diffPreview)
-                  .map((action) => {
-                    const preview = action.diffPreview!;
+                {executionPlan.actions.map((action) => {
+                  const preview = action.diffPreview;
+                  const isEligible = action.eligibility === "eligible";
 
+                  if (!preview) {
                     return (
-                      <details
-                        className="execution-diff-preview"
+                      <div
+                        className="execution-diff-preview execution-diff-preview-empty"
                         key={`diff:${action.id}`}
                       >
-                        <summary>
+                        <p className="subsection-label">
                           <code>{action.title}</code>
-                          <span className="execution-diff-meta">
-                            {preview.synthesisError
-                              ? "synthesis failed"
-                              : `${preview.files.length} file${
-                                  preview.files.length === 1 ? "" : "s"
-                                }${preview.truncated ? " (truncated)" : ""}`}
-                          </span>
-                        </summary>
-                        {preview.synthesisError ? (
-                          <p className="form-message form-message-error">
-                            {preview.synthesisError}
-                          </p>
-                        ) : (
-                          preview.files.map((file) => (
-                            <ExecutionDiffFileView
-                              file={file}
-                              key={`diff-file:${action.id}:${file.path}`}
-                            />
-                          ))
-                        )}
-                      </details>
+                        </p>
+                        <p className="execution-diff-empty-hint">
+                          {isEligible
+                            ? "No diff available — preview will be generated at execute time."
+                            : "No diff available for this action."}
+                        </p>
+                      </div>
                     );
-                  })}
+                  }
+
+                  return (
+                    <details
+                      className="execution-diff-preview"
+                      key={`diff:${action.id}`}
+                    >
+                      <summary>
+                        <code>{action.title}</code>
+                        <span className="execution-diff-meta">
+                          {preview.synthesisError
+                            ? "synthesis failed"
+                            : `${preview.files.length} file${
+                                preview.files.length === 1 ? "" : "s"
+                              }${preview.truncated ? " (truncated)" : ""}`}
+                        </span>
+                      </summary>
+                      {preview.synthesisError ? (
+                        <p className="form-message form-message-error">
+                          {preview.synthesisError}
+                        </p>
+                      ) : preview.files.length === 0 ? (
+                        <p className="execution-diff-empty-hint">
+                          No file changes were synthesised for this action.
+                        </p>
+                      ) : (
+                        preview.files.map((file) => (
+                          <ExecutionDiffFileView
+                            file={file}
+                            key={`diff-file:${action.id}:${file.path}`}
+                          />
+                        ))
+                      )}
+                    </details>
+                  );
+                })}
               </div>
             ) : null}
           </div>

@@ -1607,3 +1607,13 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+.execution-diff-preview-empty {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.execution-diff-empty-hint {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0.25rem 0 0;
+}
