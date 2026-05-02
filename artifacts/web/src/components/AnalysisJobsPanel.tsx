@@ -12,7 +12,7 @@ import {
   dedupeQueueNotifications
 } from "./queue-activity";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type AnalysisJobsPanelProps = {
   errorMessage: string | null;
@@ -184,9 +184,7 @@ export function AnalysisJobsPanel({
               })}
             </ol>
           ) : (
-            <p className="empty-copy">
-              Live plan lifecycle events will appear here as the queue runs.
-            </p>
+            <EmptyState>Live plan lifecycle events will appear here as the queue runs.</EmptyState>
           )}
         </section>
         <div className="fleet-panel-toolbar">
@@ -306,9 +304,7 @@ export function AnalysisJobsPanel({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No jobs match the current filter.
-          </p>
+          <EmptyState>No jobs match the current filter.</EmptyState>
         )}
       </div>
     </Panel>

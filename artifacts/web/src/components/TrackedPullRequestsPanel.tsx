@@ -2,7 +2,7 @@ import type { TrackedPullRequest } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type TrackedPullRequestsPanelProps = {
   onOpenPlanDetails: (planId: string) => void;
@@ -98,9 +98,7 @@ export function TrackedPullRequestsPanel({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No tracked remediation pull requests are recorded yet.
-          </p>
+          <EmptyState>No tracked remediation pull requests are recorded yet.</EmptyState>
         )}
       </div>
     </Panel>

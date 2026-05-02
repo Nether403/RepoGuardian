@@ -3,7 +3,7 @@ import type { PolicyDecisionEvent } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type PolicyDecisionsPanelProps = {
   actionFilter: PolicyActionFilter;
@@ -174,10 +174,8 @@ export function PolicyDecisionsPanel({
     >
       <div className="fleet-panel-shell">
         <div className="fleet-panel-toolbar">
-          <p className="empty-copy">
-            Recent policy evaluations for planning, sweep scheduling, and approved
-            GitHub write execution.
-          </p>
+          <EmptyState>Recent policy evaluations for planning, sweep scheduling, and approved
+            GitHub write execution.</EmptyState>
           <div className="fleet-inline-actions">
             <label className="fleet-filter">
               <span>Repository filter</span>
@@ -243,9 +241,7 @@ export function PolicyDecisionsPanel({
         </div>
         {decisions.length > 0 ? (
           <>
-            <p className="empty-copy">
-              Showing {decisions.length} of {totalDecisions} policy decisions.
-            </p>
+            <EmptyState>Showing {decisions.length} of {totalDecisions} policy decisions.</EmptyState>
             <div className="fleet-card-list">
               {decisions.map(renderPolicyDecision)}
             </div>
@@ -270,15 +266,13 @@ export function PolicyDecisionsPanel({
             </div>
           </>
         ) : (
-          <p className="empty-copy">
-            {actionFilter !== "all" ||
+          <EmptyState>{actionFilter !== "all" ||
             decisionFilter !== "all" ||
             repositoryFilter.trim().length > 0 ||
             occurredAfter ||
             occurredBefore
               ? "No policy decisions match the current filters."
-              : "No policy decisions have been recorded yet."}
-          </p>
+              : "No policy decisions have been recorded yet."}</EmptyState>
         )}
       </div>
     </Panel>

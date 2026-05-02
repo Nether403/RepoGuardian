@@ -31,6 +31,7 @@ import {
   getWriteBackEligibility,
   prCandidateTypeLabels
 } from "../features/analysis/view-model";
+import { EmptyState } from "./ui";
 import { FindingsPanel } from "./FindingsPanel";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
@@ -241,9 +242,7 @@ function PRCandidateTraceabilityPanel({
           ))}
         </div>
       ) : (
-        <p className="empty-copy">
-          No PR candidates are referenced by the current readiness cards.
-        </p>
+        <EmptyState>No PR candidates are referenced by the current readiness cards.</EmptyState>
       )}
     </Panel>
   );
@@ -486,9 +485,7 @@ function IssueCandidateTraceabilityPanel({
           })}
         </div>
       ) : (
-        <p className="empty-copy">
-          No issue candidates are referenced by the current readiness cards.
-        </p>
+        <EmptyState>No issue candidates are referenced by the current readiness cards.</EmptyState>
       )}
     </Panel>
   );
@@ -610,16 +607,12 @@ export function TraceabilityPanel({
                   />
                 ))
               ) : (
-                <p className="empty-copy">
-                  No PR patch plans match the active readiness filters.
-                </p>
+                <EmptyState>No PR patch plans match the active readiness filters.</EmptyState>
               )}
             </div>
           </div>
         ) : (
-          <p className="empty-copy">
-            No PR patch plans were generated for this repository snapshot.
-          </p>
+          <EmptyState>No PR patch plans were generated for this repository snapshot.</EmptyState>
         )}
       </Panel>
 

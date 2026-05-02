@@ -23,7 +23,7 @@ import {
 } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button, LinkButton } from "./ui";
+import { Button, EmptyState, LinkButton } from "./ui";
 
 type InspectorSelection =
   | {
@@ -585,12 +585,10 @@ export function FleetInspectorPanel({
     >
       <div className="fleet-panel-shell">
         {!selection ? (
-          <p className="empty-copy">
-            Select a job, tracked repository, run, or linked plan to inspect the
-            underlying remediation context without leaving Fleet Admin.
-          </p>
+          <EmptyState>Select a job, tracked repository, run, or linked plan to inspect the
+            underlying remediation context without leaving Fleet Admin.</EmptyState>
         ) : null}
-        {isLoading ? <p className="empty-copy">Loading inspector detail...</p> : null}
+        {isLoading ? <EmptyState>Loading inspector detail...</EmptyState> : null}
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
             {errorMessage}
@@ -887,13 +885,11 @@ export function FleetInspectorPanel({
                   })}
                 </div>
               ) : (
-                <p className="empty-copy">
-                  No {activeRepositoryTimeline?.appliedKinds.length === 0
+                <EmptyState>No {activeRepositoryTimeline?.appliedKinds.length === 0
                     ? ""
                     : `${activeRepositoryTimeline?.appliedKinds
                         .map(formatActivityKind)
-                        .join(", ")} `}events recorded for this repository yet.
-                </p>
+                        .join(", ")} `}events recorded for this repository yet.</EmptyState>
               )}
               <div className="fleet-inline-actions">
                 <span className="trace-chip trace-chip-muted">
@@ -969,7 +965,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No saved runs recorded for this repository yet.</p>
+                <EmptyState>No saved runs recorded for this repository yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1006,7 +1002,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No queued history recorded for this repository yet.</p>
+                <EmptyState>No queued history recorded for this repository yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1037,7 +1033,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No durable execution plans recorded yet.</p>
+                <EmptyState>No durable execution plans recorded yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1083,7 +1079,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No tracked remediation pull requests recorded yet.</p>
+                <EmptyState>No tracked remediation pull requests recorded yet.</EmptyState>
               )}
             </div>
           </div>
@@ -1293,7 +1289,7 @@ export function FleetInspectorPanel({
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">No PR candidates are linked to this plan's actions.</p>
+                    <EmptyState>No PR candidates are linked to this plan's actions.</EmptyState>
                   )}
                 </div>
                 <div className="fleet-inspector-block" id="plan-traceability-issue-candidates">
@@ -1314,9 +1310,7 @@ export function FleetInspectorPanel({
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">
-                      No issue candidates are linked to this plan's actions.
-                    </p>
+                    <EmptyState>No issue candidates are linked to this plan's actions.</EmptyState>
                   )}
                 </div>
                 <div className="fleet-inspector-block" id="plan-traceability-findings">
@@ -1337,18 +1331,14 @@ export function FleetInspectorPanel({
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">
-                      No findings could be resolved from the linked plan actions.
-                    </p>
+                    <EmptyState>No findings could be resolved from the linked plan actions.</EmptyState>
                   )}
                 </div>
               </>
             ) : (
               <div className="fleet-inspector-block">
                 <h3>Traceability source</h3>
-                <p className="empty-copy">
-                  Open the source run to inspect the underlying findings and candidates.
-                </p>
+                <EmptyState>Open the source run to inspect the underlying findings and candidates.</EmptyState>
               </div>
             )}
             <div className="fleet-inspector-block">
@@ -1367,7 +1357,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No audit events recorded for this plan yet.</p>
+                <EmptyState>No audit events recorded for this plan yet.</EmptyState>
               )}
             </div>
           </div>

@@ -2,7 +2,7 @@ import type { FleetStatusResponse } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type FleetOverviewPanelProps = {
   errorMessage: string | null;
@@ -140,10 +140,8 @@ export function FleetOverviewPanel({
     >
       <div className="fleet-panel-shell">
         <div className="fleet-panel-toolbar">
-          <p className="empty-copy">
-            Review tracked repository health, queue outcomes, and remediation PR
-            lifecycle without leaving the supervised Repo Guardian workflow.
-          </p>
+          <EmptyState>Review tracked repository health, queue outcomes, and remediation PR
+            lifecycle without leaving the supervised Repo Guardian workflow.</EmptyState>
           <Button
             disabled={isLoading}
             icon={isLoading ? undefined : "refresh"}
@@ -197,10 +195,8 @@ export function FleetOverviewPanel({
             ) : null}
           </>
         ) : (
-          <p className="empty-copy">
-            Switch to Fleet Admin and refresh to load tracked repositories, jobs,
-            schedules, and PR lifecycle state.
-          </p>
+          <EmptyState>Switch to Fleet Admin and refresh to load tracked repositories, jobs,
+            schedules, and PR lifecycle state.</EmptyState>
         )}
       </div>
     </Panel>

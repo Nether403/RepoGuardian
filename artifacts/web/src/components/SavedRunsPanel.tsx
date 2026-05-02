@@ -6,7 +6,7 @@ import type {
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type SavedRunsPanelProps = {
   analysis: AnalyzeRepoResponse | null;
@@ -73,10 +73,8 @@ export function SavedRunsPanel({
       title="Saved analysis runs"
     >
       <div className="saved-runs-shell">
-        <p className="empty-copy">
-          Save the current analysis locally, reopen prior runs without re-analyzing,
-          or compare two saved snapshots.
-        </p>
+        <EmptyState>Save the current analysis locally, reopen prior runs without re-analyzing,
+          or compare two saved snapshots.</EmptyState>
         <form className="saved-run-form" onSubmit={handleSave}>
           <label>
             <span>Run label</span>
@@ -197,10 +195,8 @@ export function SavedRunsPanel({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No saved runs are loaded yet. Refresh saved runs or save the current
-            analysis.
-          </p>
+          <EmptyState>No saved runs are loaded yet. Refresh saved runs or save the current
+            analysis.</EmptyState>
         )}
       </div>
     </Panel>

@@ -8,6 +8,7 @@ import {
   packageManagerLabels,
   signalLabels
 } from "../features/analysis/view-model";
+import { EmptyState } from "./ui";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
@@ -17,7 +18,7 @@ type EcosystemPanelProps = {
 
 function renderFileList(items: DetectedFileGroup[], emptyLabel: string) {
   if (items.length === 0) {
-    return <p className="empty-copy">{emptyLabel}</p>;
+    return <EmptyState>{emptyLabel}</EmptyState>;
   }
 
   return (
@@ -34,7 +35,7 @@ function renderFileList(items: DetectedFileGroup[], emptyLabel: string) {
 
 function renderSignalList(items: DetectedSignal[], notablePaths: string[]) {
   if (items.length === 0 && notablePaths.length === 0) {
-    return <p className="empty-copy">No workflow or infra signals were detected.</p>;
+    return <EmptyState>No workflow or infra signals were detected.</EmptyState>;
   }
 
   return (
@@ -101,9 +102,7 @@ export function EcosystemPanel({ analysis }: EcosystemPanelProps) {
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No supported ecosystems were inferred from the fetched tree.
-          </p>
+          <EmptyState>No supported ecosystems were inferred from the fetched tree.</EmptyState>
         )}
       </Panel>
 

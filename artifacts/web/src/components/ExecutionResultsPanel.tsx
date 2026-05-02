@@ -4,6 +4,7 @@ import type {
 } from "@repo-guardian/shared-types";
 import type { ReactNode } from "react";
 import { Panel } from "./Panel";
+import { EmptyState } from "./ui";
 import { StatusBadge } from "./StatusBadge";
 
 type ExecutionResultsPanelProps = {
@@ -188,9 +189,7 @@ export function ExecutionResultsPanel({ result }: ExecutionResultsPanelProps) {
           </div>
         </div>
       ) : (
-        <p className="empty-copy">
-          Run a dry-run plan or approved execution to see action-by-action results.
-        </p>
+        <EmptyState>Run a dry-run plan or approved execution to see action-by-action results.</EmptyState>
       )}
     </Panel>
   );

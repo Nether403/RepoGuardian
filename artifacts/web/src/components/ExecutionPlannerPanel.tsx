@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 import type { DiffPreviewFile, ExecutionPlanResponse } from "@repo-guardian/shared-types";
 
 export type ExecutionValidationFailure = {
@@ -141,10 +141,8 @@ export function ExecutionPlannerPanel({
       title="Execution planner"
     >
       <div className="execution-planner">
-        <p className="empty-copy">
-          Select candidate issues and PRs to preview an execution plan.
-          The plan must be explicitly approved before any GitHub write actions occur.
-        </p>
+        <EmptyState>Select candidate issues and PRs to preview an execution plan.
+          The plan must be explicitly approved before any GitHub write actions occur.</EmptyState>
 
         {!executionPlan ? (
           <p className="execution-note">

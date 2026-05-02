@@ -6,7 +6,7 @@ import type {
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type TrackedRepositoriesPanelProps = {
   availableRepositories: GitHubInstallationRepository[];
@@ -172,19 +172,13 @@ export function TrackedRepositoriesPanel({
           </p>
         ) : null}
         {hasSelectableRepositories ? (
-          <p className="empty-copy">
-            New tracked repositories are selected from synced installation-visible
-            repositories for the active workspace.
-          </p>
+          <EmptyState>New tracked repositories are selected from synced installation-visible
+            repositories for the active workspace.</EmptyState>
         ) : canUseRepoInputFallback ? (
-          <p className="empty-copy">
-            Local development fallback is active. Free-form repository input is still
-            available until a workspace installation is synced.
-          </p>
+          <EmptyState>Local development fallback is active. Free-form repository input is still
+            available until a workspace installation is synced.</EmptyState>
         ) : (
-          <p className="empty-copy">
-            Sync a workspace installation before registering a tracked repository.
-          </p>
+          <EmptyState>Sync a workspace installation before registering a tracked repository.</EmptyState>
         )}
         {repositories.length > 0 ? (
           <div className="fleet-card-list">
@@ -288,10 +282,8 @@ export function TrackedRepositoriesPanel({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No tracked repositories registered yet. Add one to start repeat
-            analysis and scheduled plan-only sweeps.
-          </p>
+          <EmptyState>No tracked repositories registered yet. Add one to start repeat
+            analysis and scheduled plan-only sweeps.</EmptyState>
         )}
       </div>
     </Panel>

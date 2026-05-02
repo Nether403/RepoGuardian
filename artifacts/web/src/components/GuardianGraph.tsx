@@ -7,7 +7,7 @@ import {
   type SimulationLinkDatum,
   type SimulationNodeDatum
 } from "d3";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 import {
   useMemo,
   useRef,
@@ -634,7 +634,7 @@ export function GuardianGraph({
   if (graph.nodes.length === 0) {
     return (
       <div className="guardian-graph-empty">
-        <p className="empty-copy">No graph nodes match the current filters.</p>
+        <EmptyState>No graph nodes match the current filters.</EmptyState>
       </div>
     );
   }

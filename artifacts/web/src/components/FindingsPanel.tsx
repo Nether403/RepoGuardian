@@ -13,6 +13,7 @@ import {
   getSeverityTone,
   isDependencyFinding
 } from "../features/analysis/view-model";
+import { EmptyState } from "./ui";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
@@ -209,9 +210,7 @@ export function FindingsPanel({ traceability }: FindingsPanelProps) {
           })}
         </div>
       ) : (
-        <p className="empty-copy">
-          No findings are referenced by the current readiness cards.
-        </p>
+        <EmptyState>No findings are referenced by the current readiness cards.</EmptyState>
       )}
     </Panel>
   );

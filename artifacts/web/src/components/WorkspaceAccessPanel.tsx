@@ -2,7 +2,7 @@ import type { AuthSession, GitHubInstallation, GitHubInstallationRepository } fr
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type WorkspaceAccessPanelProps = {
   authErrorMessage: string | null;
@@ -84,12 +84,10 @@ export function WorkspaceAccessPanel({
     >
       <div className="fleet-panel-shell">
         <div className="fleet-panel-toolbar">
-          <p className="empty-copy">
-            Fleet Admin now scopes reads and write-back planning through the active
+          <EmptyState>Fleet Admin now scopes reads and write-back planning through the active
             workspace. Sign in with GitHub, pick the workspace you want to operate
             in, sync GitHub App installations, and select tracked repositories from
-            synced installation visibility.
-          </p>
+            synced installation visibility.</EmptyState>
           <div className="fleet-inline-actions">
             <Button
               disabled={isSessionLoading || isInstallationsLoading}
@@ -118,9 +116,7 @@ export function WorkspaceAccessPanel({
           </p>
         ) : null}
         {!authSession ? (
-          <p className="empty-copy">
-            Sign in to load workspace membership and GitHub App installations.
-          </p>
+          <EmptyState>Sign in to load workspace membership and GitHub App installations.</EmptyState>
         ) : (
           <>
             <div className="fleet-metric-grid">
@@ -201,11 +197,9 @@ export function WorkspaceAccessPanel({
                 ))}
               </div>
             ) : (
-              <p className="empty-copy">
-                {authSession.authMode === "session"
+              <EmptyState>{authSession.authMode === "session"
                   ? "No synced installations are available for this workspace yet. Install the Repo Guardian GitHub App on the target account, then refresh access."
-                  : "Local development mode is active. Installation-backed repository selection appears here when a workspace is connected to a GitHub App installation."}
-              </p>
+                  : "Local development mode is active. Installation-backed repository selection appears here when a workspace is connected to a GitHub App installation."}</EmptyState>
             )}
           </>
         )}

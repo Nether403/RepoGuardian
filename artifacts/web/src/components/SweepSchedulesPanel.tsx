@@ -3,7 +3,7 @@ import type { SweepSchedule } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import { Button } from "./ui";
+import { Button, EmptyState } from "./ui";
 
 type SweepSchedulesPanelProps = {
   errorMessage: string | null;
@@ -127,9 +127,7 @@ export function SweepSchedulesPanel({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No sweep schedules created yet.
-          </p>
+          <EmptyState>No sweep schedules created yet.</EmptyState>
         )}
       </div>
     </Panel>
