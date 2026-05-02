@@ -326,6 +326,98 @@ p {
   pointer-events: none;
 }
 
+.live-connection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.3rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.live-connection-badge-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.live-connection-badge-label {
+  display: inline-block;
+}
+
+.live-connection-badge-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.live-connection-badge-live {
+  border-color: var(--border-accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.live-connection-badge-live .live-connection-badge-dot {
+  background: var(--success);
+  box-shadow: 0 0 0 4px var(--success-soft);
+}
+
+.live-connection-badge-reconnecting {
+  border-color: rgba(241, 197, 108, 0.32);
+  background: var(--amber-soft);
+  color: var(--amber-strong);
+}
+
+.live-connection-badge-reconnecting .live-connection-badge-dot {
+  background: var(--amber-strong);
+  animation: live-connection-badge-pulse 1.4s var(--ease-out) infinite;
+}
+
+.live-connection-badge-offline {
+  border-color: var(--border);
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+.live-connection-badge-offline .live-connection-badge-dot {
+  background: var(--text-soft);
+  opacity: 0.6;
+}
+
+@keyframes live-connection-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(241, 197, 108, 0.55);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 6px rgba(241, 197, 108, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-connection-badge-reconnecting .live-connection-badge-dot {
+    animation: none;
+    box-shadow: 0 0 0 4px rgba(241, 197, 108, 0.32);
+  }
+}
+
 .page-shell {
   width: min(var(--content-max), calc(100% - 2rem));
   margin: 0 auto;
@@ -1844,6 +1936,14 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.queue-activity-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .queue-activity-list {

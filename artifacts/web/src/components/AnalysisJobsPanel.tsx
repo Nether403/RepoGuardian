@@ -5,6 +5,10 @@ import type {
   ExecutionPlanNotification,
   ExecutionPlanNotificationType
 } from "../lib/notifications-client";
+import {
+  LiveConnectionBadge,
+  type LiveConnectionState
+} from "./LiveConnectionBadge";
 import { Panel } from "./Panel";
 import {
   NOTIFICATION_LABEL,
@@ -18,6 +22,7 @@ type AnalysisJobsPanelProps = {
   errorMessage: string | null;
   isLoading: boolean;
   jobs: AnalysisJob[];
+  liveConnectionState?: LiveConnectionState;
   notifications?: ExecutionPlanNotification[];
   pendingJobId: string | null;
   onCancelJob: (jobId: string) => void;
@@ -54,6 +59,7 @@ export function AnalysisJobsPanel({
   errorMessage,
   isLoading,
   jobs,
+  liveConnectionState,
   notifications,
   pendingJobId,
   onCancelJob,
@@ -102,7 +108,16 @@ export function AnalysisJobsPanel({
           data-testid="queue-activity"
         >
           <div className="queue-activity-header">
-            <p className="subsection-label">Live activity</p>
+            <div className="queue-activity-heading">
+              <p className="subsection-label">Live activity</p>
+              {liveConnectionState ? (
+                <LiveConnectionBadge
+                  announce={false}
+                  data-testid="queue-activity-live-connection-badge"
+                  state={liveConnectionState}
+                />
+              ) : null}
+            </div>
             {visibleNotifications.length > 0 && onClearNotifications ? (
               <Button
                 data-testid="queue-activity-clear"

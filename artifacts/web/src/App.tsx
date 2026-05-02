@@ -1880,6 +1880,11 @@ function App() {
       aside={heroAside}
       eyebrow={appMode === "analysis" ? "Approval-Gated Analysis" : "Fleet Admin"}
       heading="Repo Guardian"
+      liveConnectionState={
+        appMode === "fleet-admin"
+          ? executionNotifications.connectionState
+          : undefined
+      }
       notificationCount={liveNotificationCount}
       onOpenNotifications={
         appMode === "fleet-admin" ? handleOpenNotifications : undefined
@@ -2108,6 +2113,7 @@ function App() {
             errorMessage={jobsErrorMessage}
             isLoading={isFleetLoading}
             jobs={analysisJobs}
+            liveConnectionState={executionNotifications.connectionState}
             notifications={executionNotifications.notifications}
             onCancelJob={handleCancelJob}
             onClearNotifications={executionNotifications.clear}

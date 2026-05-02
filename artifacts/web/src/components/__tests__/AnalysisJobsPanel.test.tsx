@@ -226,6 +226,77 @@ describe("AnalysisJobsPanel live activity", () => {
     expect(onClearNotifications).toHaveBeenCalledTimes(1);
   });
 
+  it("renders the live connection badge in the activity header when a state is supplied", () => {
+    const { rerender } = render(
+      <AnalysisJobsPanel
+        {...baseHandlers}
+        errorMessage={null}
+        isLoading={false}
+        jobs={[]}
+        liveConnectionState="open"
+        notifications={[]}
+        pendingJobId={null}
+      />
+    );
+
+    const liveBadge = screen.getByTestId("queue-activity-live-connection-badge");
+    expect(liveBadge).toHaveTextContent("Live");
+    expect(liveBadge).toHaveAttribute("data-variant", "live");
+
+    rerender(
+      <AnalysisJobsPanel
+        {...baseHandlers}
+        errorMessage={null}
+        isLoading={false}
+        jobs={[]}
+        liveConnectionState="error"
+        notifications={[]}
+        pendingJobId={null}
+      />
+    );
+
+    const reconnectingBadge = screen.getByTestId(
+      "queue-activity-live-connection-badge"
+    );
+    expect(reconnectingBadge).toHaveTextContent("Reconnecting");
+    expect(reconnectingBadge).toHaveAttribute("data-variant", "reconnecting");
+
+    rerender(
+      <AnalysisJobsPanel
+        {...baseHandlers}
+        errorMessage={null}
+        isLoading={false}
+        jobs={[]}
+        liveConnectionState="idle"
+        notifications={[]}
+        pendingJobId={null}
+      />
+    );
+
+    const offlineBadge = screen.getByTestId(
+      "queue-activity-live-connection-badge"
+    );
+    expect(offlineBadge).toHaveTextContent("Offline");
+    expect(offlineBadge).toHaveAttribute("data-variant", "offline");
+  });
+
+  it("omits the live connection badge from the activity header when no state is supplied", () => {
+    render(
+      <AnalysisJobsPanel
+        {...baseHandlers}
+        errorMessage={null}
+        isLoading={false}
+        jobs={[]}
+        notifications={[]}
+        pendingJobId={null}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("queue-activity-live-connection-badge")
+    ).not.toBeInTheDocument();
+  });
+
   it("hides clear/dismiss controls when no dismissal handlers are wired", () => {
     render(
       <AnalysisJobsPanel

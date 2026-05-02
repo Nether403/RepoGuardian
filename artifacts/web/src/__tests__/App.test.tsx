@@ -3451,6 +3451,19 @@ describe("App", () => {
         name: /Harden workflow permissions/i
       })
     ).toBeInTheDocument();
+
+    // The top-bar live-connection badge should reflect the SSE hook state
+    // and be the announcing instance (aria-live region) so the queue-header
+    // copy doesn't double-announce. The hook starts in "connecting" before
+    // the EventSource emits "ready"; in jsdom there is no EventSource so it
+    // settles into "connecting" and stays there for this assertion.
+    const topbarBadge = screen.getByTestId("topbar-live-connection-badge");
+    expect(topbarBadge).toHaveAttribute("data-variant", "reconnecting");
+    expect(topbarBadge).toHaveAttribute("aria-live", "polite");
+    expect(topbarBadge).toHaveTextContent(/Reconnecting/i);
+    const queueBadge = screen.getByTestId("queue-activity-live-connection-badge");
+    expect(queueBadge).toHaveAttribute("data-announce", "false");
+    expect(queueBadge).not.toHaveAttribute("aria-live");
   });
 
   it("filters policy decisions and expands policy decision details in fleet admin", async () => {

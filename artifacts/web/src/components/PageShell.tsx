@@ -1,4 +1,8 @@
 import type { PropsWithChildren, ReactNode } from "react";
+import {
+  LiveConnectionBadge,
+  type LiveConnectionState
+} from "./LiveConnectionBadge";
 import { Badge, Icon, IconButton, type BadgeTone } from "./ui";
 
 type PageShellProps = PropsWithChildren<{
@@ -12,6 +16,7 @@ type PageShellProps = PropsWithChildren<{
   onOpenNotifications?: () => void;
   statusLabel?: string;
   statusTone?: BadgeTone;
+  liveConnectionState?: LiveConnectionState;
 }>;
 
 export function PageShell({
@@ -19,6 +24,7 @@ export function PageShell({
   children,
   eyebrow,
   heading,
+  liveConnectionState,
   notificationCount = 0,
   onOpenNotifications,
   statusLabel,
@@ -68,6 +74,12 @@ export function PageShell({
                 </span>
               ) : null}
             </span>
+          ) : null}
+          {liveConnectionState ? (
+            <LiveConnectionBadge
+              data-testid="topbar-live-connection-badge"
+              state={liveConnectionState}
+            />
           ) : null}
           {statusLabel ? (
             <Badge tone={statusTone}>{statusLabel}</Badge>
