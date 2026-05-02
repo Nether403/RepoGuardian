@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { Icon } from "./ui";
 
 type RepoInputFormProps = {
   errorMessage: string | null;
@@ -36,6 +37,7 @@ export function RepoInputForm({
           value={value}
         />
         <button className="submit-button" disabled={isLoading} type="submit">
+          <Icon name={isLoading ? "spinner" : "play"} />
           {isLoading ? "Analyzing..." : "Analyze Repository"}
         </button>
       </div>

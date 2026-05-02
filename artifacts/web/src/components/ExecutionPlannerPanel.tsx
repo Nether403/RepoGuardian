@@ -275,16 +275,20 @@ export function ExecutionPlannerPanel({
           </p>
         ) : null}
 
-        <div className="button-group" style={{ display: "flex", gap: "1rem" }}>
+        <div className="fleet-inline-actions">
           <button
             className="submit-button execution-submit-button"
             disabled={isPlanDisabled}
             onClick={onRequestPlan}
             type="button"
           >
-            {isSubmittingPlan ? "Generating plan..." : (executionPlan ? "Regenerate plan" : "Generate plan")}
+            {isSubmittingPlan
+              ? "Generating plan..."
+              : executionPlan
+                ? "Regenerate plan"
+                : "Generate plan"}
           </button>
-          
+
           {executionPlan ? (
             <button
               className="submit-button execution-submit-button"
