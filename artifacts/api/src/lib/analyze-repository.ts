@@ -1,6 +1,7 @@
 import {
   createDependencyFindingResult,
   OsvAdvisoryProvider,
+  rescoreDependencyFindingsReachability,
   type DependencyFindingResult
 } from "@repo-guardian/advisory";
 import { createDependencySnapshot, listDependencyFilesToFetch } from "@repo-guardian/dependencies";
@@ -315,11 +316,18 @@ export async function analyzeRepository(
   const reviewedFileContentsByPath = Object.fromEntries(
     reviewFiles.reviewedFiles.map((file) => [file.path, file.content] as const)
   );
-  const dependencyFindings = await createDependencyFindingResult(
-    dependencySnapshot,
-    advisoryProvider,
-    { fileContentsByPath: reviewedFileContentsByPath }
-  );
+  // Re-score reachability against the reviewed source files without re-querying
+  // the advisory provider — the initial lookup result already enumerated the
+  // matched advisories, and reachability only depends on finding metadata plus
+  // the reviewed file contents.
+  const dependencyFindings: DependencyFindingResult = {
+    ...initialDependencyFindings,
+    findings: rescoreDependencyFindingsReachability(
+      initialDependencyFindings.findings,
+      reviewedFileContentsByPath
+    ),
+    summary: initialDependencyFindings.summary
+  };
   const issueCandidates = createIssueCandidateResult({
     codeReviewFindings: codeReview.findings,
     dependencyFindings: dependencyFindings.findings

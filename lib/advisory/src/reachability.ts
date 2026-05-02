@@ -66,6 +66,10 @@ function buildPackageReferencePatterns(packageName: string): RegExp[] {
     patterns.push(
       new RegExp(`(?:from|require\\s*\\(|import\\s*\\()\\s*['"\`]${escaped}(?:/[^'"\`]*)?['"\`]`)
     );
+    // JS side-effect imports (e.g., `import "pkg";` or `import 'pkg/sub';`)
+    patterns.push(
+      new RegExp(`import\\s+['"\`]${escaped}(?:/[^'"\`]*)?['"\`]`)
+    );
     // Python imports
     patterns.push(new RegExp(`(?:from|import)\\s+${escaped}(?:[\\s.;,]|$)`, "m"));
     // Go imports

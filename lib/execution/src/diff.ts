@@ -6,6 +6,11 @@ import type {
 const DEFAULT_MAX_LINES_PER_FILE = 400;
 const DEFAULT_MAX_FILES = 8;
 const DEFAULT_CONTEXT_LINES = 3;
+// LCS is O(n*m) on lines. Guard against pathological inputs (e.g. >5k lines or
+// >500KB) by switching to a coarse "replace whole file" diff instead of running
+// a full LCS on the original content.
+const LCS_MAX_LINES = 5_000;
+const LCS_MAX_BYTES = 500_000;
 
 export type BuildDiffPreviewInput = {
   files: Array<{
@@ -211,6 +216,30 @@ function buildHunks(
   return hunks;
 }
 
+function buildOversizedReplacementHunk(
+  beforeLines: string[],
+  afterLines: string[]
+): LcsHunk {
+  const lines: string[] = [];
+
+  for (const line of beforeLines) {
+    lines.push(`-${line}`);
+  }
+
+  for (const line of afterLines) {
+    lines.push(`+${line}`);
+  }
+
+  return {
+    afterLength: afterLines.length,
+    afterStart: afterLines.length === 0 ? 0 : 1,
+    beforeLength: beforeLines.length,
+    beforeStart: beforeLines.length === 0 ? 0 : 1,
+    command: "equal",
+    lines
+  };
+}
+
 export function buildUnifiedDiff(input: {
   before: string;
   after: string;
@@ -222,7 +251,13 @@ export function buildUnifiedDiff(input: {
   const maxLines = input.maxLines ?? DEFAULT_MAX_LINES_PER_FILE;
   const beforeLines = splitLines(input.before);
   const afterLines = splitLines(input.after);
-  const hunks = buildHunks(beforeLines, afterLines, contextLines);
+  const totalLines = beforeLines.length + afterLines.length;
+  const totalBytes = input.before.length + input.after.length;
+  const isOversized =
+    totalLines > LCS_MAX_LINES || totalBytes > LCS_MAX_BYTES;
+  const hunks = isOversized
+    ? [buildOversizedReplacementHunk(beforeLines, afterLines)]
+    : buildHunks(beforeLines, afterLines, contextLines);
   const lines: string[] = [`--- a/${input.path}`, `+++ b/${input.path}`];
 
   for (const hunk of hunks) {

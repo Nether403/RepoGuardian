@@ -96,6 +96,33 @@ function createFindingId(
   ].join(":");
 }
 
+export function rescoreDependencyFindingsReachability(
+  findings: ReadonlyArray<DependencyFinding>,
+  fileContentsByPath: ReachabilityFileContents
+): DependencyFinding[] {
+  return findings.map((finding) => {
+    const reachability = scoreReachability({
+      finding: {
+        confidence: finding.confidence,
+        isDirect: finding.isDirect,
+        packageName: finding.packageName
+      },
+      fileContentsByPath
+    });
+    const evidence = finding.evidence.map((entry) =>
+      entry.label === "Reachability"
+        ? { ...entry, value: buildReachabilityEvidenceValue(reachability) }
+        : entry
+    );
+
+    return {
+      ...finding,
+      evidence,
+      reachability
+    };
+  });
+}
+
 function buildReachabilityEvidenceValue(reachability: {
   band: "unknown" | "unlikely" | "possible" | "likely";
   score: number;
