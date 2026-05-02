@@ -2070,7 +2070,10 @@ function App() {
             errorMessage={jobsErrorMessage}
             isLoading={isFleetLoading}
             jobs={analysisJobs}
+            notifications={executionNotifications.notifications}
             onCancelJob={handleCancelJob}
+            onClearNotifications={executionNotifications.clear}
+            onDismissNotification={executionNotifications.dismiss}
             onOpenJobDetails={(jobId) => void openFleetInspector({ id: jobId, kind: "job" })}
             onOpenPlanDetails={(planId) =>
               void openFleetInspector({ id: planId, kind: "plan" })
