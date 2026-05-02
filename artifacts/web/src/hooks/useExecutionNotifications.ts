@@ -41,6 +41,16 @@ export type UseExecutionNotificationsResult = {
 };
 
 function defaultEventSourceFactory(url: string): EventSourceLike {
+  // In environments without a native EventSource (jsdom-based tests, SSR), we
+  // return an inert stub so consumers don't crash. Real browser builds will
+  // always have window.EventSource available.
+  if (typeof EventSource === "undefined") {
+    return {
+      addEventListener() {},
+      removeEventListener() {},
+      close() {}
+    };
+  }
   return new EventSource(url, { withCredentials: true });
 }
 
