@@ -2,7 +2,7 @@
   "name": "repo-guardian",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "pnpm --parallel --filter @repo-guardian/api --filter @repo-guardian/web run dev",
     "dev:api": "pnpm --filter @repo-guardian/api run dev",
