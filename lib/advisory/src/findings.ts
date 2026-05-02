@@ -96,6 +96,25 @@ function createFindingId(
   ].join(":");
 }
 
+function buildReachabilityEvidenceValue(reachability: {
+  band: "unknown" | "unlikely" | "possible" | "likely";
+  score: number;
+  signals: ReadonlyArray<{ detail: string }>;
+}): string {
+  const headline = `${reachability.band} (${reachability.score}/100)`;
+
+  if (reachability.signals.length === 0) {
+    return headline;
+  }
+
+  const topSignals = reachability.signals
+    .slice(0, 2)
+    .map((signal) => signal.detail)
+    .join("; ");
+
+  return `${headline} — ${topSignals}`;
+}
+
 export function createDependencyFinding(
   match: AdvisoryMatch,
   isPartial: boolean,
@@ -141,6 +160,10 @@ export function createDependencyFinding(
       {
         label: "Source file",
         value: match.target.sourceFile
+      },
+      {
+        label: "Reachability",
+        value: buildReachabilityEvidenceValue(reachability)
       }
     ],
     id: createFindingId(match.advisory, match.target),

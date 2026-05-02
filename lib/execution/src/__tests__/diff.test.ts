@@ -44,6 +44,10 @@ describe("buildDiffPreview", () => {
     expect(preview.files).toHaveLength(1);
     expect(preview.files[0]!.path).toBe("notes.txt");
     expect(preview.files[0]!.unifiedDiff).toContain("+beta");
+    expect(preview.files[0]!.before).toBe("alpha\n");
+    expect(preview.files[0]!.after).toBe("alpha\nbeta\n");
+    expect(preview.files[0]!.beforeTruncated).toBe(false);
+    expect(preview.files[0]!.afterTruncated).toBe(false);
     expect(preview.synthesisError).toBeNull();
   });
 

@@ -677,6 +677,8 @@ export const ApprovalRequirementSchema = z.object({
 
 export const DiffPreviewFileSchema = z.object({
   path: z.string().min(1),
+  before: z.string(),
+  after: z.string(),
   unifiedDiff: z.string(),
   beforeTruncated: z.boolean(),
   afterTruncated: z.boolean(),

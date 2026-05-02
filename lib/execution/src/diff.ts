@@ -277,7 +277,9 @@ export function buildDiffPreview(input: BuildDiffPreviewInput): DiffPreview {
     });
 
     previewFiles.push({
+      after,
       afterTruncated,
+      before,
       beforeTruncated,
       diffTruncated: built.truncated,
       path: file.path,
