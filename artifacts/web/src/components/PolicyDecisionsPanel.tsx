@@ -3,6 +3,7 @@ import type { PolicyDecisionEvent } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type PolicyDecisionsPanelProps = {
   actionFilter: PolicyActionFilter;
@@ -249,25 +250,23 @@ export function PolicyDecisionsPanel({
               {decisions.map(renderPolicyDecision)}
             </div>
             <div className="fleet-inline-actions">
-              <button
-                className="secondary-button"
+              <Button
                 disabled={page <= 1 || isLoading}
                 onClick={() => onPageChange(page - 1)}
-                type="button"
               >
                 Previous
-              </button>
+              </Button>
               <span className="empty-copy">
                 Page {page} of {Math.max(totalPages, 1)} · {pageSize} per page
               </span>
-              <button
-                className="secondary-button"
+              <Button
                 disabled={totalPages === 0 || page >= totalPages || isLoading}
+                icon="arrow-right"
+                iconPosition="trailing"
                 onClick={() => onPageChange(page + 1)}
-                type="button"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </>
         ) : (

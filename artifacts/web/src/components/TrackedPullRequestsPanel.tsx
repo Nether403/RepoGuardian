@@ -2,6 +2,7 @@ import type { TrackedPullRequest } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type TrackedPullRequestsPanelProps = {
   onOpenPlanDetails: (planId: string) => void;
@@ -84,13 +85,13 @@ export function TrackedPullRequestsPanel({
                 </div>
                 <div className="fleet-inline-actions">
                   {pullRequest.planId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenPlanDetails(pullRequest.planId!)}
-                      type="button"
                     >
                       Open plan
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </article>

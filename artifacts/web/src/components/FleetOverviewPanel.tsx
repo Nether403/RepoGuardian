@@ -2,6 +2,7 @@ import type { FleetStatusResponse } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui";
 
 type FleetOverviewPanelProps = {
   errorMessage: string | null;
@@ -143,14 +144,14 @@ export function FleetOverviewPanel({
             Review tracked repository health, queue outcomes, and remediation PR
             lifecycle without leaving the supervised Repo Guardian workflow.
           </p>
-          <button
-            className="secondary-button"
+          <Button
             disabled={isLoading}
+            icon={isLoading ? undefined : "refresh"}
+            loading={isLoading}
             onClick={onRefresh}
-            type="button"
           >
             {isLoading ? "Refreshing fleet..." : "Refresh fleet"}
-          </button>
+          </Button>
         </div>
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
