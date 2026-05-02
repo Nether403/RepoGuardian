@@ -22,6 +22,7 @@ type Props = {
   notifications: ExecutionPlanNotification[];
   onDismiss(planId: string, status: ExecutionPlanNotificationType): void;
   onClearAll(): void;
+  onOpenPlan?(planId: string): void;
 };
 
 const containerStyle: CSSProperties = {
@@ -49,7 +50,8 @@ const cardStyle: CSSProperties = {
 export function ExecutionNotificationsToast({
   notifications,
   onDismiss,
-  onClearAll
+  onClearAll,
+  onOpenPlan
 }: Props) {
   if (notifications.length === 0) {
     return null;
@@ -130,6 +132,27 @@ export function ExecutionNotificationsToast({
           {notification.reason ? (
             <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>
               {notification.reason}
+            </div>
+          ) : null}
+          {onOpenPlan ? (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                data-testid="execution-notification-open-plan"
+                onClick={() => onOpenPlan(notification.planId)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(248, 250, 252, 0.4)",
+                  borderRadius: 4,
+                  color: "#e2e8f0",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  padding: "3px 10px",
+                  pointerEvents: "auto"
+                }}
+                type="button"
+              >
+                Open plan →
+              </button>
             </div>
           ) : null}
         </article>

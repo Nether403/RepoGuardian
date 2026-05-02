@@ -2016,6 +2016,13 @@ function App() {
         notifications={executionNotifications.notifications}
         onClearAll={executionNotifications.clear}
         onDismiss={executionNotifications.dismiss}
+        onOpenPlan={(planId) => {
+          executionNotifications.dismiss(planId, "plan.created");
+          executionNotifications.dismiss(planId, "plan.claimed");
+          executionNotifications.dismiss(planId, "plan.completed");
+          executionNotifications.dismiss(planId, "plan.failed");
+          void openFleetInspector({ id: planId, kind: "plan" });
+        }}
       />
     </PageShell>
   );
