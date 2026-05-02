@@ -23,3 +23,12 @@ export {
   type ExecutionWritePolicyDecision
 } from "./policy.js";
 export { explainPRWriteBackEligibility } from "./patch-synthesis.js";
+export {
+  getPreparePatchCandidateId,
+  validateApprovedPatch,
+  validateApprovedPlan,
+  type ApprovedPatchValidationResult,
+  type ApprovedPlanValidationResult,
+  type ValidateApprovedPatchInput,
+  type ValidateApprovedPlanInput
+} from "./validate-patch.js";

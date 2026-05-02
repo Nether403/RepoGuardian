@@ -33,6 +33,7 @@ import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
 import { AppModeToggle } from "./components/AppModeToggle";
 import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { ExecutionNotificationsToast } from "./components/ExecutionNotificationsToast";
 import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
 import { FleetOverviewPanel } from "./components/FleetOverviewPanel";
@@ -109,6 +110,7 @@ import {
   logoutAuthSession,
   syncWorkspaceInstallation
 } from "./lib/workspace-client";
+import { useExecutionNotifications } from "./hooks/useExecutionNotifications";
 
 type AppMode = "analysis" | "fleet-admin";
 type FleetInspectorSelection =
@@ -507,6 +509,11 @@ function App() {
   const [fleetRepositoryActivityQuery, setFleetRepositoryActivityQuery] =
     useState<FleetRepositoryActivityQuery>(loadFleetRepositoryActivityQuery);
   const fleetInspectorRequestIdRef = useRef(0);
+
+  const executionNotifications = useExecutionNotifications({
+    enabled: Boolean(selectedWorkspaceId),
+    workspaceId: selectedWorkspaceId
+  });
 
   const statusLabel =
     appMode === "analysis"
@@ -2005,6 +2012,11 @@ function App() {
           ) : null}
         </>
       )}
+      <ExecutionNotificationsToast
+        notifications={executionNotifications.notifications}
+        onClearAll={executionNotifications.clear}
+        onDismiss={executionNotifications.dismiss}
+      />
     </PageShell>
   );
 }

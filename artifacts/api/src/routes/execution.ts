@@ -5,6 +5,8 @@ import {
   evaluateExecutionPlanPolicy,
   evaluateExecutionWritePolicy,
   executeApprovedActions,
+  validateApprovedPlan,
+  type ApprovedPlanValidationResult,
   type ExecutionLifecycleCallbacks,
   type ExecutionWritePolicyDecision,
   type ExecutionServiceDependencies
@@ -34,8 +36,14 @@ import {
   getPolicyDecisionRepository,
   getTrackedPullRequestRepository
 } from "../lib/persistence.js";
+import {
+  getExecutionNotificationBus,
+  type ExecutionNotificationBus,
+  type ExecutionPlanNotification,
+  type ExecutionPlanNotificationType
+} from "../lib/notifications.js";
 import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
-import { requireAuth, requireWorkspaceRole } from "../middleware/auth.js";
+import { requireAuth, requireSseAuth, requireWorkspaceRole } from "../middleware/auth.js";
 
 type RunRepositoryLike = Pick<
   AnalysisRunRepository,
@@ -232,6 +240,38 @@ async function recordExecutionPlanPolicyDecision(input: {
   });
 }
 
+function mapValidationToPolicyDecision(
+  validation: Exclude<ApprovedPlanValidationResult, { kind: "match" }>
+): ExecutionWritePolicyDecision {
+  const reason = validation.message;
+  let detailsPayload: Record<string, unknown>;
+
+  if (validation.kind === "drift") {
+    detailsPayload = {
+      driftPaths: validation.details.flatMap((entry) =>
+        entry.driftPaths.map((path) => ({ candidateId: entry.candidateId, path }))
+      ),
+      kind: validation.kind
+    };
+  } else if (validation.kind === "synthesis_error") {
+    detailsPayload = {
+      kind: validation.kind,
+      synthesisErrors: validation.details
+    };
+  } else {
+    detailsPayload = {
+      kind: validation.kind,
+      missingPreview: validation.details
+    };
+  }
+
+  return {
+    decision: "denied",
+    details: detailsPayload,
+    reason
+  };
+}
+
 function createLifecycleCallbacks(input: {
   actorUserId: string | null;
   claimedPlan: ClaimedExecutionPlan;
@@ -266,6 +306,7 @@ function createLifecycleCallbacks(input: {
 export function createExecutionRouter(
   dependencies: ExecutionServiceDependencies,
   stores: {
+    notificationBus?: ExecutionNotificationBus;
     planRepository?: PlanRepositoryLike;
     policyDecisionRepository?: PolicyDecisionRepositoryLike;
     runRepository?: RunRepositoryLike;
@@ -279,6 +320,32 @@ export function createExecutionRouter(
     stores.policyDecisionRepository ?? getPolicyDecisionRepository();
   const trackedPullRequestRepository =
     stores.trackedPullRequestRepository ?? getTrackedPullRequestRepository();
+  const notificationBus = stores.notificationBus ?? getExecutionNotificationBus();
+
+  function publishPlanNotification(input: {
+    executionId?: string | null;
+    planId: string;
+    reason?: string | null;
+    repositoryFullName: string;
+    status: ExecutionPlanNotificationType;
+    workspaceId: string;
+  }): void {
+    const notification: ExecutionPlanNotification = {
+      createdAt: new Date().toISOString(),
+      executionId: input.executionId ?? null,
+      planId: input.planId,
+      reason: input.reason ?? null,
+      repositoryFullName: input.repositoryFullName,
+      status: input.status,
+      workspaceId: input.workspaceId
+    };
+
+    try {
+      notificationBus.publish(notification);
+    } catch (error) {
+      console.error("Failed to publish execution plan notification", error);
+    }
+  }
 
   executionRouter.post(
     "/execution/plan",
@@ -378,6 +445,13 @@ export function createExecutionRouter(
         workspaceId
       });
 
+      publishPlanNotification({
+        planId,
+        repositoryFullName: run.run.analysis.repository.fullName,
+        status: "plan.created",
+        workspaceId
+      });
+
       response.json({
         actions: result.actions,
         approval: {
@@ -473,10 +547,67 @@ export function createExecutionRouter(
         return;
       }
 
+      // Pre-execution patch validation: re-synthesize each prepared patch
+      // against the latest fetched file contents and refuse to claim if the
+      // result drifts from the approved diff preview or synthesis fails.
+      const validationReadClient =
+        dependencies.readClient ??
+        (await createInstallationReadClient({
+          repositoryFullName: detail.repository.fullName,
+          workspaceId
+        }));
+      const preExecRun = await runRepository.getRun(detail.analysisRunId, workspaceId);
+      const validation = await validateApprovedPlan({
+        actions: detail.actions,
+        analysis: preExecRun.run.analysis,
+        readClient: validationReadClient,
+        selectedPRCandidateIds: detail.selectedPRCandidateIds
+      });
+
+      if (validation.kind !== "match") {
+        const decision = mapValidationToPolicyDecision(validation);
+        await recordExecutionPolicyDecision({
+          actorUserId: request.authContext!.user.id,
+          decision,
+          detail,
+          policyDecisionRepository,
+          workspaceId
+        });
+        publishPlanNotification({
+          planId: detail.planId,
+          reason: validation.message,
+          repositoryFullName: detail.repository.fullName,
+          status: "plan.failed",
+          workspaceId
+        });
+        const status = validation.kind === "drift" ? 409 : 422;
+        response.status(status).json({
+          error: validation.message,
+          kind: validation.kind,
+          ...(validation.kind === "drift"
+            ? { driftDetails: validation.details }
+            : {}),
+          ...(validation.kind === "synthesis_error"
+            ? { synthesisErrors: validation.details }
+            : {}),
+          ...(validation.kind === "missing_preview"
+            ? { missingPreview: validation.details }
+            : {})
+        });
+        return;
+      }
+
       const claimedPlan = await planRepository.claimExecution({
         actorUserId: request.authContext!.user.id,
         planId: parsedRequest.data.planId,
         workspaceId
+      });
+      publishPlanNotification({
+        executionId: claimedPlan.executionId,
+        planId: claimedPlan.planId,
+        repositoryFullName: claimedPlan.repositoryFullName,
+        status: "plan.claimed",
+        workspaceId: claimedPlan.workspaceId
       });
       const run = await runRepository.getRun(claimedPlan.analysisRunId, workspaceId);
       const startedAt = new Date().toISOString();
@@ -486,13 +617,13 @@ export function createExecutionRouter(
         planRepository
       });
       const resolvedDependencies: ExecutionServiceDependencies = dependencies.writeClient
-        ? dependencies
+        ? {
+            ...dependencies,
+            readClient: dependencies.readClient ?? validationReadClient
+          }
         : {
             ...dependencies,
-            readClient: await createInstallationReadClient({
-              repositoryFullName: claimedPlan.repositoryFullName,
-              workspaceId
-            }),
+            readClient: validationReadClient,
             writeClient: await createInstallationWriteClient({
               repositoryFullName: claimedPlan.repositoryFullName,
               workspaceId
@@ -536,15 +667,33 @@ export function createExecutionRouter(
           trackedPullRequestRepository,
           workspaceId: claimedPlan.workspaceId
         });
+        publishPlanNotification({
+          executionId: claimedPlan.executionId,
+          planId: claimedPlan.planId,
+          repositoryFullName: claimedPlan.repositoryFullName,
+          status: result.status === "completed" ? "plan.completed" : "plan.failed",
+          reason: result.status === "completed" ? null : result.errors[0] ?? null,
+          workspaceId: claimedPlan.workspaceId
+        });
         response.json(result);
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unexpected execution failure";
         await planRepository.markExecutionFailure({
           actorUserId: request.authContext!.user.id,
-          errorMessage: error instanceof Error ? error.message : "Unexpected execution failure",
+          errorMessage,
           executionId: claimedPlan.executionId,
           githubInstallationId: claimedPlan.githubInstallationId,
           planId: claimedPlan.planId,
           repositoryFullName: claimedPlan.repositoryFullName,
+          workspaceId: claimedPlan.workspaceId
+        });
+        publishPlanNotification({
+          executionId: claimedPlan.executionId,
+          planId: claimedPlan.planId,
+          reason: errorMessage,
+          repositoryFullName: claimedPlan.repositoryFullName,
+          status: "plan.failed",
           workspaceId: claimedPlan.workspaceId
         });
         next(error);
@@ -564,6 +713,81 @@ export function createExecutionRouter(
 
       next(error);
     }
+    }
+  );
+
+  executionRouter.get(
+    "/execution/notifications/stream",
+    requireSseAuth,
+    async (request, response) => {
+      const requestedWorkspaceIdRaw =
+        typeof request.query.workspaceId === "string"
+          ? request.query.workspaceId
+          : Array.isArray(request.query.workspaceId)
+            ? request.query.workspaceId[0]
+            : undefined;
+      const requestedWorkspaceId =
+        typeof requestedWorkspaceIdRaw === "string"
+          ? requestedWorkspaceIdRaw
+          : undefined;
+      const activeWorkspaceId = request.authContext!.activeWorkspaceId;
+
+      if (
+        requestedWorkspaceId &&
+        requestedWorkspaceId !== activeWorkspaceId
+      ) {
+        response.status(403).json({
+          error: "Workspace id does not match the authenticated session."
+        });
+        return;
+      }
+
+      const workspaceId = activeWorkspaceId;
+      response.status(200);
+      response.setHeader("Content-Type", "text/event-stream");
+      response.setHeader("Cache-Control", "no-cache, no-transform");
+      response.setHeader("Connection", "keep-alive");
+      response.setHeader("X-Accel-Buffering", "no");
+      response.flushHeaders?.();
+
+      response.write(
+        `event: ready\ndata: ${JSON.stringify({
+          workspaceId,
+          serverTime: new Date().toISOString()
+        })}\n\n`
+      );
+
+      let unsubscribe: (() => void) | null = null;
+
+      try {
+        unsubscribe = notificationBus.subscribe(workspaceId, (notification) => {
+          response.write(
+            `event: ${notification.status}\ndata: ${JSON.stringify(notification)}\n\n`
+          );
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to subscribe to notifications.";
+        response.write(
+          `event: error\ndata: ${JSON.stringify({ error: message })}\n\n`
+        );
+        response.end();
+        return;
+      }
+
+      const heartbeat = setInterval(() => {
+        response.write(`: heartbeat ${Date.now()}\n\n`);
+      }, 25_000);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unsubscribe?.();
+        unsubscribe = null;
+      };
+
+      request.on("close", cleanup);
+      request.on("aborted", cleanup);
+      response.on("close", cleanup);
     }
   );
 

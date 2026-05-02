@@ -51,3 +51,15 @@ See `example.env` for all variables. Key ones:
 - Frontend proxies `/api` requests to `http://localhost:3000`
 - Database is optional in development; many features degrade gracefully without it
 - Authentication is required for most API endpoints
+
+## Execution queue notifications
+- The API exposes `GET /api/execution/notifications/stream` as a Server-Sent Events endpoint scoped to the caller's active workspace. Events: `ready`, `plan.created`, `plan.claimed`, `plan.completed`, `plan.failed`, plus a 25s `heartbeat` comment frame.
+- Subscribers are routed through `lib/notifications.ts` (`createExecutionNotificationBus`) — a workspace-scoped EventEmitter bus injected into the execution router. The bus refuses to leak events across workspaces.
+- Auth: every other route uses the strict `requireAuth` middleware (header bearer only). The SSE endpoint alone uses `requireSseAuth`, which additionally accepts the bearer via `?access_token=` on GET only — needed because EventSource cannot send custom headers. The narrower scoping prevents credential leakage through URL logs, browser history, and Referer headers on non-SSE routes.
+- The web app subscribes via `useExecutionNotifications` (`artifacts/web/src/hooks`) and renders a non-blocking toast (`ExecutionNotificationsToast`) with exponential-backoff reconnect and a 20-event buffer.
+
+## Pre-execution patch validation
+- Before any GitHub write call, `POST /api/execution/execute` re-synthesises every approved `prepare_patch` action against fresh repository contents using `validateApprovedPlan` (`lib/execution/src/validate-patch.ts`).
+- The validator runs **before** `claimExecution` and before `executeApprovedActions`, so a failed validation never creates a branch, commit, issue, or pull request.
+- Drift (re-synthesised content ≠ approved `after`) returns HTTP 409. Missing or truncated previews and synthesis errors return HTTP 422. A truncated approved preview is treated as `missing_preview` (fail-closed) — operators must regenerate the plan rather than rely on a partial byte comparison.
+- On any non-match outcome the route records a denied `policy_decision_event` (same actor and repository scope as the original approval) and emits a `plan.failed` notification on the workspace bus.
