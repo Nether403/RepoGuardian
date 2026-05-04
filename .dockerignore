@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.vite
+*.tsbuildinfo
+.env
+.env.*
+.git
+.github
+screenshots
+docs
+RepoRadar-main
+VISUALGIT-main
+dev-due-diligence-main
