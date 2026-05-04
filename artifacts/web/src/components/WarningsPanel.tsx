@@ -1,5 +1,6 @@
 import type { AnalyzeRepoResponse } from "@repo-guardian/shared-types";
 import { Panel } from "./Panel";
+import { EmptyState } from "./ui";
 import { StatusBadge } from "./StatusBadge";
 
 type PartialAnalysisPanelProps = {
@@ -22,11 +23,9 @@ export function PartialAnalysisPanel({ isPartial }: PartialAnalysisPanelProps) {
       footer={<StatusBadge label="Partial snapshot" tone="warning" />}
       title="Partial analysis"
     >
-      <p className="empty-copy">
-        GitHub reported incomplete tree coverage for this repository snapshot. Repo
+      <EmptyState>GitHub reported incomplete tree coverage for this repository snapshot. Repo
         Guardian still returns the available metadata and detected files, but later
-        results should be interpreted as partial.
-      </p>
+        results should be interpreted as partial.</EmptyState>
     </Panel>
   );
 }
@@ -41,9 +40,7 @@ export function WarningsPanel({ analysis }: WarningsPanelProps) {
           ))}
         </ul>
       ) : (
-        <p className="empty-copy">
-          No warnings surfaced for this repository snapshot.
-        </p>
+        <EmptyState>No warnings surfaced for this repository snapshot.</EmptyState>
       )}
     </Panel>
   );

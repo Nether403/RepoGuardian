@@ -1,33 +1,24 @@
+import { SegmentedControl, type SegmentedControlOption } from "./ui";
+
+type AppMode = "analysis" | "fleet-admin";
+
 type AppModeToggleProps = {
-  mode: "analysis" | "fleet-admin";
-  onChange: (mode: "analysis" | "fleet-admin") => void;
+  mode: AppMode;
+  onChange: (mode: AppMode) => void;
 };
+
+const OPTIONS: ReadonlyArray<SegmentedControlOption<AppMode>> = [
+  { value: "analysis", label: "Repository Analysis", icon: "compass" },
+  { value: "fleet-admin", label: "Fleet Admin", icon: "fleet" }
+];
 
 export function AppModeToggle({ mode, onChange }: AppModeToggleProps) {
   return (
-    <div
-      aria-label="Application mode"
-      className="app-mode-toggle"
-      role="tablist"
-    >
-      <button
-        aria-selected={mode === "analysis"}
-        className="app-mode-toggle-button"
-        onClick={() => onChange("analysis")}
-        role="tab"
-        type="button"
-      >
-        Repository Analysis
-      </button>
-      <button
-        aria-selected={mode === "fleet-admin"}
-        className="app-mode-toggle-button"
-        onClick={() => onChange("fleet-admin")}
-        role="tab"
-        type="button"
-      >
-        Fleet Admin
-      </button>
-    </div>
+    <SegmentedControl
+      ariaLabel="Application mode"
+      onChange={onChange}
+      options={OPTIONS}
+      value={mode}
+    />
   );
 }

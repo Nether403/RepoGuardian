@@ -6,6 +6,8 @@ import type {
   FindingsBySeverity
 } from "@repo-guardian/shared-types";
 import type { NormalizedAdvisory } from "./provider.js";
+import type { ReachabilityFileContents } from "./reachability.js";
+import { scoreReachability } from "./reachability.js";
 import type { AdvisoryLookupTarget } from "./targets.js";
 
 type AdvisoryMatch = {
@@ -94,12 +96,67 @@ function createFindingId(
   ].join(":");
 }
 
+export function rescoreDependencyFindingsReachability(
+  findings: ReadonlyArray<DependencyFinding>,
+  fileContentsByPath: ReachabilityFileContents
+): DependencyFinding[] {
+  return findings.map((finding) => {
+    const reachability = scoreReachability({
+      finding: {
+        confidence: finding.confidence,
+        isDirect: finding.isDirect,
+        packageName: finding.packageName
+      },
+      fileContentsByPath
+    });
+    const evidence = finding.evidence.map((entry) =>
+      entry.label === "Reachability"
+        ? { ...entry, value: buildReachabilityEvidenceValue(reachability) }
+        : entry
+    );
+
+    return {
+      ...finding,
+      evidence,
+      reachability
+    };
+  });
+}
+
+function buildReachabilityEvidenceValue(reachability: {
+  band: "unknown" | "unlikely" | "possible" | "likely";
+  score: number;
+  signals: ReadonlyArray<{ detail: string }>;
+}): string {
+  const headline = `${reachability.band} (${reachability.score}/100)`;
+
+  if (reachability.signals.length === 0) {
+    return headline;
+  }
+
+  const topSignals = reachability.signals
+    .slice(0, 2)
+    .map((signal) => signal.detail)
+    .join("; ");
+
+  return `${headline} — ${topSignals}`;
+}
+
 export function createDependencyFinding(
   match: AdvisoryMatch,
-  isPartial: boolean
+  isPartial: boolean,
+  fileContentsByPath?: ReachabilityFileContents
 ): DependencyFinding {
   const confidence = buildFindingConfidence(match.target, isPartial);
   const remediation = buildRecommendedAction(match.advisory, match.target);
+  const reachability = scoreReachability({
+    finding: {
+      confidence,
+      isDirect: match.target.isDirect,
+      packageName: match.target.packageName
+    },
+    fileContentsByPath
+  });
 
   return {
     advisoryId: match.advisory.id,
@@ -130,6 +187,10 @@ export function createDependencyFinding(
       {
         label: "Source file",
         value: match.target.sourceFile
+      },
+      {
+        label: "Reachability",
+        value: buildReachabilityEvidenceValue(reachability)
       }
     ],
     id: createFindingId(match.advisory, match.target),
@@ -138,6 +199,7 @@ export function createDependencyFinding(
     lineSpans: [],
     packageName: match.target.packageName,
     paths: match.target.paths,
+    reachability,
     recommendedAction: remediation.text,
     referenceUrls: uniqueSorted(
       match.advisory.references.map((reference) => reference.url)
@@ -154,7 +216,8 @@ export function createDependencyFinding(
 export function matchAdvisoriesToTargets(
   targets: AdvisoryLookupTarget[],
   advisoriesByQueryKey: Map<string, NormalizedAdvisory[]>,
-  isPartial: boolean
+  isPartial: boolean,
+  fileContentsByPath?: ReachabilityFileContents
 ): DependencyFinding[] {
   const findings = new Map<string, DependencyFinding>();
 
@@ -165,7 +228,8 @@ export function matchAdvisoriesToTargets(
           advisory,
           target
         },
-        isPartial
+        isPartial,
+        fileContentsByPath
       );
 
       findings.set(finding.id, finding);

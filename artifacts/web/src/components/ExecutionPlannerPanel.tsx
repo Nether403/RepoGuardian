@@ -1,6 +1,91 @@
+import { useState } from "react";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
-import type { ExecutionPlanResponse } from "@repo-guardian/shared-types";
+import { Button, EmptyState } from "./ui";
+import type { DiffPreviewFile, ExecutionPlanResponse } from "@repo-guardian/shared-types";
+
+export type ExecutionValidationFailure = {
+  kind: "drift" | "synthesis_error" | "missing_preview";
+  message: string;
+  filePaths: string[];
+  candidateIds: string[];
+  failedPlanId?: string | null;
+};
+
+const VALIDATION_KIND_LABELS: Record<ExecutionValidationFailure["kind"], string> = {
+  drift: "Repository drift",
+  synthesis_error: "Patch synthesis failed",
+  missing_preview: "Approved preview missing"
+};
+
+type DiffViewMode = "unified" | "before-after";
+
+function ExecutionDiffFileView({ file }: { file: DiffPreviewFile }) {
+  const [mode, setMode] = useState<DiffViewMode>("unified");
+  const isTruncated =
+    file.diffTruncated || file.beforeTruncated || file.afterTruncated;
+
+  return (
+    <div className="execution-diff-file">
+      <div className="execution-diff-file-header">
+        <p className="subsection-label">
+          <code>{file.path}</code>
+          {isTruncated ? " (truncated)" : ""}
+        </p>
+        <div className="execution-diff-toggle" role="group" aria-label="Diff view mode">
+          <Button
+            aria-pressed={mode === "unified"}
+            className={
+              mode === "unified"
+                ? "execution-diff-toggle-button is-active"
+                : "execution-diff-toggle-button"
+            }
+            onClick={() => setMode("unified")}
+            variant="unstyled"
+          >
+            Unified
+          </Button>
+          <Button
+            aria-pressed={mode === "before-after"}
+            className={
+              mode === "before-after"
+                ? "execution-diff-toggle-button is-active"
+                : "execution-diff-toggle-button"
+            }
+            onClick={() => setMode("before-after")}
+            variant="unstyled"
+          >
+            Before / after
+          </Button>
+        </div>
+      </div>
+      {mode === "unified" ? (
+        <pre className="execution-diff-pre">
+          <code>{file.unifiedDiff}</code>
+        </pre>
+      ) : (
+        <div className="execution-diff-before-after">
+          <div className="execution-diff-side">
+            <p className="subsection-label">
+              Before{file.beforeTruncated ? " (truncated)" : ""}
+            </p>
+            <pre className="execution-diff-pre">
+              <code>{file.before.length > 0 ? file.before : "(empty)"}</code>
+            </pre>
+          </div>
+          <div className="execution-diff-side">
+            <p className="subsection-label">
+              After{file.afterTruncated ? " (truncated)" : ""}
+            </p>
+            <pre className="execution-diff-pre">
+              <code>{file.after.length > 0 ? file.after : "(empty)"}</code>
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type ExecutionPlannerPanelProps = {
   approvalGranted: boolean;
@@ -10,9 +95,13 @@ type ExecutionPlannerPanelProps = {
   isSubmittingExecute: boolean;
   onApprovalChange: (approvalGranted: boolean) => void;
   onRequestPlan: () => void;
+  onRegeneratePlanFromValidationFailure?: (
+    failure: ExecutionValidationFailure
+  ) => void;
   onRequestExecute: () => void;
   selectedIssueCount: number;
   selectedPRCount: number;
+  validationFailure?: ExecutionValidationFailure | null;
 };
 
 export function ExecutionPlannerPanel({
@@ -23,9 +112,11 @@ export function ExecutionPlannerPanel({
   isSubmittingExecute,
   onApprovalChange,
   onRequestPlan,
+  onRegeneratePlanFromValidationFailure,
   onRequestExecute,
   selectedIssueCount,
-  selectedPRCount
+  selectedPRCount,
+  validationFailure
 }: ExecutionPlannerPanelProps) {
   const totalSelections = selectedIssueCount + selectedPRCount;
   const isPlanDisabled = isSubmittingPlan || totalSelections === 0;
@@ -50,10 +141,8 @@ export function ExecutionPlannerPanel({
       title="Execution planner"
     >
       <div className="execution-planner">
-        <p className="empty-copy">
-          Select candidate issues and PRs to preview an execution plan.
-          The plan must be explicitly approved before any GitHub write actions occur.
-        </p>
+        <EmptyState>Select candidate issues and PRs to preview an execution plan.
+          The plan must be explicitly approved before any GitHub write actions occur.</EmptyState>
 
         {!executionPlan ? (
           <p className="execution-note">
@@ -74,8 +163,112 @@ export function ExecutionPlannerPanel({
                 {executionPlan.approval.confirmationText}
               </span>
             </label>
+            {executionPlan.actions.length > 0 ? (
+              <div className="execution-diff-previews">
+                <p className="subsection-label">Patch previews</p>
+                {executionPlan.actions.map((action) => {
+                  const preview = action.diffPreview;
+                  const isEligible = action.eligibility === "eligible";
+
+                  if (!preview) {
+                    return (
+                      <div
+                        className="execution-diff-preview execution-diff-preview-empty"
+                        key={`diff:${action.id}`}
+                      >
+                        <p className="subsection-label">
+                          <code>{action.title}</code>
+                        </p>
+                        <p className="execution-diff-empty-hint">
+                          {isEligible
+                            ? "No diff available — preview will be generated at execute time."
+                            : "No diff available for this action."}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <details
+                      className="execution-diff-preview"
+                      key={`diff:${action.id}`}
+                    >
+                      <summary>
+                        <code>{action.title}</code>
+                        <span className="execution-diff-meta">
+                          {preview.synthesisError
+                            ? "synthesis failed"
+                            : `${preview.files.length} file${
+                                preview.files.length === 1 ? "" : "s"
+                              }${preview.truncated ? " (truncated)" : ""}`}
+                        </span>
+                      </summary>
+                      {preview.synthesisError ? (
+                        <p className="form-message form-message-error">
+                          {preview.synthesisError}
+                        </p>
+                      ) : preview.files.length === 0 ? (
+                        <p className="execution-diff-empty-hint">
+                          No file changes were synthesised for this action.
+                        </p>
+                      ) : (
+                        preview.files.map((file) => (
+                          <ExecutionDiffFileView
+                            file={file}
+                            key={`diff-file:${action.id}:${file.path}`}
+                          />
+                        ))
+                      )}
+                    </details>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         )}
+
+        {validationFailure ? (
+          <div
+            className="form-message form-message-error execution-validation-banner"
+            data-testid="execution-validation-banner"
+            role="alert"
+          >
+            <p>
+              <strong>{VALIDATION_KIND_LABELS[validationFailure.kind]}:</strong>{" "}
+              {validationFailure.message}
+            </p>
+            {validationFailure.filePaths.length > 0 ? (
+              <>
+                <p className="subsection-label">Affected files</p>
+                <ul
+                  className="simple-list execution-validation-paths"
+                  data-testid="execution-validation-paths"
+                >
+                  {validationFailure.filePaths.map((path) => (
+                    <li key={path}>
+                      <code>{path}</code>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {onRegeneratePlanFromValidationFailure ? (
+              <Button
+                className="execution-submit-button"
+                data-testid="execution-validation-regenerate"
+                disabled={isSubmittingPlan}
+                icon={isSubmittingPlan ? undefined : "refresh"}
+                loading={isSubmittingPlan}
+                onClick={() =>
+                  onRegeneratePlanFromValidationFailure(validationFailure)
+                }
+                variant="primary"
+              >
+                {isSubmittingPlan ? "Regenerating plan..." : "Regenerate plan"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         {executionErrorMessage ? (
           <p className="form-message form-message-error" role="alert">
@@ -83,25 +276,33 @@ export function ExecutionPlannerPanel({
           </p>
         ) : null}
 
-        <div className="button-group" style={{ display: "flex", gap: "1rem" }}>
-          <button
-            className="submit-button execution-submit-button"
+        <div className="fleet-inline-actions">
+          <Button
+            className="execution-submit-button"
             disabled={isPlanDisabled}
+            icon={isSubmittingPlan ? undefined : "spark"}
+            loading={isSubmittingPlan}
             onClick={onRequestPlan}
-            type="button"
+            variant="primary"
           >
-            {isSubmittingPlan ? "Generating plan..." : (executionPlan ? "Regenerate plan" : "Generate plan")}
-          </button>
-          
+            {isSubmittingPlan
+              ? "Generating plan..."
+              : executionPlan
+                ? "Regenerate plan"
+                : "Generate plan"}
+          </Button>
+
           {executionPlan ? (
-            <button
-              className="submit-button execution-submit-button"
+            <Button
+              className="execution-submit-button"
               disabled={isExecuteDisabled}
+              icon={isSubmittingExecute ? undefined : "play"}
+              loading={isSubmittingExecute}
               onClick={onRequestExecute}
-              type="button"
+              variant="primary"
             >
               {isSubmittingExecute ? "Executing..." : "Execute approved actions"}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

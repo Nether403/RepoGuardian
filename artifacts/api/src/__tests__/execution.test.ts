@@ -176,6 +176,7 @@ function createDependencyFinding(
     referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
     remediationType: "upgrade",
     remediationVersion: "2.0.0",
+    reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
     severity: "high",
     sourceType: "dependency",
     summary: "react is affected by a dependency advisory.",
@@ -932,7 +933,6 @@ describe("POST /api/execution/plan", () => {
         totalSelections: 2
       })
     });
-    expect(readClient.fetchRepositoryFileText).not.toHaveBeenCalled();
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.createBranchFromDefaultBranch).not.toHaveBeenCalled();
     expect(writeClient.commitFileChanges).not.toHaveBeenCalled();
@@ -970,6 +970,58 @@ describe("POST /api/execution/plan", () => {
         actorUserId: "usr_local_default",
         decision: "allowed",
         reason: "Execution plan generation may proceed for selected candidates.",
+        repositoryFullName: "openai/openai-node",
+        runId,
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+  });
+
+  it("records the regeneration context in the audit log when the plan is regenerated after a validation failure", async () => {
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        createIssue: vi.fn(),
+        openPullRequest: vi.fn()
+      }
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const response = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"],
+        regenerationContext: {
+          trigger: "validation_failure",
+          validationKind: "drift",
+          failedPlanId: "plan_previous"
+        }
+      });
+
+    expect(response.status).toBe(200);
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "generate_pr_candidates",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason: expect.stringContaining(
+          "regeneration triggered by validation_failure: drift"
+        ),
+        details: expect.objectContaining({
+          regenerationContext: {
+            trigger: "validation_failure",
+            validationKind: "drift",
+            failedPlanId: "plan_previous"
+          }
+        }),
         repositoryFullName: "openai/openai-node",
         runId,
         scopeType: "repository",
@@ -1427,10 +1479,17 @@ describe("POST /api/execution/plan", () => {
   it("executes an approved dependency PR creation request", async () => {
     const testApp = createTestApp({
       readClient: {
-        fetchRepositoryFileText: vi
-          .fn()
-          .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
-          .mockResolvedValueOnce(createPackageLockContent())
+        fetchRepositoryFileText: vi.fn(async (request) => {
+          if (request.path === "package.json") {
+            return createPackageJsonContent("^1.0.0");
+          }
+
+          if (request.path === "package-lock.json") {
+            return createPackageLockContent();
+          }
+
+          return "";
+        })
       },
       writeClient: {
         createIssue: vi.fn(),
@@ -1483,10 +1542,17 @@ describe("POST /api/execution/plan", () => {
   it("executes an approved dependency PR creation request for package-lock.json v2", async () => {
     const testApp = createTestApp({
       readClient: {
-        fetchRepositoryFileText: vi
-          .fn()
-          .mockResolvedValueOnce(createPackageJsonContent("^1.0.0"))
-          .mockResolvedValueOnce(createPackageLockContent(2))
+        fetchRepositoryFileText: vi.fn(async (request) => {
+          if (request.path === "package.json") {
+            return createPackageJsonContent("^1.0.0");
+          }
+
+          if (request.path === "package-lock.json") {
+            return createPackageLockContent(2);
+          }
+
+          return "";
+        })
       },
       writeClient: {
         createIssue: vi.fn(),
@@ -1648,5 +1714,186 @@ describe("POST /api/execution/plan", () => {
 
     expect([first.status, second.status].sort()).toEqual([200, 409]);
     expect(createIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 409 with no GitHub writes when re-synthesised content drifts from the approved preview", async () => {
+    const ORIGINAL = [
+      "name: CI",
+      "on:",
+      "  push:",
+      "permissions: write-all",
+      "jobs:",
+      "  test:",
+      "    runs-on: ubuntu-latest"
+    ].join("\n");
+    const DRIFTED = [
+      "name: CI",
+      "on:",
+      "  push:",
+      "permissions:",
+      "  contents: write",
+      "  packages: write",
+      "jobs:",
+      "  test:",
+      "    runs-on: ubuntu-latest"
+    ].join("\n");
+
+    let phase: "plan" | "execute" = "plan";
+    const fetchRepositoryFileText = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(phase === "plan" ? ORIGINAL : DRIFTED)
+      );
+    const createBranchFromDefaultBranch = vi.fn();
+    const commitFileChanges = vi.fn();
+    const openPullRequest = vi.fn();
+    const createIssue = vi.fn();
+
+    const testApp = createTestApp({
+      readClient: { fetchRepositoryFileText },
+      writeClient: {
+        createIssue,
+        createBranchFromDefaultBranch,
+        commitFileChanges,
+        openPullRequest
+      }
+    });
+
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const planRes = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      });
+
+    expect(planRes.status).toBe(200);
+
+    phase = "execute";
+
+    const execRes = await request(testApp.app)
+      .post("/api/execution/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: planRes.body.approvalToken,
+        confirm: true,
+        confirmationText: "I approve this GitHub write-back plan.",
+        planHash: planRes.body.planHash,
+        planId: planRes.body.planId
+      });
+
+    expect(execRes.status).toBe(409);
+    expect(execRes.body).toMatchObject({ kind: "drift" });
+    expect(execRes.body.driftDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          candidateId: "pr:workflow-hardening:.github/workflows/ci.yml",
+          driftPaths: expect.arrayContaining([".github/workflows/ci.yml"])
+        })
+      ])
+    );
+
+    expect(createIssue).not.toHaveBeenCalled();
+    expect(createBranchFromDefaultBranch).not.toHaveBeenCalled();
+    expect(commitFileChanges).not.toHaveBeenCalled();
+    expect(openPullRequest).not.toHaveBeenCalled();
+
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_write",
+        decision: "denied",
+        repositoryFullName: "openai/openai-node",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
+  });
+
+  it("returns 422 with no GitHub writes when re-synthesis fails at execute time", async () => {
+    const ORIGINAL = [
+      "name: CI",
+      "on:",
+      "  push:",
+      "permissions: write-all",
+      "jobs:",
+      "  test:",
+      "    runs-on: ubuntu-latest"
+    ].join("\n");
+
+    let phase: "plan" | "execute" = "plan";
+    const fetchRepositoryFileText = vi.fn().mockImplementation(() => {
+      if (phase === "plan") {
+        return Promise.resolve(ORIGINAL);
+      }
+      return Promise.reject(new Error("upstream 502 from GitHub"));
+    });
+    const createBranchFromDefaultBranch = vi.fn();
+    const commitFileChanges = vi.fn();
+    const openPullRequest = vi.fn();
+    const createIssue = vi.fn();
+
+    const testApp = createTestApp({
+      readClient: { fetchRepositoryFileText },
+      writeClient: {
+        createIssue,
+        createBranchFromDefaultBranch,
+        commitFileChanges,
+        openPullRequest
+      }
+    });
+
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const planRes = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      });
+
+    expect(planRes.status).toBe(200);
+
+    phase = "execute";
+
+    const execRes = await request(testApp.app)
+      .post("/api/execution/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: planRes.body.approvalToken,
+        confirm: true,
+        confirmationText: "I approve this GitHub write-back plan.",
+        planHash: planRes.body.planHash,
+        planId: planRes.body.planId
+      });
+
+    expect(execRes.status).toBe(422);
+    expect(execRes.body.kind).toBe("synthesis_error");
+    expect(execRes.body.synthesisErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          candidateId: "pr:workflow-hardening:.github/workflows/ci.yml"
+        })
+      ])
+    );
+
+    expect(createIssue).not.toHaveBeenCalled();
+    expect(createBranchFromDefaultBranch).not.toHaveBeenCalled();
+    expect(commitFileChanges).not.toHaveBeenCalled();
+    expect(openPullRequest).not.toHaveBeenCalled();
+
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_write",
+        decision: "denied",
+        repositoryFullName: "openai/openai-node",
+        scopeType: "repository",
+        workspaceId: "workspace_local_default"
+      })
+    );
   });
 });

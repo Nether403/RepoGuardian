@@ -1,0 +1,68 @@
+modules = ["web", "nodejs-22", "python-3.11"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/web run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Backend API"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/api run dev"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3001
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/api run start & COREPACK_ENABLE_STRICT=0 pnpm --filter @repo-guardian/web run build && node -e \"const http = require('http'); const fs = require('fs'); const path = require('path'); const server = http.createServer((req, res) => { const file = path.join('artifacts/web/dist', req.url === '/' ? 'index.html' : req.url); fs.readFile(file, (err, data) => { if (err) { fs.readFile(path.join('artifacts/web/dist', 'index.html'), (e, d) => res.end(d)); } else res.end(data); }); }); server.listen(5000);\""]
+build = ["bash", "-c", "COREPACK_ENABLE_STRICT=0 pnpm install --no-frozen-lockfile && COREPACK_ENABLE_STRICT=0 pnpm run build"]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 180000

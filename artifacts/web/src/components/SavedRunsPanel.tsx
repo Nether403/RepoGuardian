@@ -6,6 +6,7 @@ import type {
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button, EmptyState } from "./ui";
 
 type SavedRunsPanelProps = {
   analysis: AnalyzeRepoResponse | null;
@@ -72,10 +73,8 @@ export function SavedRunsPanel({
       title="Saved analysis runs"
     >
       <div className="saved-runs-shell">
-        <p className="empty-copy">
-          Save the current analysis locally, reopen prior runs without re-analyzing,
-          or compare two saved snapshots.
-        </p>
+        <EmptyState>Save the current analysis locally, reopen prior runs without re-analyzing,
+          or compare two saved snapshots.</EmptyState>
         <form className="saved-run-form" onSubmit={handleSave}>
           <label>
             <span>Run label</span>
@@ -85,21 +84,23 @@ export function SavedRunsPanel({
               value={label}
             />
           </label>
-          <button
-            className="submit-button"
+          <Button
             disabled={!analysis || isSaving}
+            icon={isSaving ? undefined : "check"}
+            loading={isSaving}
             type="submit"
+            variant="primary"
           >
             {isSaving ? "Saving run..." : "Save current analysis"}
-          </button>
-          <button
-            className="secondary-button"
+          </Button>
+          <Button
             disabled={isLoading}
+            icon={isLoading ? undefined : "refresh"}
+            loading={isLoading}
             onClick={onRefreshRuns}
-            type="button"
           >
             {isLoading ? "Loading saved runs..." : "Refresh saved runs"}
-          </button>
+          </Button>
         </form>
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
@@ -137,14 +138,15 @@ export function SavedRunsPanel({
               ))}
             </select>
           </label>
-          <button
-            className="secondary-button"
+          <Button
             disabled={!canCompare || isComparing}
+            icon={isComparing ? undefined : "arrow-right"}
+            iconPosition="trailing"
+            loading={isComparing}
             onClick={onCompareRuns}
-            type="button"
           >
             {isComparing ? "Comparing runs..." : "Compare saved runs"}
-          </button>
+          </Button>
         </div>
         {runs.length > 0 ? (
           <div className="saved-run-list">
@@ -181,22 +183,20 @@ export function SavedRunsPanel({
                     {run.blockedPatchPlans} blocked patch plans
                   </span>
                 </div>
-                <button
-                  className="secondary-button"
+                <Button
                   disabled={isOpening}
+                  icon="arrow-right"
+                  iconPosition="trailing"
                   onClick={() => onOpenRun(run.id)}
-                  type="button"
                 >
                   Reopen saved run
-                </button>
+                </Button>
               </article>
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No saved runs are loaded yet. Refresh saved runs or save the current
-            analysis.
-          </p>
+          <EmptyState>No saved runs are loaded yet. Refresh saved runs or save the current
+            analysis.</EmptyState>
         )}
       </div>
     </Panel>

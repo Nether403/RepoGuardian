@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { Button } from "./ui";
 
 type RepoInputFormProps = {
   errorMessage: string | null;
@@ -35,9 +36,14 @@ export function RepoInputForm({
           type="text"
           value={value}
         />
-        <button className="submit-button" disabled={isLoading} type="submit">
+        <Button
+          icon={isLoading ? undefined : "play"}
+          loading={isLoading}
+          type="submit"
+          variant="primary"
+        >
           {isLoading ? "Analyzing..." : "Analyze Repository"}
-        </button>
+        </Button>
       </div>
       <p className="field-help">
         Accepted forms: full GitHub URL, `github.com/owner/repo`, or `owner/repo`.

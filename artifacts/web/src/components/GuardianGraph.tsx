@@ -7,6 +7,7 @@ import {
   type SimulationLinkDatum,
   type SimulationNodeDatum
 } from "d3";
+import { Button, EmptyState } from "./ui";
 import {
   useMemo,
   useRef,
@@ -633,7 +634,7 @@ export function GuardianGraph({
   if (graph.nodes.length === 0) {
     return (
       <div className="guardian-graph-empty">
-        <p className="empty-copy">No graph nodes match the current filters.</p>
+        <EmptyState>No graph nodes match the current filters.</EmptyState>
       </div>
     );
   }
@@ -648,7 +649,7 @@ export function GuardianGraph({
         </p>
         <div className="guardian-graph-view-actions">
           <span className="guardian-graph-view-status">View {zoomPercentage}%</span>
-          <button
+          <Button
             aria-label="Zoom out graph"
             className="guardian-graph-view-button"
             disabled={!canZoomOut}
@@ -657,20 +658,20 @@ export function GuardianGraph({
                 zoomGraphViewport(current, current.scale - graphZoomStep)
               )
             }
-            type="button"
+            variant="unstyled"
           >
             Zoom out
-          </button>
-          <button
+          </Button>
+          <Button
             aria-label="Reset graph view"
             className="guardian-graph-view-button"
             disabled={!canResetView}
             onClick={resetViewport}
-            type="button"
+            variant="unstyled"
           >
             Reset view
-          </button>
-          <button
+          </Button>
+          <Button
             aria-label="Zoom in graph"
             className="guardian-graph-view-button"
             disabled={!canZoomIn}
@@ -679,10 +680,10 @@ export function GuardianGraph({
                 zoomGraphViewport(current, current.scale + graphZoomStep)
               )
             }
-            type="button"
+            variant="unstyled"
           >
             Zoom in
-          </button>
+          </Button>
         </div>
       </div>
       <svg

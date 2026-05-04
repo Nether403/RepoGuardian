@@ -2,14 +2,18 @@ import type { TraceabilityViewModel } from "../features/analysis/types";
 import {
   TRACEABILITY_FINDINGS_SECTION_ID,
   formatConfidence,
+  formatReachabilityBand,
+  formatReachabilityScore,
   formatSeverity,
   formatSourceType,
   getConfidenceTone,
   getFindingAnchorId,
   getPatchPlanAnchorId,
+  getReachabilityTone,
   getSeverityTone,
   isDependencyFinding
 } from "../features/analysis/view-model";
+import { EmptyState } from "./ui";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 
@@ -152,6 +156,37 @@ export function FindingsPanel({ traceability }: FindingsPanelProps) {
                             <p className="trace-copy">{finding.remediationType}</p>
                           </div>
                         </div>
+                        <div className="reachability-block">
+                          <div className="badge-row">
+                            <StatusBadge
+                              label={`${formatReachabilityBand(finding.reachability.band)} (${formatReachabilityScore(finding.reachability.score)})`}
+                              tone={getReachabilityTone(finding.reachability.band)}
+                            />
+                          </div>
+                          {finding.reachability.signals.length > 0 ? (
+                            <ul className="simple-list">
+                              {finding.reachability.signals.map((signal) => (
+                                <li
+                                  key={`${finding.id}:reachability:${signal.kind}:${signal.detail}`}
+                                >
+                                  {signal.detail}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          {finding.reachability.referencedPaths.length > 0 ? (
+                            <div>
+                              <p className="subsection-label">Referenced files</p>
+                              <ul className="simple-list">
+                                {finding.reachability.referencedPaths.map((path) => (
+                                  <li key={`${finding.id}:reachability-path:${path}`}>
+                                    <code>{path}</code>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
                         {finding.referenceUrls.length > 0 ? (
                           <div>
                             <p className="subsection-label">References</p>
@@ -175,9 +210,7 @@ export function FindingsPanel({ traceability }: FindingsPanelProps) {
           })}
         </div>
       ) : (
-        <p className="empty-copy">
-          No findings are referenced by the current readiness cards.
-        </p>
+        <EmptyState>No findings are referenced by the current readiness cards.</EmptyState>
       )}
     </Panel>
   );

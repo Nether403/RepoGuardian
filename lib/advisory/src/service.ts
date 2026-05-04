@@ -11,6 +11,7 @@ import {
 } from "@repo-guardian/shared-types";
 import { AdvisoryProviderError, type AdvisoryProvider } from "./provider.js";
 import { matchAdvisoriesToTargets, buildDependencyFindingSummary } from "./findings.js";
+import type { ReachabilityFileContents } from "./reachability.js";
 import { createAdvisoryLookupPlan } from "./targets.js";
 
 export type DependencyFindingResult = {
@@ -21,9 +22,14 @@ export type DependencyFindingResult = {
   warnings: string[];
 };
 
+export type CreateDependencyFindingResultOptions = {
+  fileContentsByPath?: ReachabilityFileContents;
+};
+
 export async function createDependencyFindingResult(
   dependencySnapshot: DependencySnapshot,
-  provider: AdvisoryProvider
+  provider: AdvisoryProvider,
+  options: CreateDependencyFindingResultOptions = {}
 ): Promise<DependencyFindingResult> {
   const plan = createAdvisoryLookupPlan(dependencySnapshot);
   const warningDetails = [...plan.warningDetails];
@@ -50,7 +56,8 @@ export async function createDependencyFindingResult(
     const findings = matchAdvisoriesToTargets(
       plan.targets,
       lookupResult.advisoriesByQueryKey,
-      isPartial
+      isPartial,
+      options.fileContentsByPath
     );
     const dedupedWarningDetails = dedupeAnalysisWarnings([
       ...warningDetails,

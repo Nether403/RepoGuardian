@@ -1,5 +1,6 @@
 import type { CompareAnalysisRunsResponse } from "@repo-guardian/shared-types";
 import { buildCompareRunsViewModel } from "../features/compare/build-compare-view-model";
+import { EmptyState } from "./ui";
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
@@ -52,10 +53,8 @@ export function CompareRunsPanel({ comparison }: CompareRunsPanelProps) {
         eyebrow="Compare"
         title="Saved run comparison"
       >
-        <p className="empty-copy">
-          Select two saved runs and compare them to see finding, candidate,
-          patch-plan, ecosystem, manifest, and lockfile deltas.
-        </p>
+        <EmptyState>Select two saved runs and compare them to see finding, candidate,
+          patch-plan, ecosystem, manifest, and lockfile deltas.</EmptyState>
       </Panel>
     );
   }

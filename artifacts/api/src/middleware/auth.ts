@@ -57,13 +57,44 @@ function getRequestedWorkspaceId(request: Request): string | null {
     : null;
 }
 
-async function resolveApiKeyAuth(request: Request): Promise<Request["authContext"] | null> {
+function getRequestedBearerToken(
+  request: Request,
+  options: { allowQueryToken: boolean }
+): string | null {
   const authHeader = request.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  // EventSource cannot send custom headers, so SSE clients must forward the
+  // bearer token via the access_token query string. This fallback is opt-in
+  // per route via `requireSseAuth` to avoid expanding credential exposure
+  // through URL logs/history/referrers on routes that don't need it.
+  if (options.allowQueryToken && request.method === "GET") {
+    const queryToken = request.query.access_token;
+    if (typeof queryToken === "string" && queryToken.length > 0) {
+      return queryToken;
+    }
+    if (Array.isArray(queryToken)) {
+      const first = queryToken[0];
+      if (typeof first === "string" && first.length > 0) {
+        return first;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function resolveApiKeyAuth(
+  request: Request,
+  options: { allowQueryToken: boolean }
+): Promise<Request["authContext"] | null> {
+  const token = getRequestedBearerToken(request, options);
+  if (!token) {
     return null;
   }
 
-  const token = authHeader.slice(7);
   const acceptedDevToken = "dev-secret-key-do-not-use-in-production";
   const tokenMatchesConfigured = token === env.API_SECRET_KEY;
   const tokenMatchesDevFallback =
@@ -129,14 +160,17 @@ async function resolveSessionAuth(request: Request): Promise<Request["authContex
   };
 }
 
-export async function requireAuth(
+async function runAuth(
   request: Request,
   response: Response,
-  next: NextFunction
+  next: NextFunction,
+  options: { allowQueryToken: boolean }
 ): Promise<void> {
   try {
     request.authContext =
-      (await resolveApiKeyAuth(request)) ?? (await resolveSessionAuth(request)) ?? undefined;
+      (await resolveApiKeyAuth(request, options)) ??
+      (await resolveSessionAuth(request)) ??
+      undefined;
 
     if (!request.authContext) {
       response.status(401).json({
@@ -152,6 +186,25 @@ export async function requireAuth(
       error: error instanceof Error ? error.message : "Unauthorized"
     });
   }
+}
+
+export function requireAuth(
+  request: Request,
+  response: Response,
+  next: NextFunction
+): Promise<void> {
+  return runAuth(request, response, next, { allowQueryToken: false });
+}
+
+// Permissive variant for the SSE notifications endpoint only. EventSource
+// cannot attach an Authorization header, so we accept the bearer via the
+// `?access_token=` query string. Do NOT use this for any other route.
+export function requireSseAuth(
+  request: Request,
+  response: Response,
+  next: NextFunction
+): Promise<void> {
+  return runAuth(request, response, next, { allowQueryToken: true });
 }
 
 export function requireWorkspaceRole(

@@ -43,6 +43,7 @@ const dependencyFinding: DependencyFinding = {
   referenceUrls: ["https://osv.dev/vulnerability/GHSA-test"],
   remediationType: "upgrade",
   remediationVersion: "1.0.1",
+  reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
   severity: "high",
   sourceType: "dependency",
   summary: "react is vulnerable",

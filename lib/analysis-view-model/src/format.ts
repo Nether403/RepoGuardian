@@ -41,3 +41,17 @@ export function formatSeverity(value: TraceableFinding["severity"]): string {
 export function formatConfidence(value: TraceableFinding["confidence"]): string {
   return formatDisplayValue(value);
 }
+
+export function formatReachabilityBand(
+  band: "unknown" | "unlikely" | "possible" | "likely"
+): string {
+  if (band === "unknown") {
+    return "Reachability unknown";
+  }
+
+  return `Reachability ${band}`;
+}
+
+export function formatReachabilityScore(score: number): string {
+  return `${Math.round(score)}/100`;
+}

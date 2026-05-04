@@ -374,6 +374,12 @@ describe("POST /api/analyze", () => {
           referenceUrls: ["https://osv.dev/vulnerability/GHSA-test-1234"],
           remediationType: "upgrade",
           remediationVersion: "19.0.1",
+          reachability: {
+            band: "unknown",
+            referencedPaths: [],
+            score: 0,
+            signals: []
+          },
           severity: "high",
           sourceType: "dependency",
           title: "react is affected by GHSA-test-1234"

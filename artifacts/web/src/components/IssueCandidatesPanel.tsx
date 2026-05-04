@@ -1,5 +1,6 @@
 import type { IssueCandidate } from "@repo-guardian/shared-types";
 import { Panel } from "./Panel";
+import { EmptyState } from "./ui";
 import { StatusBadge } from "./StatusBadge";
 
 type IssueCandidatesPanelProps = {
@@ -134,7 +135,7 @@ export function IssueCandidatesPanel({
           ))}
         </div>
       ) : (
-        <p className="empty-copy">No issue candidates were generated.</p>
+        <EmptyState>No issue candidates were generated.</EmptyState>
       )}
     </Panel>
   );

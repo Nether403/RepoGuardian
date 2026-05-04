@@ -1,15 +1,36 @@
 import { useMemo, useState } from "react";
 import type { AnalysisJob } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
+import type {
+  ExecutionPlanNotification,
+  ExecutionPlanNotificationType
+} from "../lib/notifications-client";
+import {
+  LiveConnectionBadge,
+  type LiveConnectionState
+} from "./LiveConnectionBadge";
 import { Panel } from "./Panel";
+import {
+  NOTIFICATION_LABEL,
+  NOTIFICATION_TONE,
+  dedupeQueueNotifications
+} from "./queue-activity";
 import { StatusBadge } from "./StatusBadge";
+import { Button, EmptyState } from "./ui";
 
 type AnalysisJobsPanelProps = {
   errorMessage: string | null;
   isLoading: boolean;
   jobs: AnalysisJob[];
+  liveConnectionState?: LiveConnectionState;
+  notifications?: ExecutionPlanNotification[];
   pendingJobId: string | null;
   onCancelJob: (jobId: string) => void;
+  onClearNotifications?: () => void;
+  onDismissNotification?: (
+    planId: string,
+    status: ExecutionPlanNotificationType
+  ) => void;
   onOpenJobDetails: (jobId: string) => void;
   onOpenPlanDetails: (planId: string) => void;
   onOpenRunDetails: (runId: string) => void;
@@ -38,8 +59,12 @@ export function AnalysisJobsPanel({
   errorMessage,
   isLoading,
   jobs,
+  liveConnectionState,
+  notifications,
   pendingJobId,
   onCancelJob,
+  onClearNotifications,
+  onDismissNotification,
   onOpenJobDetails,
   onOpenPlanDetails,
   onOpenRunDetails,
@@ -50,6 +75,10 @@ export function AnalysisJobsPanel({
   const visibleJobs = useMemo(
     () => jobs.filter((job) => statusFilter === "all" || job.status === statusFilter),
     [jobs, statusFilter]
+  );
+  const visibleNotifications = useMemo(
+    () => dedupeQueueNotifications(notifications ?? [], jobs),
+    [notifications, jobs]
   );
 
   return (
@@ -62,11 +91,117 @@ export function AnalysisJobsPanel({
             label={`${jobs.length} recent job${jobs.length === 1 ? "" : "s"}`}
             tone={jobs.length > 0 ? "active" : "muted"}
           />
+          {visibleNotifications.length > 0 ? (
+            <StatusBadge
+              label={`${visibleNotifications.length} live event${visibleNotifications.length === 1 ? "" : "s"}`}
+              tone="up-next"
+            />
+          ) : null}
         </div>
       }
       title="Analysis jobs"
     >
       <div className="fleet-panel-shell">
+        <section
+          aria-label="Live queue activity"
+          className="queue-activity"
+          data-testid="queue-activity"
+        >
+          <div className="queue-activity-header">
+            <div className="queue-activity-heading">
+              <p className="subsection-label">Live activity</p>
+              {liveConnectionState ? (
+                <LiveConnectionBadge
+                  announce={false}
+                  data-testid="queue-activity-live-connection-badge"
+                  state={liveConnectionState}
+                />
+              ) : null}
+            </div>
+            {visibleNotifications.length > 0 && onClearNotifications ? (
+              <Button
+                data-testid="queue-activity-clear"
+                icon="close"
+                onClick={onClearNotifications}
+              >
+                Clear activity
+              </Button>
+            ) : null}
+          </div>
+          {visibleNotifications.length > 0 ? (
+            <ol className="queue-activity-list">
+              {visibleNotifications.map((notification) => {
+                const key = `${notification.planId}:${notification.status}:${notification.createdAt}`;
+                return (
+                  <li
+                    className="queue-activity-item"
+                    data-testid="queue-activity-item"
+                    key={key}
+                  >
+                    <div className="queue-activity-item-header">
+                      <StatusBadge
+                        label={NOTIFICATION_LABEL[notification.status]}
+                        tone={NOTIFICATION_TONE[notification.status]}
+                      />
+                      <time
+                        className="queue-activity-timestamp"
+                        dateTime={notification.createdAt}
+                      >
+                        {formatTimestamp(notification.createdAt)}
+                      </time>
+                    </div>
+                    <p className="trace-copy">
+                      <code>{notification.repositoryFullName}</code> · plan{" "}
+                      <code>{notification.planId}</code>
+                      {notification.executionId ? (
+                        <>
+                          {" "}· execution <code>{notification.executionId}</code>
+                        </>
+                      ) : null}
+                    </p>
+                    {notification.reason ? (
+                      <p className="form-message form-message-error">
+                        {notification.reason}
+                      </p>
+                    ) : null}
+                    <div className="fleet-inline-actions">
+                      <Button
+                        data-testid="queue-activity-open-plan"
+                        icon="arrow-right"
+                        iconPosition="trailing"
+                        onClick={() => {
+                          onDismissNotification?.(
+                            notification.planId,
+                            notification.status
+                          );
+                          onOpenPlanDetails(notification.planId);
+                        }}
+                      >
+                        Open plan
+                      </Button>
+                      {onDismissNotification ? (
+                        <Button
+                          data-testid="queue-activity-dismiss"
+                          icon="x"
+                          onClick={() =>
+                            onDismissNotification(
+                              notification.planId,
+                              notification.status
+                            )
+                          }
+                        >
+                          Dismiss
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <EmptyState>Live plan lifecycle events will appear here as the queue runs.</EmptyState>
+          )}
+        </section>
         <div className="fleet-panel-toolbar">
           <label className="fleet-filter">
             <span>Status filter</span>
@@ -84,14 +219,14 @@ export function AnalysisJobsPanel({
               <option value="cancelled">Cancelled</option>
             </select>
           </label>
-          <button
-            className="secondary-button"
+          <Button
             disabled={isLoading}
+            icon={isLoading ? undefined : "refresh"}
+            loading={isLoading}
             onClick={onRefresh}
-            type="button"
           >
             {isLoading ? "Refreshing jobs..." : "Refresh jobs"}
-          </button>
+          </Button>
         </div>
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
@@ -136,59 +271,55 @@ export function AnalysisJobsPanel({
                   <p className="form-message form-message-error">{job.errorMessage}</p>
                 ) : null}
                 <div className="fleet-inline-actions">
-                  <button
-                    className="secondary-button"
+                  <Button
+                    icon="search"
                     onClick={() => onOpenJobDetails(job.jobId)}
-                    type="button"
                   >
                     View details
-                  </button>
+                  </Button>
                   {job.runId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenRunDetails(job.runId!)}
-                      type="button"
                     >
                       Open run
-                    </button>
+                    </Button>
                   ) : null}
                   {job.planId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenPlanDetails(job.planId!)}
-                      type="button"
                     >
                       Open plan
-                    </button>
+                    </Button>
                   ) : null}
                   {job.status === "queued" ? (
-                    <button
-                      className="secondary-button"
+                    <Button
                       disabled={pendingJobId === job.jobId}
+                      icon="x"
                       onClick={() => onCancelJob(job.jobId)}
-                      type="button"
                     >
                       {pendingJobId === job.jobId ? "Cancelling..." : "Cancel"}
-                    </button>
+                    </Button>
                   ) : null}
                   {job.status === "failed" || job.status === "cancelled" ? (
-                    <button
-                      className="secondary-button"
+                    <Button
                       disabled={pendingJobId === job.jobId}
+                      icon={pendingJobId === job.jobId ? undefined : "refresh"}
+                      loading={pendingJobId === job.jobId}
                       onClick={() => onRetryJob(job.jobId)}
-                      type="button"
                     >
                       {pendingJobId === job.jobId ? "Retrying..." : "Retry"}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No jobs match the current filter.
-          </p>
+          <EmptyState>No jobs match the current filter.</EmptyState>
         )}
       </div>
     </Panel>

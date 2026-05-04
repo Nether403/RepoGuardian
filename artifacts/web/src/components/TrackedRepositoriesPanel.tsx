@@ -6,6 +6,7 @@ import type {
 import { formatTimestamp } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button, EmptyState } from "./ui";
 
 type TrackedRepositoriesPanelProps = {
   availableRepositories: GitHubInstallationRepository[];
@@ -141,26 +142,28 @@ export function TrackedRepositoriesPanel({
             />
           </label>
           <div className="fleet-form-actions">
-            <button
-              className="submit-button"
+            <Button
               disabled={
                 isCreating ||
                 (!hasSelectableRepositories &&
                   !canUseRepoInputFallback &&
                   availableRepositories.length === 0)
               }
+              icon={isCreating ? undefined : "github"}
+              loading={isCreating}
               type="submit"
+              variant="primary"
             >
               {isCreating ? "Registering..." : "Register tracked repo"}
-            </button>
-            <button
-              className="secondary-button"
+            </Button>
+            <Button
               disabled={isLoading}
+              icon={isLoading ? undefined : "refresh"}
+              loading={isLoading}
               onClick={onRefresh}
-              type="button"
             >
               {isLoading ? "Refreshing..." : "Refresh repositories"}
-            </button>
+            </Button>
           </div>
         </form>
         {errorMessage ? (
@@ -169,19 +172,13 @@ export function TrackedRepositoriesPanel({
           </p>
         ) : null}
         {hasSelectableRepositories ? (
-          <p className="empty-copy">
-            New tracked repositories are selected from synced installation-visible
-            repositories for the active workspace.
-          </p>
+          <EmptyState>New tracked repositories are selected from synced installation-visible
+            repositories for the active workspace.</EmptyState>
         ) : canUseRepoInputFallback ? (
-          <p className="empty-copy">
-            Local development fallback is active. Free-form repository input is still
-            available until a workspace installation is synced.
-          </p>
+          <EmptyState>Local development fallback is active. Free-form repository input is still
+            available until a workspace installation is synced.</EmptyState>
         ) : (
-          <p className="empty-copy">
-            Sync a workspace installation before registering a tracked repository.
-          </p>
+          <EmptyState>Sync a workspace installation before registering a tracked repository.</EmptyState>
         )}
         {repositories.length > 0 ? (
           <div className="fleet-card-list">
@@ -233,59 +230,60 @@ export function TrackedRepositoriesPanel({
                   </p>
                 ) : null}
                 <div className="fleet-inline-actions">
-                  <button
-                    className="secondary-button"
+                  <Button
+                    icon="search"
                     onClick={() => onOpenRepositoryDetails(entry.trackedRepository.id)}
-                    type="button"
                   >
                     View details
-                  </button>
+                  </Button>
                   {entry.latestRun ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenRunDetails(entry.latestRun!.id)}
-                      type="button"
                     >
                       Open run
-                    </button>
+                    </Button>
                   ) : null}
                   {entry.latestPlanId ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenPlanDetails(entry.latestPlanId!)}
-                      type="button"
                     >
                       Open plan
-                    </button>
+                    </Button>
                   ) : null}
                   {entry.latestAnalysisJob ? (
-                    <button
-                      className="secondary-button"
+                    <Button
+                      icon="arrow-right"
+                      iconPosition="trailing"
                       onClick={() => onOpenJobDetails(entry.latestAnalysisJob!.jobId)}
-                      type="button"
                     >
                       Open job
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
-                    className="secondary-button"
+                  <Button
                     disabled={pendingTrackedRepositoryId === entry.trackedRepository.id}
+                    icon={
+                      pendingTrackedRepositoryId === entry.trackedRepository.id
+                        ? undefined
+                        : "play"
+                    }
+                    loading={pendingTrackedRepositoryId === entry.trackedRepository.id}
                     onClick={() => onEnqueueAnalysis(entry.trackedRepository.id)}
-                    type="button"
                   >
                     {pendingTrackedRepositoryId === entry.trackedRepository.id
                       ? "Queueing analysis..."
                       : "Enqueue analysis"}
-                  </button>
+                  </Button>
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="empty-copy">
-            No tracked repositories registered yet. Add one to start repeat
-            analysis and scheduled plan-only sweeps.
-          </p>
+          <EmptyState>No tracked repositories registered yet. Add one to start repeat
+            analysis and scheduled plan-only sweeps.</EmptyState>
         )}
       </div>
     </Panel>

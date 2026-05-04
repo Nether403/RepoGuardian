@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AnalysisJob,
   AnalyzeRepoResponse,
@@ -33,7 +33,11 @@ import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
 import { AppModeToggle } from "./components/AppModeToggle";
 import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
-import { ExecutionPlannerPanel } from "./components/ExecutionPlannerPanel";
+import { ExecutionNotificationsToast } from "./components/ExecutionNotificationsToast";
+import {
+  ExecutionPlannerPanel,
+  type ExecutionValidationFailure
+} from "./components/ExecutionPlannerPanel";
 import { ExecutionResultsPanel } from "./components/ExecutionResultsPanel";
 import { FleetOverviewPanel } from "./components/FleetOverviewPanel";
 import { FleetInspectorPanel } from "./components/FleetInspectorPanel";
@@ -46,7 +50,6 @@ import { PRCandidatesPanel } from "./components/PRCandidatesPanel";
 import { RepoInputForm } from "./components/RepoInputForm";
 import { RepositorySummaryPanel } from "./components/RepositorySummaryPanel";
 import { SavedRunsPanel } from "./components/SavedRunsPanel";
-import { StatusBadge } from "./components/StatusBadge";
 import { SweepSchedulesPanel } from "./components/SweepSchedulesPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { TrackedPullRequestsPanel } from "./components/TrackedPullRequestsPanel";
@@ -73,7 +76,11 @@ import {
   AnalyzeRepoClientError,
   analyzeRepository
 } from "./lib/api-client";
-import { requestExecutionPlan, requestExecutionExecute } from "./lib/execution-client";
+import {
+  ExecutionClientError,
+  requestExecutionPlan,
+  requestExecutionExecute
+} from "./lib/execution-client";
 import { setStoredActiveWorkspaceId } from "./lib/api-options";
 import {
   cancelAnalysisJob,
@@ -109,6 +116,7 @@ import {
   logoutAuthSession,
   syncWorkspaceInstallation
 } from "./lib/workspace-client";
+import { useExecutionNotifications } from "./hooks/useExecutionNotifications";
 
 type AppMode = "analysis" | "fleet-admin";
 type FleetInspectorSelection =
@@ -379,7 +387,31 @@ function mergeTrackedRepositoryStatuses(input: {
 }
 
 function App() {
-  const [appMode, setAppMode] = useState<AppMode>("analysis");
+  const [appMode, setAppModeState] = useState<AppMode>(() => {
+    if (typeof window === "undefined") {
+      return "analysis";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "fleet-admin" ? "fleet-admin" : "analysis";
+  });
+  const setAppMode = useCallback((next: AppMode) => {
+    setAppModeState(next);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (import.meta.env?.MODE === "test") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (next === "fleet-admin") {
+      params.set("mode", "fleet-admin");
+    } else {
+      params.delete("mode");
+    }
+    const search = params.toString();
+    const newUrl = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", newUrl);
+  }, []);
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [approvalGranted, setApprovalGranted] = useState(false);
   const [candidateTypeFilter, setCandidateTypeFilter] =
@@ -391,6 +423,8 @@ function App() {
     null
   );
   const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
+  const [executionValidationFailure, setExecutionValidationFailure] =
+    useState<ExecutionValidationFailure | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(
     null
   );
@@ -508,6 +542,11 @@ function App() {
     useState<FleetRepositoryActivityQuery>(loadFleetRepositoryActivityQuery);
   const fleetInspectorRequestIdRef = useRef(0);
 
+  const executionNotifications = useExecutionNotifications({
+    enabled: Boolean(selectedWorkspaceId),
+    workspaceId: selectedWorkspaceId
+  });
+
   const statusLabel =
     appMode === "analysis"
       ? isLoading
@@ -607,6 +646,7 @@ function App() {
     setApprovalGranted(false);
     setExecutionErrorMessage(null);
     setExecutionPlan(null);
+    setExecutionValidationFailure(null);
     setExecutionResult(null);
     setIsExecutionPlanLoading(false);
     setIsExecutionExecuteLoading(false);
@@ -798,6 +838,7 @@ function App() {
       updateSelectedIds(currentIds, candidateId, selected)
     );
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
   }
 
   function handlePRCandidateSelection(candidateId: string, selected: boolean) {
@@ -805,9 +846,12 @@ function App() {
       updateSelectedIds(currentIds, candidateId, selected)
     );
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
   }
 
-  async function handleRequestPlan() {
+  async function handleRequestPlan(
+    options: { regenerationContext?: ExecutionValidationFailure } = {}
+  ) {
     if (!analysis) {
       return;
     }
@@ -841,14 +885,26 @@ function App() {
         runIdToUse = response.summary.id;
       }
 
+      const regenerationContext = options.regenerationContext
+        ? {
+            trigger: "validation_failure" as const,
+            validationKind: options.regenerationContext.kind,
+            ...(options.regenerationContext.failedPlanId
+              ? { failedPlanId: options.regenerationContext.failedPlanId }
+              : {})
+          }
+        : undefined;
+
       const plan = await requestExecutionPlan({
         analysisRunId: runIdToUse,
         selectedIssueCandidateIds,
-        selectedPRCandidateIds
+        selectedPRCandidateIds,
+        ...(regenerationContext ? { regenerationContext } : {})
       });
 
       setExecutionPlan(plan);
       setApprovalGranted(false);
+      setExecutionValidationFailure(null);
     } catch (error) {
       setExecutionErrorMessage(
         error instanceof Error
@@ -860,6 +916,74 @@ function App() {
     }
   }
 
+  function buildValidationFailure(
+    failedPlanId: string,
+    error: ExecutionClientError
+  ): ExecutionValidationFailure | null {
+    const details =
+      typeof error.details === "object" && error.details !== null
+        ? (error.details as Record<string, unknown>)
+        : null;
+    if (!details) {
+      return null;
+    }
+
+    const kind = details.kind;
+    if (
+      kind !== "drift" &&
+      kind !== "synthesis_error" &&
+      kind !== "missing_preview"
+    ) {
+      return null;
+    }
+
+    const filePaths: string[] = [];
+    const candidateIds = new Set<string>();
+
+    if (kind === "drift" && Array.isArray(details.driftDetails)) {
+      for (const entry of details.driftDetails as Array<{
+        candidateId?: unknown;
+        driftPaths?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+        if (Array.isArray(entry?.driftPaths)) {
+          for (const path of entry.driftPaths) {
+            if (typeof path === "string" && !filePaths.includes(path)) {
+              filePaths.push(path);
+            }
+          }
+        }
+      }
+    } else if (kind === "synthesis_error" && Array.isArray(details.synthesisErrors)) {
+      for (const entry of details.synthesisErrors as Array<{
+        candidateId?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+      }
+    } else if (kind === "missing_preview" && Array.isArray(details.missingPreview)) {
+      for (const entry of details.missingPreview as Array<{
+        candidateId?: unknown;
+      }>) {
+        if (typeof entry?.candidateId === "string") {
+          candidateIds.add(entry.candidateId);
+        }
+      }
+    }
+
+    return {
+      kind,
+      message:
+        typeof details.error === "string" ? details.error : error.message,
+      filePaths,
+      candidateIds: Array.from(candidateIds),
+      failedPlanId
+    };
+  }
+
   async function handleRequestExecute() {
     if (!executionPlan) return;
 
@@ -869,6 +993,7 @@ function App() {
     }
 
     setExecutionErrorMessage(null);
+    setExecutionValidationFailure(null);
     setIsExecutionExecuteLoading(true);
 
     try {
@@ -882,6 +1007,19 @@ function App() {
 
       setExecutionResult(result);
     } catch (error) {
+      if (
+        error instanceof ExecutionClientError &&
+        (error.status === 409 || error.status === 422)
+      ) {
+        const failure = buildValidationFailure(executionPlan.planId, error);
+        if (failure) {
+          setExecutionValidationFailure(failure);
+          setApprovalGranted(false);
+          setExecutionErrorMessage(null);
+          return;
+        }
+      }
+
       setExecutionErrorMessage(
         error instanceof Error
           ? error.message
@@ -890,6 +1028,12 @@ function App() {
     } finally {
       setIsExecutionExecuteLoading(false);
     }
+  }
+
+  function handleRegeneratePlanFromValidationFailure(
+    failure: ExecutionValidationFailure
+  ): void {
+    void handleRequestPlan({ regenerationContext: failure });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1687,10 +1831,20 @@ function App() {
     };
   }, [appMode, authSession, fleetStatus, isSessionLoading]);
 
+  const activeWorkspaceName =
+    authSession?.workspaces.find(
+      (entry) => entry.workspace.id === selectedWorkspaceId
+    )?.workspace.name ?? null;
+  const liveNotificationCount = executionNotifications.notifications.length;
+  const handleOpenNotifications = () => {
+    if (typeof document === "undefined") return;
+    const queue = document.querySelector("[data-testid='queue-activity']");
+    queue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const heroAside =
     appMode === "analysis" ? (
       <div className="hero-stack">
-        <StatusBadge label={statusLabel} tone={statusTone} />
         <p className="aside-copy">
           Analysis stays supervised. Repo Guardian can surface issue and PR
           write-back readiness, preview dry-run execution plans, and only write to
@@ -1704,7 +1858,6 @@ function App() {
       </div>
     ) : (
       <div className="hero-stack">
-        <StatusBadge label={statusLabel} tone={statusTone} />
         <p className="aside-copy">
           Fleet Admin keeps tracked repositories, queue activity, schedule-driven
           planning, and remediation PR lifecycle visible without introducing any
@@ -1727,19 +1880,30 @@ function App() {
       aside={heroAside}
       eyebrow={appMode === "analysis" ? "Approval-Gated Analysis" : "Fleet Admin"}
       heading="Repo Guardian"
+      liveConnectionState={
+        appMode === "fleet-admin"
+          ? executionNotifications.connectionState
+          : undefined
+      }
+      notificationCount={liveNotificationCount}
+      onOpenNotifications={
+        appMode === "fleet-admin" ? handleOpenNotifications : undefined
+      }
+      statusLabel={statusLabel}
+      statusTone={statusTone}
       summary={
         appMode === "analysis"
           ? "A supervised GitHub repository triage assistant that inspects public repositories, drafts findings and remediation candidates, and surfaces approval-gated GitHub write-back readiness before any execution step."
           : "Operational controls for tracked repositories, async queue visibility, scheduled plan-only sweeps, and remediation pull-request lifecycle reporting."
       }
       toolbar={<AppModeToggle mode={appMode} onChange={setAppMode} />}
+      workspaceName={activeWorkspaceName}
     >
       {appMode === "analysis" ? (
         <>
           <Panel
             className="panel-wide"
             eyebrow="Repository Intake"
-            footer={<StatusBadge label={statusLabel} tone={statusTone} />}
             title="Analyze a public GitHub repository"
           >
             <RepoInputForm
@@ -1836,10 +2000,14 @@ function App() {
                 isSubmittingPlan={isExecutionPlanLoading}
                 isSubmittingExecute={isExecutionExecuteLoading}
                 onApprovalChange={setApprovalGranted}
-                onRequestPlan={handleRequestPlan}
+                onRequestPlan={() => void handleRequestPlan()}
+                onRegeneratePlanFromValidationFailure={
+                  handleRegeneratePlanFromValidationFailure
+                }
                 onRequestExecute={handleRequestExecute}
                 selectedIssueCount={selectedIssueCandidateIds.length}
                 selectedPRCount={selectedPRCandidateIds.length}
+                validationFailure={executionValidationFailure}
               />
               <ExecutionResultsPanel
                 result={
@@ -1945,7 +2113,11 @@ function App() {
             errorMessage={jobsErrorMessage}
             isLoading={isFleetLoading}
             jobs={analysisJobs}
+            liveConnectionState={executionNotifications.connectionState}
+            notifications={executionNotifications.notifications}
             onCancelJob={handleCancelJob}
+            onClearNotifications={executionNotifications.clear}
+            onDismissNotification={executionNotifications.dismiss}
             onOpenJobDetails={(jobId) => void openFleetInspector({ id: jobId, kind: "job" })}
             onOpenPlanDetails={(planId) =>
               void openFleetInspector({ id: planId, kind: "plan" })
@@ -2005,6 +2177,18 @@ function App() {
           ) : null}
         </>
       )}
+      <ExecutionNotificationsToast
+        notifications={executionNotifications.notifications}
+        onClearAll={executionNotifications.clear}
+        onDismiss={executionNotifications.dismiss}
+        onOpenPlan={(planId) => {
+          executionNotifications.dismiss(planId, "plan.created");
+          executionNotifications.dismiss(planId, "plan.claimed");
+          executionNotifications.dismiss(planId, "plan.completed");
+          executionNotifications.dismiss(planId, "plan.failed");
+          void openFleetInspector({ id: planId, kind: "plan" });
+        }}
+      />
     </PageShell>
   );
 }

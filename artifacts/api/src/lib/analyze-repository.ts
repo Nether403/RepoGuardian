@@ -1,6 +1,7 @@
 import {
   createDependencyFindingResult,
   OsvAdvisoryProvider,
+  rescoreDependencyFindingsReachability,
   type DependencyFindingResult
 } from "@repo-guardian/advisory";
 import { createDependencySnapshot, listDependencyFilesToFetch } from "@repo-guardian/dependencies";
@@ -291,13 +292,13 @@ export async function analyzeRepository(
     prefetchWarningDetails: dependencyFiles.prefetchWarningDetails,
     skippedFiles: dependencyFiles.skippedFiles
   });
-  const dependencyFindings = await createDependencyFindingResult(
+  const initialDependencyFindings = await createDependencyFindingResult(
     dependencySnapshot,
     advisoryProvider
   );
   const reviewSelection = selectReviewTargets({
     dependencyFindingPaths: uniqueSorted(
-      dependencyFindings.findings.flatMap((finding) => finding.paths)
+      initialDependencyFindings.findings.flatMap((finding) => finding.paths)
     ),
     signals: detection.signals,
     treeEntries: intake.treeEntries
@@ -312,6 +313,21 @@ export async function analyzeRepository(
     selection: reviewSelection,
     skippedFiles: reviewFiles.skippedFiles
   });
+  const reviewedFileContentsByPath = Object.fromEntries(
+    reviewFiles.reviewedFiles.map((file) => [file.path, file.content] as const)
+  );
+  // Re-score reachability against the reviewed source files without re-querying
+  // the advisory provider — the initial lookup result already enumerated the
+  // matched advisories, and reachability only depends on finding metadata plus
+  // the reviewed file contents.
+  const dependencyFindings: DependencyFindingResult = {
+    ...initialDependencyFindings,
+    findings: rescoreDependencyFindingsReachability(
+      initialDependencyFindings.findings,
+      reviewedFileContentsByPath
+    ),
+    summary: initialDependencyFindings.summary
+  };
   const issueCandidates = createIssueCandidateResult({
     codeReviewFindings: codeReview.findings,
     dependencyFindings: dependencyFindings.findings

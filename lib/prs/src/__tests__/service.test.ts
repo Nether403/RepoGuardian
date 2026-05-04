@@ -32,6 +32,7 @@ function dependencyFinding(
     referenceUrls: [],
     remediationType: "upgrade",
     remediationVersion: "2.0.0",
+    reachability: { band: "unknown", referencedPaths: [], score: 0, signals: [] },
     severity: "high",
     sourceType: "dependency",
     summary: "react advisory",

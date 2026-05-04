@@ -4,6 +4,7 @@ import type {
   PRWriteBackEligibility
 } from "@repo-guardian/shared-types";
 import { Panel } from "./Panel";
+import { EmptyState } from "./ui";
 import { StatusBadge } from "./StatusBadge";
 
 type PRCandidatesPanelProps = {
@@ -191,7 +192,7 @@ export function PRCandidatesPanel({
           })}
         </div>
       ) : (
-        <p className="empty-copy">No PR candidates were generated.</p>
+        <EmptyState>No PR candidates were generated.</EmptyState>
       )}
     </Panel>
   );

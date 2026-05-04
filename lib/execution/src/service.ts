@@ -14,8 +14,100 @@ import {
   buildDryRunActions,
   buildExecutableActions
 } from "./actions.js";
+import { buildDiffPreview, buildDiffPreviewError } from "./diff.js";
 import { synthesizePRCandidatePatch } from "./patch-synthesis.js";
 import { createExecutionSummary, uniqueSorted } from "./utils.js";
+
+const PREPARE_PATCH_PREFIX = "execution:prepare_patch:";
+
+function createInMemoryReadClient(input: {
+  fileContentsByPath: Readonly<Record<string, string>>;
+  delegate?: ExecutionServiceDependencies["readClient"];
+}): NonNullable<ExecutionServiceDependencies["readClient"]> {
+  return {
+    async fetchRepositoryFileText(request) {
+      const cached = input.fileContentsByPath[request.path];
+
+      if (typeof cached === "string") {
+        return cached;
+      }
+
+      if (input.delegate) {
+        return input.delegate.fetchRepositoryFileText(request);
+      }
+
+      throw new Error(
+        `No cached content available for ${request.path} during dry-run diff preview.`
+      );
+    }
+  };
+}
+
+async function attachDryRunDiffPreviews(input: {
+  actions: ExecutionActionPlan[];
+  analysis: ExecutionPlanningContext;
+  selectedPRCandidateIds: string[];
+  readClient: NonNullable<ExecutionServiceDependencies["readClient"]>;
+}): Promise<void> {
+  const prCandidates = getPRCandidateMap(input.analysis);
+  const patchPlans = getPatchPlanMap(input.analysis);
+  const selectedIdSet = new Set(input.selectedPRCandidateIds);
+
+  for (const action of input.actions) {
+    if (
+      action.actionType !== "prepare_patch" ||
+      action.eligibility !== "eligible" ||
+      !action.id.startsWith(PREPARE_PATCH_PREFIX)
+    ) {
+      continue;
+    }
+
+    const candidateId = action.id.slice(PREPARE_PATCH_PREFIX.length);
+
+    if (selectedIdSet.size > 0 && !selectedIdSet.has(candidateId)) {
+      continue;
+    }
+
+    const candidate = prCandidates.get(candidateId);
+    const patchPlan = patchPlans.get(candidateId);
+
+    if (!candidate || !patchPlan) {
+      continue;
+    }
+
+    try {
+      const synthesized = await synthesizePRCandidatePatch({
+        analysis: input.analysis,
+        candidate,
+        patchPlan,
+        readClient: input.readClient
+      });
+
+      const files = await Promise.all(
+        synthesized.fileChanges.map(async (change) => {
+          const before = await input.readClient
+            .fetchRepositoryFileText({
+              owner: input.analysis.repository.owner,
+              path: change.path,
+              ref: input.analysis.repository.defaultBranch,
+              repo: input.analysis.repository.repo
+            })
+            .catch(() => "");
+
+          return {
+            after: change.content,
+            before,
+            path: change.path
+          };
+        })
+      );
+
+      action.diffPreview = buildDiffPreview({ files });
+    } catch (error) {
+      action.diffPreview = buildDiffPreviewError({ error });
+    }
+  }
+}
 
 export type ExecutionPlanInput = {
   analysis: ExecutionPlanningContext;
@@ -26,6 +118,7 @@ export type ExecutionPlanInput = {
 };
 
 export type ExecutionServiceDependencies = {
+  fileContentsByPath?: Readonly<Record<string, string>>;
   readClient?: {
     fetchRepositoryFileText(request: {
       owner: string;
@@ -448,6 +541,32 @@ export async function createExecutionPlanResult(
         firstEligibleAction.errorMessage = message;
         firstEligibleAction.reason = message;
       }
+    }
+  }
+
+  if (input.mode === "dry_run") {
+    const previewReadClient =
+      dependencies.readClient ??
+      (dependencies.fileContentsByPath
+        ? createInMemoryReadClient({
+            fileContentsByPath: dependencies.fileContentsByPath
+          })
+        : null);
+
+    if (previewReadClient) {
+      const compositeReadClient = dependencies.fileContentsByPath
+        ? createInMemoryReadClient({
+            delegate: previewReadClient,
+            fileContentsByPath: dependencies.fileContentsByPath
+          })
+        : previewReadClient;
+
+      await attachDryRunDiffPreviews({
+        actions,
+        analysis: input.analysis,
+        readClient: compositeReadClient,
+        selectedPRCandidateIds: input.selectedPRCandidateIds
+      });
     }
   }
 

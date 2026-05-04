@@ -23,6 +23,7 @@ import {
 } from "../features/analysis/view-model";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
+import { Button, EmptyState, LinkButton } from "./ui";
 
 type InspectorSelection =
   | {
@@ -271,13 +272,12 @@ function renderTimelineDetailBody(
           ) : null}
           {linkedRunId ? (
             <div className="fleet-inline-actions">
-              <button
-                className="secondary-button"
+              <Button icon="arrow-right" iconPosition="trailing"
                 onClick={() => onOpenRun(linkedRunId)}
                 type="button"
               >
                 Open linked run
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -297,13 +297,12 @@ function renderTimelineDetailBody(
           ) : null}
           {linkedRunId ? (
             <div className="fleet-inline-actions">
-              <button
-                className="secondary-button"
+              <Button icon="arrow-right" iconPosition="trailing"
                 onClick={() => onOpenRun(linkedRunId)}
                 type="button"
               >
                 Open run
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -349,22 +348,20 @@ function renderTimelineDetailBody(
           ) : null}
           <div className="fleet-inline-actions">
             {linkedPlanId !== null ? (
-              <button
-                className="secondary-button"
+              <Button icon="arrow-right" iconPosition="trailing"
                 onClick={() => onOpenPlan(linkedPlanId)}
                 type="button"
               >
                 Open linked plan
-              </button>
+              </Button>
             ) : null}
             {linkedRunId !== null ? (
-              <button
-                className="secondary-button"
+              <Button icon="arrow-right" iconPosition="trailing"
                 onClick={() => onOpenRun(linkedRunId)}
                 type="button"
               >
                 Open linked run
-              </button>
+              </Button>
             ) : null}
           </div>
           {detail.rawPayload ? (
@@ -576,24 +573,22 @@ export function FleetInspectorPanel({
       eyebrow="Inspector"
       footer={
         <div className="fleet-inline-actions">
-          <button className="secondary-button" onClick={onRefresh} type="button">
+          <Button icon="refresh" onClick={onRefresh}>
             Refresh detail
-          </button>
-          <button className="secondary-button" onClick={onClose} type="button">
+          </Button>
+          <Button icon="close" onClick={onClose}>
             Close inspector
-          </button>
+          </Button>
         </div>
       }
       title={getHistoryTitle(selection)}
     >
       <div className="fleet-panel-shell">
         {!selection ? (
-          <p className="empty-copy">
-            Select a job, tracked repository, run, or linked plan to inspect the
-            underlying remediation context without leaving Fleet Admin.
-          </p>
+          <EmptyState>Select a job, tracked repository, run, or linked plan to inspect the
+            underlying remediation context without leaving Fleet Admin.</EmptyState>
         ) : null}
-        {isLoading ? <p className="empty-copy">Loading inspector detail...</p> : null}
+        {isLoading ? <EmptyState>Loading inspector detail...</EmptyState> : null}
         {errorMessage ? (
           <p className="form-message form-message-error" role="alert">
             {errorMessage}
@@ -642,22 +637,20 @@ export function FleetInspectorPanel({
             ) : null}
             <div className="fleet-inline-actions">
               {jobDetail.runId ? (
-                <button
-                  className="secondary-button"
+                <Button icon="arrow-right" iconPosition="trailing"
                   onClick={() => onOpenRun(jobDetail.runId!)}
                   type="button"
                 >
                   Open run
-                </button>
+                </Button>
               ) : null}
               {jobDetail.planId ? (
-                <button
-                  className="secondary-button"
+                <Button icon="arrow-right" iconPosition="trailing"
                   onClick={() => onOpenPlan(jobDetail.planId!)}
                   type="button"
                 >
                   Open plan
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>
@@ -756,8 +749,7 @@ export function FleetInspectorPanel({
                 </label>
               </div>
               <div className="fleet-inline-actions">
-                <button
-                  className="secondary-button"
+                <Button icon="check"
                   onClick={() => {
                     onRepositoryTimelineExpansionChange(activityExpansionModeInput);
                     onRepositoryTimelineSortChange(activitySortPresetInput);
@@ -779,9 +771,8 @@ export function FleetInspectorPanel({
                   type="button"
                 >
                   Apply filters
-                </button>
-                <button
-                  className="secondary-button"
+                </Button>
+                <Button
                   onClick={() => {
                     setActivityStatusInput("");
                     setActivityOccurredAfterInput("");
@@ -799,32 +790,28 @@ export function FleetInspectorPanel({
                   type="button"
                 >
                   Clear filters
-                </button>
-                <button
-                  className="secondary-button"
+                </Button>
+                <Button icon="refresh"
                   onClick={onRefreshRepositoryTimeline}
-                  type="button"
                 >
                   Refresh timeline
-                </button>
+                </Button>
               </div>
               <div className="trace-chip-row">
-                <button
-                  className="secondary-button"
+                <Button icon="activity"
                   onClick={() => onRepositoryTimelineKindsChange([])}
                   type="button"
                 >
                   All activity
-                </button>
+                </Button>
                 {(activeRepositoryTimeline?.availableKinds ?? []).map((kind) => (
-                  <button
-                    className="secondary-button"
+                  <Button
                     key={kind}
                     onClick={() => onRepositoryTimelineKindsChange([kind])}
                     type="button"
                   >
                     {formatActivityKind(kind)}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {activeRepositoryTimeline && activeRepositoryTimeline.events.length > 0 ? (
@@ -862,8 +849,7 @@ export function FleetInspectorPanel({
                           )}
                           <div className="fleet-inline-actions">
                             {primaryAction ? (
-                              <button
-                                className="secondary-button"
+                              <Button icon="arrow-right" iconPosition="trailing"
                                 onClick={() =>
                                   primaryAction.type === "plan"
                                     ? onOpenPlan(primaryAction.targetId)
@@ -872,27 +858,25 @@ export function FleetInspectorPanel({
                                 type="button"
                               >
                                 {primaryAction.label}
-                              </button>
+                              </Button>
                             ) : null}
                             {!expandedActivity.detail ? (
-                              <button
-                                className="secondary-button"
+                              <Button icon="search"
                                 disabled={isEventLoading}
                                 onClick={() => onExpandRepositoryTimelineEvent(activity.activityId)}
                                 type="button"
                               >
                                 {isEventLoading ? "Loading detail..." : "Load detail"}
-                              </button>
+                              </Button>
                             ) : null}
                             {expandedActivity.pullRequestUrl ? (
-                              <a
-                                className="secondary-button fleet-link-button"
+                              <LinkButton
+                                className="fleet-link-button"
                                 href={expandedActivity.pullRequestUrl}
-                                rel="noreferrer"
-                                target="_blank"
+                                external
                               >
                                 Open GitHub PR
-                              </a>
+                              </LinkButton>
                             ) : null}
                           </div>
                         </div>
@@ -901,13 +885,11 @@ export function FleetInspectorPanel({
                   })}
                 </div>
               ) : (
-                <p className="empty-copy">
-                  No {activeRepositoryTimeline?.appliedKinds.length === 0
+                <EmptyState>No {activeRepositoryTimeline?.appliedKinds.length === 0
                     ? ""
                     : `${activeRepositoryTimeline?.appliedKinds
                         .map(formatActivityKind)
-                        .join(", ")} `}events recorded for this repository yet.
-                </p>
+                        .join(", ")} `}events recorded for this repository yet.</EmptyState>
               )}
               <div className="fleet-inline-actions">
                 <span className="trace-chip trace-chip-muted">
@@ -916,8 +898,7 @@ export function FleetInspectorPanel({
                 <span className="trace-chip trace-chip-muted">
                   {activeRepositoryTimeline?.returnedCount ?? 0} events in view
                 </span>
-                <button
-                  className="secondary-button"
+                <Button
                   disabled={!activeRepositoryTimeline?.hasPreviousPage}
                   onClick={() =>
                     onRepositoryTimelinePageChange(
@@ -929,9 +910,8 @@ export function FleetInspectorPanel({
                   type="button"
                 >
                   Previous page
-                </button>
-                <button
-                  className="secondary-button"
+                </Button>
+                <Button
                   disabled={!activeRepositoryTimeline?.hasNextPage}
                   onClick={() =>
                     onRepositoryTimelinePageChange(
@@ -943,7 +923,7 @@ export function FleetInspectorPanel({
                   type="button"
                 >
                   Next page
-                </button>
+                </Button>
               </div>
             </div>
             <div className="fleet-inspector-block">
@@ -966,28 +946,26 @@ export function FleetInspectorPanel({
                         Snapshot {formatTimestamp(run.fetchedAt)} with {run.totalFindings} findings.
                       </p>
                       <div className="fleet-inline-actions">
-                        <button
-                          className="secondary-button"
+                        <Button icon="arrow-right" iconPosition="trailing"
                           onClick={() => onOpenRun(run.id)}
                           type="button"
                         >
                           Open run
-                        </button>
+                        </Button>
                         {run.execution?.latestPlanId ? (
-                          <button
-                            className="secondary-button"
+                          <Button icon="arrow-right" iconPosition="trailing"
                             onClick={() => onOpenPlan(run.execution!.latestPlanId)}
                             type="button"
                           >
                             Open latest plan
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No saved runs recorded for this repository yet.</p>
+                <EmptyState>No saved runs recorded for this repository yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1004,29 +982,27 @@ export function FleetInspectorPanel({
                         <StatusBadge label={job.status} tone={getJobTone(job.status)} />
                       </div>
                       <div className="fleet-inline-actions">
-                        <button
-                          className="secondary-button"
+                        <Button icon="arrow-right" iconPosition="trailing"
                           onClick={() => onOpenRun(job.runId ?? repositoryHistory.recentRuns[0]?.id ?? "")}
                           type="button"
                           disabled={!job.runId && !repositoryHistory.recentRuns[0]?.id}
                         >
                           Open run
-                        </button>
+                        </Button>
                         {job.planId ? (
-                          <button
-                            className="secondary-button"
+                          <Button icon="arrow-right" iconPosition="trailing"
                             onClick={() => onOpenPlan(job.planId!)}
                             type="button"
                           >
                             Open plan
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No queued history recorded for this repository yet.</p>
+                <EmptyState>No queued history recorded for this repository yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1046,19 +1022,18 @@ export function FleetInspectorPanel({
                         Created {formatTimestamp(plan.createdAt)} with {plan.summary.totalActions} actions.
                       </p>
                       <div className="fleet-inline-actions">
-                        <button
-                          className="secondary-button"
+                        <Button icon="arrow-right" iconPosition="trailing"
                           onClick={() => onOpenPlan(plan.planId)}
                           type="button"
                         >
                           Open plan
-                        </button>
+                        </Button>
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No durable execution plans recorded yet.</p>
+                <EmptyState>No durable execution plans recorded yet.</EmptyState>
               )}
             </div>
             <div className="fleet-inspector-block">
@@ -1085,28 +1060,26 @@ export function FleetInspectorPanel({
                       </div>
                       <div className="fleet-inline-actions">
                         {pullRequest.planId ? (
-                          <button
-                            className="secondary-button"
+                          <Button icon="arrow-right" iconPosition="trailing"
                             onClick={() => onOpenPlan(pullRequest.planId!)}
                             type="button"
                           >
                             Open plan
-                          </button>
+                          </Button>
                         ) : null}
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={pullRequest.pullRequestUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open GitHub PR
-                        </a>
+                        </LinkButton>
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No tracked remediation pull requests recorded yet.</p>
+                <EmptyState>No tracked remediation pull requests recorded yet.</EmptyState>
               )}
             </div>
           </div>
@@ -1151,13 +1124,12 @@ export function FleetInspectorPanel({
             </dl>
             {runDetail.summary.execution?.latestPlanId ? (
               <div className="fleet-inline-actions">
-                <button
-                  className="secondary-button"
+                <Button icon="arrow-right" iconPosition="trailing"
                   onClick={() => onOpenPlan(runDetail.summary.execution!.latestPlanId)}
                   type="button"
                 >
                   Open latest plan
-                </button>
+                </Button>
               </div>
             ) : null}
             <div className="trace-chip-row">
@@ -1211,13 +1183,12 @@ export function FleetInspectorPanel({
               </div>
             </dl>
             <div className="fleet-inline-actions">
-              <button
-                className="secondary-button"
+              <Button icon="arrow-right" iconPosition="trailing"
                 onClick={() => onOpenRun(planDetail.analysisRunId)}
                 type="button"
               >
                 Open source run
-              </button>
+              </Button>
             </div>
             <div className="fleet-inspector-block">
               <h3>Actions</h3>
@@ -1247,53 +1218,51 @@ export function FleetInspectorPanel({
                     action.linkedIssueCandidateIds.length > 0 ? (
                       <div className="trace-chip-row">
                         {action.linkedPRCandidateIds.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-pr-candidates"
                           >
                             Linked PR candidates
-                          </a>
+                          </LinkButton>
                         ) : null}
                         {action.linkedIssueCandidateIds.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-issue-candidates"
                           >
                             Linked issue candidates
-                          </a>
+                          </LinkButton>
                         ) : null}
                         {(action.linkedPRCandidateIds.length > 0 ||
                           action.linkedIssueCandidateIds.length > 0) &&
                         planTraceability.findings.length > 0 ? (
-                          <a
-                            className="secondary-button fleet-link-button"
+                          <LinkButton
+                            className="fleet-link-button"
                             href="#plan-traceability-findings"
                           >
                             Originating findings
-                          </a>
+                          </LinkButton>
                         ) : null}
                       </div>
                     ) : null}
                     <div className="fleet-inline-actions">
                       {action.issueUrl ? (
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={action.issueUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open issue
-                        </a>
+                        </LinkButton>
                       ) : null}
                       {action.pullRequestUrl ? (
-                        <a
-                          className="secondary-button fleet-link-button"
+                        <LinkButton
+                          className="fleet-link-button"
                           href={action.pullRequestUrl}
-                          rel="noreferrer"
-                          target="_blank"
+                          external
                         >
                           Open PR
-                        </a>
+                        </LinkButton>
                       ) : null}
                     </div>
                   </article>
@@ -1320,7 +1289,7 @@ export function FleetInspectorPanel({
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">No PR candidates are linked to this plan's actions.</p>
+                    <EmptyState>No PR candidates are linked to this plan's actions.</EmptyState>
                   )}
                 </div>
                 <div className="fleet-inspector-block" id="plan-traceability-issue-candidates">
@@ -1341,9 +1310,7 @@ export function FleetInspectorPanel({
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">
-                      No issue candidates are linked to this plan's actions.
-                    </p>
+                    <EmptyState>No issue candidates are linked to this plan's actions.</EmptyState>
                   )}
                 </div>
                 <div className="fleet-inspector-block" id="plan-traceability-findings">
@@ -1357,25 +1324,30 @@ export function FleetInspectorPanel({
                               <p className="subsection-label">{finding.sourceType}</p>
                               <h3>{finding.title}</h3>
                             </div>
-                            <StatusBadge label={finding.severity} tone="warning" />
+                            <StatusBadge
+                              label={finding.severity}
+                              tone={
+                                /^(critical|high)$/i.test(finding.severity)
+                                  ? "danger"
+                                  : /^medium$/i.test(finding.severity)
+                                  ? "warning"
+                                  : "info"
+                              }
+                            />
                           </div>
                           <p className="trace-copy">{finding.summary}</p>
                         </article>
                       ))}
                     </div>
                   ) : (
-                    <p className="empty-copy">
-                      No findings could be resolved from the linked plan actions.
-                    </p>
+                    <EmptyState>No findings could be resolved from the linked plan actions.</EmptyState>
                   )}
                 </div>
               </>
             ) : (
               <div className="fleet-inspector-block">
                 <h3>Traceability source</h3>
-                <p className="empty-copy">
-                  Open the source run to inspect the underlying findings and candidates.
-                </p>
+                <EmptyState>Open the source run to inspect the underlying findings and candidates.</EmptyState>
               </div>
             )}
             <div className="fleet-inspector-block">
@@ -1394,7 +1366,7 @@ export function FleetInspectorPanel({
                   ))}
                 </div>
               ) : (
-                <p className="empty-copy">No audit events recorded for this plan yet.</p>
+                <EmptyState>No audit events recorded for this plan yet.</EmptyState>
               )}
             </div>
           </div>
