@@ -280,7 +280,8 @@ describeIf("Postgres persistence integration", () => {
         "0003_analysis_queue_foundation.sql",
         "0004_scheduling_and_pr_lifecycle.sql",
         "0005_workspaces_and_installations.sql",
-        "0006_policy_decision_events.sql"
+        "0006_policy_decision_events.sql",
+        "0007_policy_decision_execute_batch.sql"
       ]);
       await expect(runMigrations(migrationClient)).resolves.toEqual([]);
     } finally {

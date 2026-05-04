@@ -2,6 +2,7 @@ import { type Router as ExpressRouter, Router } from "express";
 import crypto from "node:crypto";
 import {
   createExecutionPlanResult,
+  evaluateBatchExecutionPolicy,
   evaluateExecutionPlanPolicy,
   evaluateExecutionWritePolicy,
   executeApprovedActions,
@@ -18,10 +19,13 @@ import {
   isPersistenceError
 } from "@repo-guardian/persistence";
 import {
+  ExecutionBatchPlanRequestSchema,
+  ExecutionBatchPlanResponseSchema,
   ExecutionExecuteRequestSchema,
   ExecutionPlanRequestSchema,
   ExecutionResultSchema,
   type ExecutionActionPlan,
+  type ExecutionBatchPlanItem,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
 import {
@@ -63,6 +67,10 @@ type PolicyDecisionRepositoryLike = Pick<
   PolicyDecisionRepository,
   "recordDecision"
 >;
+
+const BATCH_APPROVAL_CONFIRMATION_TEXT =
+  "I approve this supervised batch execution.";
+const MAX_BATCH_PLANS = 5;
 
 function hashActions(actions: unknown[]): string {
   return `sha256:${crypto.createHash("sha256").update(JSON.stringify(actions)).digest("hex")}`;
@@ -232,6 +240,27 @@ async function recordExecutionPlanPolicyDecision(input: {
   });
 }
 
+async function recordBatchExecutionPolicyDecision(input: {
+  actorUserId: string;
+  decision: ExecutionWritePolicyDecision;
+  policyDecisionRepository: PolicyDecisionRepositoryLike;
+  workspaceId: string;
+}): Promise<void> {
+  await input.policyDecisionRepository.recordDecision({
+    actionType: "execute_batch",
+    actorUserId: input.actorUserId,
+    decision: input.decision.decision,
+    details: input.decision.details,
+    githubInstallationId: null,
+    planId: null,
+    reason: input.decision.reason,
+    repositoryFullName: null,
+    runId: null,
+    scopeType: "workspace",
+    workspaceId: input.workspaceId
+  });
+}
+
 function createLifecycleCallbacks(input: {
   actorUserId: string | null;
   claimedPlan: ClaimedExecutionPlan;
@@ -260,6 +289,30 @@ function createLifecycleCallbacks(input: {
         workspaceId: input.claimedPlan.workspaceId
       });
     }
+  };
+}
+
+function buildBatchPlanSummary(plans: ExecutionBatchPlanItem[]) {
+  return {
+    approvalRequiredActions: plans.reduce(
+      (sum, plan) => sum + plan.summary.approvalRequiredActions,
+      0
+    ),
+    blockedActions: plans.reduce(
+      (sum, plan) => sum + plan.summary.blockedActions,
+      0
+    ),
+    eligibleActions: plans.reduce(
+      (sum, plan) => sum + plan.summary.eligibleActions,
+      0
+    ),
+    planCount: plans.length,
+    repositories: new Set(plans.map((plan) => plan.repositoryFullName)).size,
+    skippedActions: plans.reduce(
+      (sum, plan) => sum + plan.summary.skippedActions,
+      0
+    ),
+    totalActions: plans.reduce((sum, plan) => sum + plan.summary.totalActions, 0)
   };
 }
 
@@ -400,6 +453,113 @@ export function createExecutionRouter(
 
       next(error);
     }
+    }
+  );
+
+  executionRouter.post(
+    "/execution/batch/plan",
+    requireAuth,
+    requireWorkspaceRole(["owner", "maintainer", "reviewer"]),
+    async (request, response, next) => {
+      const parsedRequest = ExecutionBatchPlanRequestSchema.safeParse(request.body);
+
+      if (!parsedRequest.success) {
+        response.status(400).json({
+          error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
+        });
+        return;
+      }
+
+      if (new Set(parsedRequest.data.planIds).size !== parsedRequest.data.planIds.length) {
+        response.status(400).json({ error: "Batch plan ids must be unique." });
+        return;
+      }
+
+      try {
+        const workspaceId =
+          parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+        const planDetails = await Promise.all(
+          parsedRequest.data.planIds.map((planId) =>
+            planRepository.getPlanDetail(planId, workspaceId)
+          )
+        );
+        const plans: ExecutionBatchPlanItem[] = planDetails.map((detail) => ({
+          expiresAt: detail.expiresAt,
+          planHash: detail.planHash,
+          planId: detail.planId,
+          repositoryFullName: detail.repository.fullName,
+          status: detail.status,
+          summary: buildExecutionSummary(detail.actions, {
+            selectedIssueCandidateIds: detail.selectedIssueCandidateIds,
+            selectedPRCandidateIds: detail.selectedPRCandidateIds
+          })
+        }));
+        const policyDecision = evaluateBatchExecutionPolicy({
+          maxPlans: MAX_BATCH_PLANS,
+          plans: plans.map((plan) => ({
+            eligibleActions: plan.summary.eligibleActions,
+            planId: plan.planId,
+            status: plan.status,
+            totalActions: plan.summary.totalActions
+          }))
+        });
+
+        await recordBatchExecutionPolicyDecision({
+          actorUserId: request.authContext!.user.id,
+          decision: policyDecision,
+          policyDecisionRepository,
+          workspaceId
+        });
+
+        if (policyDecision.decision !== "allowed") {
+          response.status(403).json({ error: policyDecision.reason });
+          return;
+        }
+
+        const batchHash = hashActions(
+          plans.map((plan) => ({
+            planHash: plan.planHash,
+            planId: plan.planId
+          }))
+        );
+        const batchId = `batch_${crypto.randomBytes(8).toString("hex")}`;
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const approvalToken = mintApprovalToken(
+          batchId,
+          batchHash,
+          request.authContext!.user.id,
+          workspaceId,
+          15
+        );
+
+        response.json(
+          ExecutionBatchPlanResponseSchema.parse({
+            approval: {
+              confirmationText: BATCH_APPROVAL_CONFIRMATION_TEXT,
+              required: true
+            },
+            approvalToken,
+            batchHash,
+            batchId,
+            batchLimits: {
+              maxPlans: MAX_BATCH_PLANS,
+              requestedPlans: parsedRequest.data.planIds.length
+            },
+            expiresAt,
+            plans,
+            summary: buildBatchPlanSummary(plans)
+          })
+        );
+      } catch (error) {
+        const mapped = mapPersistenceError(error);
+
+        if (mapped) {
+          response.status(mapped.status).json(mapped.body);
+          return;
+        }
+
+        next(error);
+      }
     }
   );
 

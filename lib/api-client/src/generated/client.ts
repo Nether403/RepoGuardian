@@ -16,6 +16,8 @@ import type {
   EnqueueAnalysisJobResponse,
   EnqueueExecutionPlanJobRequest,
   EnqueueExecutionPlanJobResponse,
+  ExecutionBatchPlanRequest,
+  ExecutionBatchPlanResponse,
   ExecutionExecuteRequest,
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
@@ -210,6 +212,15 @@ export async function getAuthSession(options: RepoGuardianApiRequestOptions = {}
   return requestJson<AuthSession>({
     method: "GET",
     path: `/api/auth/session`,
+    options
+  });
+}
+
+export async function createExecutionBatchPlan(requestBody: ExecutionBatchPlanRequest, options: RepoGuardianApiRequestOptions = {}): Promise<ExecutionBatchPlanResponse> {
+  return requestJson<ExecutionBatchPlanResponse>({
+    method: "POST",
+    path: `/api/execution/batch/plan`,
+    body: requestBody,
     options
   });
 }

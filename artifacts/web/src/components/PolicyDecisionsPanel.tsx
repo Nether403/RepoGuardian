@@ -145,6 +145,7 @@ export function PolicyDecisionsPanel({
         "analyze_repository",
         "schedule_sweep",
         "generate_pr_candidates",
+        "execute_batch",
         "execute_write"
       ] as PolicyDecisionEvent["actionType"][],
     []

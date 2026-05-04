@@ -1309,6 +1309,81 @@ function createFleetStatusFixture() {
       staleRepositories: 1,
       trackedRepositories: 1
     },
+    autonomySimulation: {
+      actionPreviews: [
+        {
+          actionType: "open_pull_request",
+          candidateActionCount: 4,
+          evidence: [
+            "latestPlanStatus=planned",
+            "installationBacked=false",
+            "openPullRequests=1"
+          ],
+          outcome: "would_block",
+          reasons: [
+            "Latest analysis is stale.",
+            "Repository is not linked to a GitHub App installation.",
+            "Repository already has an open tracked remediation PR."
+          ],
+          repositoryFullName: "openai/openai-node",
+          trackedRepositoryId: "tracked_one"
+        }
+      ],
+      comparison: {
+        currentManualFlow: {
+          candidateActions: 4,
+          requiresApproval: true
+        },
+        simulatedAutonomousFlow: {
+          manualReviewActions: 0,
+          pullRequestsOpened: 0,
+          unattendedWrites: 0
+        }
+      },
+      generatedAt: "2026-04-12T10:05:00.000Z",
+      outcomeCounts: {
+        manualReview: 0,
+        wouldAllow: 0,
+        wouldBlock: 4
+      },
+      policyProfile: "proposed_low_risk_pr_opening",
+      recommendations: [
+        {
+          blastRadius: {
+            candidateActions: 4,
+            repositoriesAffected: 1
+          },
+          evidence: ["openai/openai-node", "Latest analysis is stale."],
+          expectedActionCounts: {
+            manualReview: 0,
+            wouldAllow: 0,
+            wouldBlock: 4
+          },
+          rationale:
+            "Autonomy should not proceed when repositories are stale or have no executable deterministic remediation actions.",
+          recommendationId: "block-stale-or-empty-actions",
+          title: "Block autonomy where no safe deterministic action exists"
+        }
+      ],
+      repositoryReadiness: [
+        {
+          blockedPatchPlans: 1,
+          blockers: ["Latest analysis is stale."],
+          executablePatchPlans: 4,
+          installationBacked: false,
+          openPullRequests: 1,
+          readiness: "blocked",
+          repositoryFullName: "openai/openai-node",
+          stalePatchPlans: 2,
+          trackedRepositoryId: "tracked_one",
+          warnings: [
+            "Repository is not linked to a GitHub App installation.",
+            "Repository already has an open tracked remediation PR."
+          ]
+        }
+      ],
+      simulationMode: "dry_run"
+    },
     trackedPullRequests: [
       {
         branchName: "repo-guardian/harden-workflow",
@@ -3361,6 +3436,11 @@ describe("App", () => {
     expect(screen.getByText("Finding Mix")).toBeInTheDocument();
     expect(screen.getByText("Stale queue")).toBeInTheDocument();
     expect(screen.getByText("Installation coverage")).toBeInTheDocument();
+    expect(screen.getByText(/Autonomy simulation/i)).toBeInTheDocument();
+    expect(screen.getByText("Would allow")).toBeInTheDocument();
+    expect(screen.getAllByText("Manual review").length).toBeGreaterThan(0);
+    expect(screen.getByText("Would block")).toBeInTheDocument();
+    expect(screen.getByText("No unattended writes")).toBeInTheDocument();
     const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
     expect(policyDecisionsPanel.getByText("Approved write execution may proceed.")).toBeInTheDocument();
     expect(policyDecisionsPanel.getByText("openai/openai-node")).toBeInTheDocument();

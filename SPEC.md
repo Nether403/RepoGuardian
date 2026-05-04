@@ -11,13 +11,13 @@ This product is not an autonomous maintainer. It is an engineering assistant wit
 Future controlled autonomy must be opt-in, policy-scoped, observable, and reversible. The product may later automate analysis, plan-only sweeps, or tightly bounded deterministic PR opening, but only after fleet metrics, policy decisions, audit events, and supervised batch execution have been proven reliable.
 
 Current implementation status:
-- Milestone 9A fleet remediation intelligence alpha, not a finished V1
+- Milestone 9C supervised batch execution alpha, not a finished V1
 - canonical supervised analysis and execution routes are `/api/analyze`, `/api/execution/plan`, `/api/execution/execute`, and `/api/runs*`
 - security-hardened two-phase execution model with GitHub OAuth session context and a local-development legacy API-key fallback
 - GitHub write-back expansion for all supported ecosystems (now including Gradle and Yarn)
 - Fleet Admin and fleet-operations reads are implemented for tracked repositories, async jobs, sweep schedules, and repository timelines
 - workspace, membership, GitHub App installation, and installation-repository persistence is implemented for the first 8A access boundary
-- the next product phase is autonomy simulation and recommendations before any controlled-autonomy expansion
+- the current product phase is supervised batch approval previewing after the first dry-run autonomy simulation slice and before any controlled-autonomy expansion
 
 ---
 
@@ -440,8 +440,8 @@ Initial foundation and basic write-back slices.
 - kept all GitHub write execution supervised and approval-gated
 
 ### Post-9A controlled autonomy path
-- Milestone 9B: simulate proposed autonomy rules and show would-allow, would-block, and manual-review outcomes without unattended writes
-- Milestone 9C: introduce supervised batch execution with explicit approval for bounded sets of selected deterministic plans
+- Milestone 9B: simulate proposed autonomy rules and show would-allow, would-block, and manual-review outcomes without unattended writes [ALPHA SLICE]
+- Milestone 9C: introduce supervised batch execution with explicit approval for bounded sets of selected deterministic plans [IN PROGRESS]
 - Milestone 9D: consider opt-in controlled autonomy profiles for low-risk deterministic actions, starting with analysis and plan-only sweeps before any policy-gated PR opening
 - continue to prohibit auto-merge, broad refactors, force-pushes, and open-ended autonomous repository rewriting
 

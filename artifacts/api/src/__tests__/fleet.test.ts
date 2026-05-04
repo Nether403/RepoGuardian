@@ -662,6 +662,33 @@ describe("fleet routes", () => {
     expect(fleetStatusResponse.status).toBe(200);
     expect(fleetStatusResponse.body.summary.trackedRepositories).toBe(1);
     expect(fleetStatusResponse.body.policyDecisions).toEqual([policyDecision]);
+    expect(fleetStatusResponse.body.autonomySimulation).toMatchObject({
+      comparison: {
+        currentManualFlow: {
+          candidateActions: 2,
+          requiresApproval: true
+        },
+        simulatedAutonomousFlow: {
+          manualReviewActions: 2,
+          pullRequestsOpened: 0,
+          unattendedWrites: 0
+        }
+      },
+      outcomeCounts: {
+        manualReview: 2,
+        wouldAllow: 0,
+        wouldBlock: 0
+      },
+      policyProfile: "proposed_low_risk_pr_opening",
+      simulationMode: "dry_run"
+    });
+    expect(
+      fleetStatusResponse.body.autonomySimulation.repositoryReadiness[0]
+    ).toMatchObject({
+      executablePatchPlans: 2,
+      readiness: "needs_review",
+      repositoryFullName: "openai/openai-node"
+    });
     expect(policyDecisionRepository.listRecentDecisions).toHaveBeenCalledWith({
       limit: 12,
       workspaceId: "workspace_local_default"

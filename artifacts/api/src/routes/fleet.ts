@@ -2,7 +2,8 @@ import { type Router as ExpressRouter, Router } from "express";
 import {
   evaluateAnalysisPolicy,
   evaluateExecutionPlanPolicy,
-  evaluateSweepSchedulePolicy
+  evaluateSweepSchedulePolicy,
+  simulateAutonomyPolicy
 } from "@repo-guardian/execution";
 import { normalizeRepoInput } from "@repo-guardian/github";
 import {
@@ -793,10 +794,19 @@ export function createFleetRouter(input: {
           workspaceId: request.authContext?.activeWorkspaceId
         })
       ]);
+      const normalizedFleetStatus = FleetStatusResponseSchema.parse({
+        ...fleetStatus,
+        policyDecisions
+      });
 
       response.json(
         FleetStatusResponseSchema.parse({
-          ...fleetStatus,
+          ...normalizedFleetStatus,
+          autonomySimulation: simulateAutonomyPolicy({
+            generatedAt: normalizedFleetStatus.generatedAt,
+            trackedPullRequests: normalizedFleetStatus.trackedPullRequests,
+            trackedRepositories: normalizedFleetStatus.trackedRepositories
+          }),
           policyDecisions
         })
       );

@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9A alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, and generated API-client coverage for workspace and installation reads.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9C alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, dry-run autonomy simulation for workspace fleet operations, and the first supervised batch-approval preview contract.
 
 ## Current scope
 
@@ -27,6 +27,8 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - repository history and cursor-native timeline reads for Fleet Admin drill-downs
 - server-side paginated policy-decision history via `GET /api/policy-decisions`
 - server-side policy-decision filtering by action, decision, repository, and occurrence window
+- dry-run autonomy simulation in Fleet Overview with would-allow, would-block, and manual-review action previews
+- `POST /api/execution/batch/plan` for bounded supervised batch approval previews over existing execution plans
 - on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
 - Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode
@@ -112,6 +114,6 @@ Current 8A foundation behavior:
 
 ## Roadmap
 
-The current state reflects **Milestone 9A fleet remediation intelligence and policy gates**. The platform now layers workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history on top of the completed 7B fleet foundation while keeping write execution supervised.
+The current state reflects **Milestone 9B autonomy simulation and recommendations**. The platform now layers dry-run proposed-autonomy outcomes on top of workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history while keeping write execution supervised.
 
-The next goals are autonomy simulation and recommendations without unattended writes. The controlled-autonomy path after that should proceed through supervised batch execution and only then opt-in policy-scoped automation. See `docs/roadmap.md`.
+The next goals are deeper policy recommendation controls without unattended writes. The controlled-autonomy path after that should proceed through supervised batch execution and only then opt-in policy-scoped automation. See `docs/roadmap.md`.

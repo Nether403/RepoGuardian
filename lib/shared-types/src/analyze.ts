@@ -642,6 +642,11 @@ export const ExecutionExecuteRequestSchema = z.object({
   confirmationText: z.string().min(1)
 });
 
+export const ExecutionBatchPlanRequestSchema = z.object({
+  planIds: z.array(z.string().min(1)).min(1).max(5),
+  workspaceId: z.string().min(1).optional()
+});
+
 export const ApprovalRequirementSchema = z.object({
   required: z.boolean(),
   confirmationText: z.string().min(1)
@@ -711,6 +716,39 @@ export const ExecutionPlanResponseSchema = z.object({
   repository: RepositoryMetadataSchema.pick({ owner: true, repo: true, defaultBranch: true }),
   summary: ExecutionSummarySchema,
   actions: z.array(ExecutionActionPlanSchema),
+  approval: ApprovalRequirementSchema
+});
+
+export const ExecutionBatchPlanSummarySchema = z.object({
+  planCount: z.number().int().nonnegative(),
+  repositories: z.number().int().nonnegative(),
+  totalActions: z.number().int().nonnegative(),
+  eligibleActions: z.number().int().nonnegative(),
+  blockedActions: z.number().int().nonnegative(),
+  skippedActions: z.number().int().nonnegative(),
+  approvalRequiredActions: z.number().int().nonnegative()
+});
+
+export const ExecutionBatchPlanItemSchema = z.object({
+  planId: z.string().min(1),
+  planHash: z.string().min(1),
+  repositoryFullName: z.string().min(3),
+  status: ExecutionPlanLifecycleStatusSchema,
+  expiresAt: z.string().datetime(),
+  summary: ExecutionSummarySchema
+});
+
+export const ExecutionBatchPlanResponseSchema = z.object({
+  batchId: z.string().min(1),
+  batchHash: z.string().min(1),
+  approvalToken: z.string().min(1),
+  expiresAt: z.string().datetime(),
+  batchLimits: z.object({
+    maxPlans: z.number().int().positive(),
+    requestedPlans: z.number().int().positive()
+  }),
+  summary: ExecutionBatchPlanSummarySchema,
+  plans: z.array(ExecutionBatchPlanItemSchema),
   approval: ApprovalRequirementSchema
 });
 
@@ -976,6 +1014,7 @@ export const PolicyActionTypeSchema = z.enum([
   "analyze_repository",
   "schedule_sweep",
   "generate_pr_candidates",
+  "execute_batch",
   "execute_write"
 ]);
 
@@ -1252,6 +1291,76 @@ export const FleetAttentionQueuesSchema = z.object({
   staleRepositories: z.array(z.string().min(3))
 });
 
+export const AutonomySimulationOutcomeSchema = z.enum([
+  "would_allow",
+  "would_block",
+  "manual_review"
+]);
+
+export const AutonomyRepositoryReadinessSchema = z.object({
+  blockedPatchPlans: z.number().int().nonnegative(),
+  blockers: z.array(z.string().min(1)),
+  executablePatchPlans: z.number().int().nonnegative(),
+  installationBacked: z.boolean(),
+  openPullRequests: z.number().int().nonnegative(),
+  readiness: z.enum(["ready", "needs_review", "blocked"]),
+  repositoryFullName: z.string().min(3),
+  stalePatchPlans: z.number().int().nonnegative(),
+  trackedRepositoryId: z.string().min(1),
+  warnings: z.array(z.string().min(1))
+});
+
+export const AutonomySimulationActionPreviewSchema = z.object({
+  actionType: z.literal("open_pull_request"),
+  candidateActionCount: z.number().int().nonnegative(),
+  evidence: z.array(z.string().min(1)),
+  outcome: AutonomySimulationOutcomeSchema,
+  reasons: z.array(z.string().min(1)),
+  repositoryFullName: z.string().min(3),
+  trackedRepositoryId: z.string().min(1)
+});
+
+export const AutonomyPolicyRecommendationSchema = z.object({
+  blastRadius: z.object({
+    candidateActions: z.number().int().nonnegative(),
+    repositoriesAffected: z.number().int().nonnegative()
+  }),
+  evidence: z.array(z.string().min(1)),
+  expectedActionCounts: z.object({
+    manualReview: z.number().int().nonnegative(),
+    wouldAllow: z.number().int().nonnegative(),
+    wouldBlock: z.number().int().nonnegative()
+  }),
+  rationale: z.string().min(1),
+  recommendationId: z.string().min(1),
+  title: z.string().min(1)
+});
+
+export const AutonomySimulationSummarySchema = z.object({
+  actionPreviews: z.array(AutonomySimulationActionPreviewSchema),
+  comparison: z.object({
+    currentManualFlow: z.object({
+      candidateActions: z.number().int().nonnegative(),
+      requiresApproval: z.boolean()
+    }),
+    simulatedAutonomousFlow: z.object({
+      manualReviewActions: z.number().int().nonnegative(),
+      pullRequestsOpened: z.number().int().nonnegative(),
+      unattendedWrites: z.number().int().nonnegative()
+    })
+  }),
+  generatedAt: z.string().datetime(),
+  outcomeCounts: z.object({
+    manualReview: z.number().int().nonnegative(),
+    wouldAllow: z.number().int().nonnegative(),
+    wouldBlock: z.number().int().nonnegative()
+  }),
+  policyProfile: z.literal("proposed_low_risk_pr_opening"),
+  recommendations: z.array(AutonomyPolicyRecommendationSchema),
+  repositoryReadiness: z.array(AutonomyRepositoryReadinessSchema),
+  simulationMode: z.literal("dry_run")
+});
+
 export const FleetStatusResponseSchema = z.object({
   attentionQueues: FleetAttentionQueuesSchema.default({
     blockedPlanRepositories: [],
@@ -1285,6 +1394,7 @@ export const FleetStatusResponseSchema = z.object({
     staleRepositories: z.number().int().nonnegative(),
     trackedRepositories: z.number().int().nonnegative()
   }),
+  autonomySimulation: AutonomySimulationSummarySchema.nullable().default(null),
   policyDecisions: z.array(PolicyDecisionEventSchema).default([]),
   trackedRepositories: z.array(FleetTrackedRepositoryStatusSchema),
   recentJobs: z.array(AnalysisJobSchema),
@@ -1760,8 +1870,18 @@ export type ExecutionPlanningContext = z.infer<
 >;
 export type ExecutionPlanRequest = z.infer<typeof ExecutionPlanRequestSchema>;
 export type ExecutionExecuteRequest = z.infer<typeof ExecutionExecuteRequestSchema>;
+export type ExecutionBatchPlanRequest = z.infer<
+  typeof ExecutionBatchPlanRequestSchema
+>;
 export type ApprovalRequirement = z.infer<typeof ApprovalRequirementSchema>;
 export type ExecutionPlanResponse = z.infer<typeof ExecutionPlanResponseSchema>;
+export type ExecutionBatchPlanSummary = z.infer<
+  typeof ExecutionBatchPlanSummarySchema
+>;
+export type ExecutionBatchPlanItem = z.infer<typeof ExecutionBatchPlanItemSchema>;
+export type ExecutionBatchPlanResponse = z.infer<
+  typeof ExecutionBatchPlanResponseSchema
+>;
 export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
 export type ExecutionResultSummary = z.infer<typeof ExecutionResultSummarySchema>;
@@ -1898,6 +2018,21 @@ export type FleetInstallationCoverage = z.infer<
 >;
 export type FleetRemediationHealth = z.infer<typeof FleetRemediationHealthSchema>;
 export type FleetAttentionQueues = z.infer<typeof FleetAttentionQueuesSchema>;
+export type AutonomySimulationOutcome = z.infer<
+  typeof AutonomySimulationOutcomeSchema
+>;
+export type AutonomyRepositoryReadiness = z.infer<
+  typeof AutonomyRepositoryReadinessSchema
+>;
+export type AutonomySimulationActionPreview = z.infer<
+  typeof AutonomySimulationActionPreviewSchema
+>;
+export type AutonomyPolicyRecommendation = z.infer<
+  typeof AutonomyPolicyRecommendationSchema
+>;
+export type AutonomySimulationSummary = z.infer<
+  typeof AutonomySimulationSummarySchema
+>;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;

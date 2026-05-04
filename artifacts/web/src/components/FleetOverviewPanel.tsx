@@ -90,6 +90,7 @@ export function FleetOverviewPanel({
     : [];
   const health = fleetStatus?.remediationHealth;
   const queues = fleetStatus?.attentionQueues;
+  const simulation = fleetStatus?.autonomySimulation;
   const severityTotal = health
     ? Object.values(health.findingSeverityMix).reduce((sum, value) => sum + value, 0)
     : 0;
@@ -193,6 +194,37 @@ export function FleetOverviewPanel({
               <div className="fleet-metric-grid">
                 {queueCards.map(renderQueueCard)}
               </div>
+            ) : null}
+            {simulation ? (
+              <>
+                <div className="fleet-panel-toolbar">
+                  <p className="empty-copy">
+                    Autonomy simulation previews proposed policy outcomes without
+                    opening pull requests or performing unattended writes.
+                  </p>
+                  <StatusBadge label="No unattended writes" tone="muted" />
+                </div>
+                <div className="fleet-metric-grid">
+                  {renderMetricCard({
+                    description:
+                      "Candidate actions that proposed low-risk autonomy would allow.",
+                    label: "Would allow",
+                    value: simulation.outcomeCounts.wouldAllow
+                  })}
+                  {renderMetricCard({
+                    description:
+                      "Candidate actions that still require supervised operator review.",
+                    label: "Manual review",
+                    value: simulation.outcomeCounts.manualReview
+                  })}
+                  {renderMetricCard({
+                    description:
+                      "Candidate actions blocked by stale analysis or missing executable plans.",
+                    label: "Would block",
+                    value: simulation.outcomeCounts.wouldBlock
+                  })}
+                </div>
+              </>
             ) : null}
           </>
         ) : (

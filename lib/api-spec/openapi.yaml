@@ -302,6 +302,33 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "409":
           $ref: "#/components/responses/ErrorResponse"
+  /api/execution/batch/plan:
+    post:
+      operationId: createExecutionBatchPlan
+      summary: Create a bounded supervised batch approval preview from existing execution plans
+      x-repo-guardian-request-type: ExecutionBatchPlanRequest
+      x-repo-guardian-response-type: ExecutionBatchPlanResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionBatchPlanRequest"
+      responses:
+        "200":
+          description: Batch approval preview with a short-lived approval token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionBatchPlanResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/execution/plan:
     post:
       operationId: createExecutionPlan
@@ -1085,6 +1112,14 @@ components:
       type: object
       description: Runtime schema is owned by ExecutionPlanRequestSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionPlanRequestSchema
+    ExecutionBatchPlanRequest:
+      type: object
+      description: Runtime schema is owned by ExecutionBatchPlanRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionBatchPlanRequestSchema
+    ExecutionBatchPlanResponse:
+      type: object
+      description: Runtime schema is owned by ExecutionBatchPlanResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionBatchPlanResponseSchema
     EnqueueExecutionPlanJobRequest:
       type: object
       description: Runtime schema is owned by EnqueueExecutionPlanJobRequestSchema in @repo-guardian/shared-types.

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   analyzeRepository,
   compareAnalysisRuns,
+  createExecutionBatchPlan,
   getExecutionPlan,
   getAnalysisRun,
   listAnalysisRuns,
@@ -34,6 +35,7 @@ describe("generated Repo Guardian API client", () => {
     await getAnalysisRun("run:one/two", options);
     await saveAnalysisRun({ analysis: {} as never, label: "Latest" }, options);
     await getExecutionPlan("plan:one/two", options);
+    await createExecutionBatchPlan({ planIds: ["plan:one/two", "plan:three"] }, options);
     await listExecutionPlanEvents("plan:one/two", options);
     await compareAnalysisRuns(
       {
@@ -84,13 +86,23 @@ describe("generated Repo Guardian API client", () => {
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       6,
+      "/api/execution/batch/plan",
+      expect.objectContaining({
+        body: JSON.stringify({
+          planIds: ["plan:one/two", "plan:three"]
+        }),
+        method: "POST"
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      7,
       "/api/execution/plans/plan%3Aone%2Ftwo/events",
       expect.objectContaining({
         method: "GET"
       })
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
-      7,
+      8,
       "/api/runs/compare",
       expect.objectContaining({
         body: JSON.stringify({

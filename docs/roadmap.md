@@ -136,7 +136,7 @@ Implemented:
 
 This milestone does **not** enable unattended GitHub writes. It creates the measurement and policy layer required before controlled autonomy can be safe.
 
-### Milestone 9B: Autonomy Simulation and Recommendations
+### Milestone 9B: Autonomy Simulation and Recommendations [ALPHA SLICE]
 
 Milestone 9B uses the 9A policy layer to show what Repo Guardian would do under proposed autonomy rules without doing it.
 
@@ -150,7 +150,16 @@ Focus:
 
 This milestone still performs no unattended GitHub writes.
 
-### Milestone 9C: Supervised Batch Execution
+Initial implementation:
+
+- Fleet Overview includes a dry-run autonomy simulation from the existing fleet status snapshot
+- simulated outcomes count proposed deterministic PR-opening actions as would-allow, would-block, or manual-review
+- per-repository readiness reflects stale analysis, executable and blocked patch plans, GitHub App installation coverage, recent failures, and open tracked PRs
+- recommendations include deterministic evidence, blast-radius estimates, and expected action counts
+
+Remaining 9B expansion can add sweep-schedule simulation and richer recommendation drill-downs, but the roadmap has moved into 9C by explicit user request.
+
+### Milestone 9C: Supervised Batch Execution [IN PROGRESS]
 
 Milestone 9C introduces higher-throughput supervised operation without crossing into default autonomy.
 
@@ -163,6 +172,13 @@ Focus:
 - clear separation between plan-only scheduling, candidate generation, and write execution
 
 This milestone keeps write execution human-approved, but reduces repetitive approval work for well-understood deterministic actions.
+
+Initial implementation:
+
+- `POST /api/execution/batch/plan` creates a bounded batch approval preview for up to five existing execution plans
+- batch previews include one batch hash, short-lived approval token, explicit confirmation text, per-plan summaries, repository counts, and aggregate action counts
+- batch planning records a workspace-scoped policy decision with actor attribution before returning the approval preview
+- the initial 9C slice performs no GitHub writes and does not execute the batch
 
 ### Milestone 9D: Opt-in Controlled Autonomy
 

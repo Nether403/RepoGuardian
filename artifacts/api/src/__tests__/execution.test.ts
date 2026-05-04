@@ -3,6 +3,7 @@ import request from "supertest";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   type ExecutionActionPlan,
+  ExecutionBatchPlanResponseSchema,
   type ExecutionPlanDetailResponse,
   type ExecutionPlanEventsResponse,
   type ExecutionPlanResponse,
@@ -1022,6 +1023,104 @@ describe("POST /api/execution/plan", () => {
         planId: planResponse.body.planId
       })
     ]);
+  });
+
+  it("creates a bounded supervised batch approval preview from existing plans", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn().mockResolvedValue(
+          "name: CI\non:\n  push:\npermissions: write-all\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+        )
+      },
+      writeClient
+    });
+    const firstRunId = testApp.saveRun(createAnalysisContext());
+    const secondRunId = testApp.saveRun(
+      createAnalysisContext({
+        repository: {
+          defaultBranch: "main",
+          fullName: "openai/another-repo",
+          owner: "openai",
+          repo: "another-repo"
+        }
+      })
+    );
+    const firstPlan = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: firstRunId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+    const secondPlan = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: secondRunId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      });
+
+    const response = await request(testApp.app)
+      .post("/api/execution/batch/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        planIds: [firstPlan.body.planId, secondPlan.body.planId]
+      });
+
+    expect(response.status).toBe(200);
+    expect(ExecutionBatchPlanResponseSchema.parse(response.body)).toMatchObject({
+      approval: {
+        confirmationText: "I approve this supervised batch execution.",
+        required: true
+      },
+      batchLimits: {
+        maxPlans: 5,
+        requestedPlans: 2
+      },
+      plans: [
+        expect.objectContaining({
+          planId: firstPlan.body.planId,
+          repositoryFullName: "openai/openai-node",
+          status: "planned"
+        }),
+        expect.objectContaining({
+          planId: secondPlan.body.planId,
+          repositoryFullName: "openai/another-repo",
+          status: "planned"
+        })
+      ],
+      summary: {
+        blockedActions: 0,
+        eligibleActions: 6,
+        planCount: 2,
+        repositories: 2,
+        skippedActions: 0,
+        totalActions: 6
+      }
+    });
+    expect(response.body.batchHash).toMatch(/^sha256:/u);
+    expect(response.body.approvalToken).toEqual(expect.any(String));
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_batch",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        reason:
+          "Supervised batch execution planning may proceed for selected plans.",
+        scopeType: "workspace",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(writeClient.createIssue).not.toHaveBeenCalled();
+    expect(writeClient.openPullRequest).not.toHaveBeenCalled();
   });
 
   it("executes an approved issue creation request", async () => {

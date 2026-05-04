@@ -25,6 +25,7 @@ describe("Repo Guardian OpenAPI contract", () => {
       "analyzeRepository",
       "cancelAnalysisJob",
       "compareAnalysisRuns",
+      "createExecutionBatchPlan",
       "createExecutionPlan",
       "createSweepSchedule",
       "createTrackedRepository",
