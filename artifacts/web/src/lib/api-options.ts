@@ -1,26 +1,51 @@
 const activeWorkspaceStorageKey = "repo-guardian-active-workspace-id";
 
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore
+  }
+}
+
+function safeLocalStorageRemove(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore
+  }
+}
+
 export function getLocalApiToken(): string {
   return (
-    window.localStorage.getItem("repo-guardian-token") ||
+    safeLocalStorageGet("repo-guardian-token") ||
     import.meta.env.VITE_API_SECRET_KEY ||
     ""
   );
 }
 
 export function getStoredActiveWorkspaceId(): string | null {
-  const value = window.localStorage.getItem(activeWorkspaceStorageKey);
+  const value = safeLocalStorageGet(activeWorkspaceStorageKey);
   return value && value.trim().length > 0 ? value : null;
 }
 
 export function setStoredActiveWorkspaceId(workspaceId: string | null): void {
   if (workspaceId && workspaceId.trim().length > 0) {
-    window.localStorage.setItem(activeWorkspaceStorageKey, workspaceId);
+    safeLocalStorageSet(activeWorkspaceStorageKey, workspaceId);
     return;
   }
 
-  window.localStorage.removeItem(activeWorkspaceStorageKey);
+  safeLocalStorageRemove(activeWorkspaceStorageKey);
 }
+
 
 export function getApiOptions() {
   const token = getLocalApiToken();

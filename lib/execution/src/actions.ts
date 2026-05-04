@@ -23,6 +23,7 @@ function createAction(
     | "blocked"
     | "branchName"
     | "commitSha"
+    | "diffPreview"
     | "errorMessage"
     | "issueNumber"
     | "issueUrl"
@@ -46,6 +47,7 @@ function createAction(
     blocked: input.eligibility === "blocked",
     branchName: null,
     commitSha: null,
+    diffPreview: null,
     errorMessage: null,
     issueNumber: null,
     issueUrl: null,

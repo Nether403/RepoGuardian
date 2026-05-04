@@ -136,6 +136,7 @@ function createAction(overrides: Partial<ExecutionActionPlan> = {}): ExecutionAc
     blocked: false,
     branchName: null,
     commitSha: null,
+    diffPreview: null,
     errorMessage: null,
     eligibility: "eligible",
     id: "action:one",
