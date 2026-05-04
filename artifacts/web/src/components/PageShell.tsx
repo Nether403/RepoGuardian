@@ -38,7 +38,7 @@ export function PageShell({
       <header className="app-topbar">
         <div className="app-brand">
           <span aria-hidden="true" className="app-brand-mark">
-            <Icon name="shield" />
+            <img src="/RepoGuardianlogo.png" alt="" style={{ width: '1.05rem', height: '1.05rem', objectFit: 'contain' }} />
           </span>
           <span className="app-brand-name">
             <strong>Repo Guardian</strong>
