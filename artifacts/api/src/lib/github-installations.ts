@@ -5,6 +5,7 @@ import {
   listRepositoriesForInstallation,
   mintGitHubInstallationToken
 } from "@repo-guardian/github";
+import { isPersistenceError } from "@repo-guardian/persistence";
 import {
   getGitHubInstallationRepository,
   getWorkspaceRepository
@@ -64,7 +65,10 @@ export async function createInstallationReadClient(input: {
     const token = await mintInstallationAccessToken(repository.githubInstallationId);
     return new GitHubReadClient({ token });
   } catch (error) {
-    if (env.NODE_ENV !== "production") {
+    if (
+      env.NODE_ENV !== "production" ||
+      (isPersistenceError(error) && error.code === "not_found")
+    ) {
       return createFallbackReadClient();
     }
 
