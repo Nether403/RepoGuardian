@@ -1522,8 +1522,16 @@ p {
 .guardian-graph-workspace {
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.85fr);
   align-items: stretch;
+}
+
+.guardian-graph-workspace-embedded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.guardian-graph-workspace-focus {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.32fr);
+  min-height: 0;
 }
 
 .guardian-graph-svg,
@@ -1598,11 +1606,20 @@ p {
 
 .guardian-graph-svg {
   width: 100%;
-  height: auto;
-  overflow: visible;
+  height: clamp(34rem, 58vw, 46rem);
+  overflow: hidden;
   cursor: default;
   touch-action: none;
   user-select: none;
+  overscroll-behavior: contain;
+  display: block;
+}
+
+.guardian-graph-stage-focus .guardian-graph-svg,
+.guardian-graph-stage-focus .guardian-graph-empty,
+.guardian-graph-workspace-focus .graph-inspector {
+  height: min(68vh, 48rem);
+  min-height: 32rem;
 }
 
 .guardian-graph-stage-zoomed .guardian-graph-svg {
@@ -1757,6 +1774,96 @@ p {
 
 .guardian-graph-node-eligibility-blocked circle {
   fill: rgba(241, 197, 108, 0.84);
+}
+
+.guardian-graph-focus-trigger {
+  gap: var(--space-2);
+  border-color: var(--border-accent);
+  background: rgba(140, 201, 255, 0.18);
+  color: var(--text-strong);
+}
+
+.guardian-graph-focus-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  padding: var(--space-5);
+  background: rgba(4, 11, 19, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.guardian-graph-focus-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--space-4);
+  min-width: 0;
+  min-height: 0;
+  width: min(100%, 92rem);
+  max-height: calc(100dvh - var(--space-5) * 2);
+  margin: auto;
+  padding: var(--space-5);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(17, 31, 49, 0.98), rgba(9, 18, 31, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.guardian-graph-focus-header {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.guardian-graph-focus-header h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  letter-spacing: 0;
+}
+
+.guardian-graph-focus-filters {
+  min-width: 0;
+}
+
+.guardian-graph-focus-filters .readiness-filter-row {
+  grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(160px, 0.7fr)) minmax(220px, 0.8fr);
+}
+
+@media (max-width: 1100px) {
+  .guardian-graph-workspace-focus {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .guardian-graph-focus-filters .readiness-filter-row {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .guardian-graph-focus-backdrop {
+    padding: var(--space-3);
+  }
+
+  .guardian-graph-focus-shell {
+    padding: var(--space-4);
+    max-height: calc(100dvh - var(--space-3) * 2);
+    overflow: auto;
+  }
+
+  .guardian-graph-svg {
+    height: 30rem;
+  }
+
+  .guardian-graph-stage-focus .guardian-graph-svg,
+  .guardian-graph-stage-focus .guardian-graph-empty,
+  .guardian-graph-workspace-focus .graph-inspector {
+    height: 32rem;
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────

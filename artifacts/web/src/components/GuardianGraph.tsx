@@ -10,10 +10,10 @@ import {
 import { Button, EmptyState } from "./ui";
 import {
   useMemo,
+  useEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent
+  type PointerEvent as ReactPointerEvent
 } from "react";
 import type {
   GuardianGraphEdge,
@@ -23,6 +23,7 @@ import type {
 
 type GuardianGraphProps = {
   graph: GuardianGraphModel;
+  mode?: "embedded" | "focus";
   onSelectNode: (nodeId: string) => void;
   selectedNodeId: string | null;
   showRelationshipLabels: boolean;
@@ -513,6 +514,7 @@ function renderEdgeStatusMarker(edge: GuardianGraphEdge, source: LayoutNode, tar
 
 export function GuardianGraph({
   graph,
+  mode = "embedded",
   onSelectNode,
   selectedNodeId,
   showRelationshipLabels
@@ -520,6 +522,7 @@ export function GuardianGraph({
   const layout = useMemo(() => buildLayout(graph), [graph]);
   const [viewport, setViewport] = useState<GraphViewport>(defaultGraphViewport);
   const [isPanning, setIsPanning] = useState(false);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const panStateRef = useRef<PointerPanState | null>(null);
   const edgeLabelPlacements = useMemo(
     () =>
@@ -538,20 +541,37 @@ export function GuardianGraph({
     setViewport(defaultGraphViewport);
   }
 
-  function handleWheel(event: ReactWheelEvent<SVGSVGElement>) {
-    event.preventDefault();
-
-    const anchor = getGraphPointFromClient(
-      event.currentTarget,
-      event.clientX,
-      event.clientY
-    );
-    const scaleDelta = event.deltaY < 0 ? graphZoomStep : -graphZoomStep;
+  function zoomAtPoint(svg: SVGSVGElement, clientX: number, clientY: number, deltaY: number) {
+    const anchor = getGraphPointFromClient(svg, clientX, clientY);
+    const scaleDelta = deltaY < 0 ? graphZoomStep : -graphZoomStep;
 
     setViewport((current) =>
       zoomGraphViewport(current, current.scale + scaleDelta, anchor.x, anchor.y)
     );
   }
+
+  useEffect(() => {
+    const svg = svgRef.current;
+
+    if (!svg) {
+      return;
+    }
+
+    function handleNativeWheel(event: WheelEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (svg) {
+        zoomAtPoint(svg, event.clientX, event.clientY, event.deltaY);
+      }
+    }
+
+    svg.addEventListener("wheel", handleNativeWheel, { passive: false });
+
+    return () => {
+      svg.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, []);
 
   function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (viewport.scale <= minGraphScale || event.button !== 0) {
@@ -641,7 +661,7 @@ export function GuardianGraph({
 
   return (
     <div
-      className={`guardian-graph-stage${viewport.scale > minGraphScale ? " guardian-graph-stage-zoomed" : ""}${isPanning ? " guardian-graph-stage-panning" : ""}`}
+      className={`guardian-graph-stage guardian-graph-stage-${mode}${viewport.scale > minGraphScale ? " guardian-graph-stage-zoomed" : ""}${isPanning ? " guardian-graph-stage-panning" : ""}`}
     >
       <div className="guardian-graph-view-controls">
         <p className="guardian-graph-view-hint">
@@ -697,7 +717,7 @@ export function GuardianGraph({
         onPointerLeave={finishPointerPan}
         onPointerMove={handlePointerMove}
         onPointerUp={finishPointerPan}
-        onWheel={handleWheel}
+        ref={svgRef}
         role="img"
         viewBox={`0 0 ${graphWidth} ${graphHeight}`}
       >

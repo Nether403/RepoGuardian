@@ -3386,6 +3386,34 @@ describe("App", () => {
     expect(resetButton).toBeDisabled();
   });
 
+  it("opens the Guardian Graph in a focused workspace overlay", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      mockAuthenticatedFetch(async () => createJsonResponse(successPayload))
+    );
+
+    render(<App />);
+
+    await submitRepository(user);
+    await screen.findByRole("heading", { name: /Visual traceability map/i });
+    await user.click(screen.getByRole("button", { name: /Open graph workspace/i }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Guardian Graph workspace"
+    });
+
+    expect(dialog).toHaveTextContent(/Visual traceability workspace/i);
+    expect(within(dialog).getByRole("img", { name: "Guardian Graph visual map" })).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("dialog", { name: "Guardian Graph workspace" })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+  });
+
   it("keeps workflow edge tooltips and status markers when relationship labels are shown", async () => {
     const user = userEvent.setup();
     const workflowPayload = createMixedTraceabilityPayload();
