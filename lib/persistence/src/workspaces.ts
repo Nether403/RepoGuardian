@@ -210,6 +210,24 @@ export class WorkspaceRepository {
     return parseUser(result.rows[0]!);
   }
 
+  async findUserByGitHubId(githubUserId: number): Promise<AuthenticatedUser | null> {
+    const result = await this.client.query<UserRow>(
+      `SELECT
+        user_id,
+        github_user_id,
+        github_login,
+        display_name,
+        avatar_url,
+        created_at,
+        updated_at
+      FROM users
+      WHERE github_user_id = $1`,
+      [githubUserId]
+    );
+
+    return result.rows[0] ? parseUser(result.rows[0]) : null;
+  }
+
   async getWorkspace(workspaceId: string): Promise<Workspace> {
     const result = await this.client.query<WorkspaceRow>(
       `SELECT

@@ -9,11 +9,61 @@ import {
   syncInstallationRepositories
 } from "../lib/github-installations.js";
 import { env } from "../lib/env.js";
-import { getGitHubInstallationRepository } from "../lib/persistence.js";
-import { requireAuth, requireWorkspaceRole } from "../middleware/auth.js";
+import {
+  getGitHubInstallationRepository,
+  getWorkspaceRepository
+} from "../lib/persistence.js";
+import {
+  requireAuth,
+  requireWorkspaceRole,
+  resolveRequestAuthContext
+} from "../middleware/auth.js";
 
 function getSingleParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function getGitHubInstallationId(value: unknown): number | null {
+  const installationId =
+    typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
+  return Number.isSafeInteger(installationId) && installationId > 0
+    ? installationId
+    : null;
+}
+
+async function resolveWebhookWorkspaceId(payload: unknown): Promise<string | null> {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const body = payload as {
+    sender?: { id?: unknown };
+    workspaceId?: unknown;
+    workspace_id?: unknown;
+  };
+  const explicitWorkspaceId =
+    typeof body.workspaceId === "string"
+      ? body.workspaceId
+      : typeof body.workspace_id === "string"
+        ? body.workspace_id
+        : null;
+  if (explicitWorkspaceId?.trim()) {
+    return explicitWorkspaceId.trim();
+  }
+
+  const senderId = getGitHubInstallationId(body.sender?.id);
+  if (!senderId) {
+    return null;
+  }
+
+  const workspaceRepository = getWorkspaceRepository();
+  const sender = await workspaceRepository.findUserByGitHubId(senderId);
+  if (!sender) {
+    return null;
+  }
+
+  const workspaces = await workspaceRepository.listWorkspacesForUser(sender.id);
+  return workspaces[0]?.workspace.id ?? null;
 }
 
 const installationRouter: ExpressRouter = Router();
@@ -41,10 +91,12 @@ installationRouter.post("/github/webhooks", async (request, response, next) => {
 
     const installation = request.body?.installation;
     const account = installation?.account;
-    const senderWorkspaceId =
-      typeof request.body?.workspaceId === "string" ? request.body.workspaceId : request.body?.workspace_id;
+    const senderWorkspaceId = await resolveWebhookWorkspaceId(request.body);
     if (!installation?.id || !account?.id || !account?.login || !senderWorkspaceId) {
-      response.status(400).json({ error: "Webhook payload is missing installation context." });
+      response.status(202).json({
+        received: true,
+        warning: "Webhook payload could not be associated with a Repo Guardian workspace."
+      });
       return;
     }
 
@@ -82,30 +134,35 @@ installationRouter.post("/github/webhooks", async (request, response, next) => {
   }
 });
 
-installationRouter.use(requireAuth);
-
-installationRouter.get(
-  "/github/installations/setup",
-  requireWorkspaceRole(["owner", "maintainer"]),
-  async (request, response, next) => {
-    try {
-      const installationId = Number(request.query.installation_id);
-      if (!Number.isSafeInteger(installationId) || installationId <= 0) {
-        response.status(400).json({ error: "GitHub installation_id is required." });
-        return;
-      }
-
-      await registerGitHubAppInstallation({
-        githubInstallationId: installationId,
-        workspaceId: request.authContext!.activeWorkspaceId
-      });
-
-      response.redirect(302, `/?githubInstallation=${installationId}`);
-    } catch (error) {
-      next(error);
+installationRouter.get("/github/installations/setup", async (request, response, next) => {
+  try {
+    const installationId = getGitHubInstallationId(request.query.installation_id);
+    if (!installationId) {
+      response.status(400).json({ error: "GitHub installation_id is required." });
+      return;
     }
+
+    const authContext = await resolveRequestAuthContext(request);
+    if (!authContext || !["owner", "maintainer"].includes(authContext.membership.role)) {
+      response.redirect(
+        302,
+        `/?githubInstallation=${installationId}&githubInstallationStatus=login_required`
+      );
+      return;
+    }
+
+    await registerGitHubAppInstallation({
+      githubInstallationId: installationId,
+      workspaceId: authContext.activeWorkspaceId
+    });
+
+    response.redirect(302, `/?githubInstallation=${installationId}`);
+  } catch (error) {
+    next(error);
   }
-);
+});
+
+installationRouter.use(requireAuth);
 
 installationRouter.get(
   "/workspaces/:workspaceId/installations",

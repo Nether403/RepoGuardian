@@ -160,6 +160,19 @@ async function resolveSessionAuth(request: Request): Promise<Request["authContex
   };
 }
 
+export async function resolveRequestAuthContext(
+  request: Request,
+  options: { allowQueryToken?: boolean } = {}
+): Promise<Request["authContext"] | null> {
+  return (
+    (await resolveApiKeyAuth(request, {
+      allowQueryToken: options.allowQueryToken ?? false
+    })) ??
+    (await resolveSessionAuth(request)) ??
+    null
+  );
+}
+
 async function runAuth(
   request: Request,
   response: Response,
@@ -167,10 +180,7 @@ async function runAuth(
   options: { allowQueryToken: boolean }
 ): Promise<void> {
   try {
-    request.authContext =
-      (await resolveApiKeyAuth(request, options)) ??
-      (await resolveSessionAuth(request)) ??
-      undefined;
+    request.authContext = (await resolveRequestAuthContext(request, options)) ?? undefined;
 
     if (!request.authContext) {
       response.status(401).json({
