@@ -53,6 +53,13 @@ type EdgeLabelPlacement = {
   y: number;
 };
 
+type GraphBounds = {
+  maxX: number;
+  maxY: number;
+  minX: number;
+  minY: number;
+};
+
 type GraphViewport = {
   scale: number;
   translateX: number;
@@ -78,14 +85,11 @@ const edgeLabelStatusOffset = 18;
 const edgeLabelHeight = 16;
 const edgeLabelPadding = 4;
 const nodeLabelAvoidancePadding = 8;
-const minGraphScale = 1;
-const maxGraphScale = 2.8;
+const graphFitPadding = 54;
+const graphPanPadding = 28;
+const minGraphScale = 0.35;
+const maxGraphScale = 3.2;
 const graphZoomStep = 0.2;
-const defaultGraphViewport: GraphViewport = {
-  scale: minGraphScale,
-  translateX: 0,
-  translateY: 0
-};
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
@@ -328,23 +332,111 @@ function buildEdgeLabelPlacements(
   return placements;
 }
 
-function clampGraphViewport(viewport: GraphViewport): GraphViewport {
-  const scale = clamp(viewport.scale, minGraphScale, maxGraphScale);
-  const minTranslateX = graphWidth * (1 - scale);
-  const minTranslateY = graphHeight * (1 - scale);
+function getNodeLabelWidth(node: LayoutNode): number {
+  return Math.max(getNodeRadius(node) * 2, getNodeLabel(node).length * 6.6);
+}
+
+function getGraphBounds(nodes: LayoutNode[]): GraphBounds {
+  if (nodes.length === 0) {
+    return {
+      maxX: graphWidth,
+      maxY: graphHeight,
+      minX: 0,
+      minY: 0
+    };
+  }
+
+  return nodes.reduce<GraphBounds>(
+    (bounds, node) => {
+      const radius = getNodeRadius(node);
+      const labelHalfWidth = getNodeLabelWidth(node) / 2;
+      const statusWidth = node.writeBackHint ? getStatusMarkerWidth(node.writeBackHint.status) : 0;
+      const statusRightInset = node.writeBackHint ? radius + statusWidth + 4 : radius;
+
+      return {
+        maxX: Math.max(bounds.maxX, node.x + Math.max(labelHalfWidth, statusRightInset)),
+        maxY: Math.max(bounds.maxY, node.y + radius + 24),
+        minX: Math.min(bounds.minX, node.x - Math.max(labelHalfWidth, radius)),
+        minY: Math.min(bounds.minY, node.y - (node.writeBackHint ? radius + 34 : radius))
+      };
+    },
+    {
+      maxX: -Infinity,
+      maxY: -Infinity,
+      minX: Infinity,
+      minY: Infinity
+    }
+  );
+}
+
+function getFitViewport(bounds: GraphBounds): GraphViewport {
+  const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
+  const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
+  const scale = clamp(
+    Math.min(
+      (graphWidth - graphFitPadding * 2) / contentWidth,
+      (graphHeight - graphFitPadding * 2) / contentHeight,
+      1
+    ),
+    minGraphScale,
+    maxGraphScale
+  );
 
   return {
     scale,
-    translateX: clamp(viewport.translateX, minTranslateX, 0),
-    translateY: clamp(viewport.translateY, minTranslateY, 0)
+    translateX: (graphWidth - contentWidth * scale) / 2 - bounds.minX * scale,
+    translateY: (graphHeight - contentHeight * scale) / 2 - bounds.minY * scale
   };
 }
 
-function isDefaultGraphViewport(viewport: GraphViewport): boolean {
+function clampAxisTranslation(input: {
+  boundsMaximum: number;
+  boundsMinimum: number;
+  scale: number;
+  translate: number;
+  viewportSize: number;
+}): number {
+  const contentMinimum = input.boundsMinimum * input.scale;
+  const contentMaximum = input.boundsMaximum * input.scale;
+  const contentSize = contentMaximum - contentMinimum;
+
+  if (contentSize <= input.viewportSize - graphPanPadding * 2) {
+    return (input.viewportSize - contentSize) / 2 - contentMinimum;
+  }
+
+  const minimumTranslate = input.viewportSize - graphPanPadding - contentMaximum;
+  const maximumTranslate = graphPanPadding - contentMinimum;
+
+  return clamp(input.translate, minimumTranslate, maximumTranslate);
+}
+
+function clampGraphViewport(viewport: GraphViewport, bounds: GraphBounds): GraphViewport {
+  const scale = clamp(viewport.scale, minGraphScale, maxGraphScale);
+
+  return {
+    scale,
+    translateX: clampAxisTranslation({
+      boundsMaximum: bounds.maxX,
+      boundsMinimum: bounds.minX,
+      scale,
+      translate: viewport.translateX,
+      viewportSize: graphWidth
+    }),
+    translateY: clampAxisTranslation({
+      boundsMaximum: bounds.maxY,
+      boundsMinimum: bounds.minY,
+      scale,
+      translate: viewport.translateY,
+      viewportSize: graphHeight
+    })
+  };
+}
+
+function isSameGraphViewport(left: GraphViewport, right: GraphViewport): boolean {
   return (
-    Math.abs(viewport.scale - defaultGraphViewport.scale) < 0.001 &&
-    Math.abs(viewport.translateX - defaultGraphViewport.translateX) < 0.001 &&
-    Math.abs(viewport.translateY - defaultGraphViewport.translateY) < 0.001
+    Math.abs(left.scale - right.scale) < 0.001 &&
+    Math.abs(left.translateX - right.translateX) < 0.001 &&
+    Math.abs(left.translateY - right.translateY) < 0.001
   );
 }
 
@@ -354,18 +446,23 @@ function getViewportTransform(viewport: GraphViewport): string {
 
 function panGraphViewport(
   viewport: GraphViewport,
+  bounds: GraphBounds,
   deltaX: number,
   deltaY: number
 ): GraphViewport {
-  return clampGraphViewport({
-    ...viewport,
-    translateX: viewport.translateX + deltaX,
-    translateY: viewport.translateY + deltaY
-  });
+  return clampGraphViewport(
+    {
+      ...viewport,
+      translateX: viewport.translateX + deltaX,
+      translateY: viewport.translateY + deltaY
+    },
+    bounds
+  );
 }
 
 function zoomGraphViewport(
   viewport: GraphViewport,
+  bounds: GraphBounds,
   nextScale: number,
   anchorX = graphWidth / 2,
   anchorY = graphHeight / 2
@@ -379,11 +476,14 @@ function zoomGraphViewport(
   const graphX = (anchorX - viewport.translateX) / viewport.scale;
   const graphY = (anchorY - viewport.translateY) / viewport.scale;
 
-  return clampGraphViewport({
-    scale,
-    translateX: anchorX - graphX * scale,
-    translateY: anchorY - graphY * scale
-  });
+  return clampGraphViewport(
+    {
+      scale,
+      translateX: anchorX - graphX * scale,
+      translateY: anchorY - graphY * scale
+    },
+    bounds
+  );
 }
 
 function getGraphPointFromClient(
@@ -520,7 +620,9 @@ export function GuardianGraph({
   showRelationshipLabels
 }: GuardianGraphProps) {
   const layout = useMemo(() => buildLayout(graph), [graph]);
-  const [viewport, setViewport] = useState<GraphViewport>(defaultGraphViewport);
+  const graphBounds = useMemo(() => getGraphBounds(layout.nodes), [layout.nodes]);
+  const fitViewport = useMemo(() => getFitViewport(graphBounds), [graphBounds]);
+  const [viewport, setViewport] = useState<GraphViewport>(fitViewport);
   const [isPanning, setIsPanning] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panStateRef = useRef<PointerPanState | null>(null);
@@ -531,14 +633,20 @@ export function GuardianGraph({
   );
   const viewportTransform = useMemo(() => getViewportTransform(viewport), [viewport]);
   const zoomPercentage = Math.round(viewport.scale * 100);
-  const canResetView = !isDefaultGraphViewport(viewport);
+  const canResetView = !isSameGraphViewport(viewport, fitViewport);
   const canZoomIn = viewport.scale < maxGraphScale;
   const canZoomOut = viewport.scale > minGraphScale;
+
+  useEffect(() => {
+    panStateRef.current = null;
+    setIsPanning(false);
+    setViewport(fitViewport);
+  }, [fitViewport]);
 
   function resetViewport() {
     panStateRef.current = null;
     setIsPanning(false);
-    setViewport(defaultGraphViewport);
+    setViewport(fitViewport);
   }
 
   function zoomAtPoint(svg: SVGSVGElement, clientX: number, clientY: number, deltaY: number) {
@@ -546,7 +654,7 @@ export function GuardianGraph({
     const scaleDelta = deltaY < 0 ? graphZoomStep : -graphZoomStep;
 
     setViewport((current) =>
-      zoomGraphViewport(current, current.scale + scaleDelta, anchor.x, anchor.y)
+      zoomGraphViewport(current, graphBounds, current.scale + scaleDelta, anchor.x, anchor.y)
     );
   }
 
@@ -571,10 +679,10 @@ export function GuardianGraph({
     return () => {
       svg.removeEventListener("wheel", handleNativeWheel);
     };
-  }, []);
+  }, [graphBounds]);
 
   function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>) {
-    if (viewport.scale <= minGraphScale || event.button !== 0) {
+    if (event.button !== 0) {
       return;
     }
 
@@ -629,7 +737,7 @@ export function GuardianGraph({
       return;
     }
 
-    setViewport((current) => panGraphViewport(current, deltaX, deltaY));
+    setViewport((current) => panGraphViewport(current, graphBounds, deltaX, deltaY));
   }
 
   function finishPointerPan(event: ReactPointerEvent<SVGSVGElement>) {
@@ -675,7 +783,7 @@ export function GuardianGraph({
             disabled={!canZoomOut}
             onClick={() =>
               setViewport((current) =>
-                zoomGraphViewport(current, current.scale - graphZoomStep)
+                zoomGraphViewport(current, graphBounds, current.scale - graphZoomStep)
               )
             }
             variant="unstyled"
@@ -697,7 +805,7 @@ export function GuardianGraph({
             disabled={!canZoomIn}
             onClick={() =>
               setViewport((current) =>
-                zoomGraphViewport(current, current.scale + graphZoomStep)
+                zoomGraphViewport(current, graphBounds, current.scale + graphZoomStep)
               )
             }
             variant="unstyled"

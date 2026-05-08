@@ -3328,13 +3328,23 @@ describe("App", () => {
       name: "Guardian Graph visual map"
     });
     const zoomInButton = screen.getByRole("button", { name: "Zoom in graph" });
+    const zoomOutButton = screen.getByRole("button", { name: "Zoom out graph" });
     const resetButton = screen.getByRole("button", { name: "Reset graph view" });
+    const fitViewport = readGuardianGraphViewport(graph);
 
-    expect(readGuardianGraphViewport(graph)).toEqual({
-      scale: 1,
-      translateX: 0,
-      translateY: 0
-    });
+    expect(fitViewport.scale).toBeLessThan(1);
+    expect(fitViewport.translateX).not.toBe(0);
+    expect(fitViewport.translateY).not.toBe(0);
+    expect(resetButton).toBeDisabled();
+
+    await user.click(zoomOutButton);
+
+    expect(readGuardianGraphViewport(graph).scale).toBeLessThan(fitViewport.scale);
+    expect(resetButton).toBeEnabled();
+
+    await user.click(resetButton);
+
+    expect(readGuardianGraphViewport(graph)).toEqual(fitViewport);
     expect(resetButton).toBeDisabled();
 
     fireEvent.wheel(graph, {
@@ -3343,9 +3353,13 @@ describe("App", () => {
       deltaY: -160
     });
 
+    await user.click(zoomInButton);
+    await user.click(zoomInButton);
+    await user.click(zoomInButton);
+
     const zoomedViewport = readGuardianGraphViewport(graph);
 
-    expect(zoomedViewport.scale).toBeGreaterThan(1);
+    expect(zoomedViewport.scale).toBeGreaterThan(fitViewport.scale);
     expect(resetButton).toBeEnabled();
 
     fireEvent.pointerDown(graph, {
@@ -3369,20 +3383,14 @@ describe("App", () => {
 
     const pannedViewport = readGuardianGraphViewport(graph);
 
-    expect(pannedViewport.translateX).not.toBe(zoomedViewport.translateX);
-    expect(pannedViewport.translateY).not.toBe(zoomedViewport.translateY);
-
-    await user.click(zoomInButton);
-
-    expect(readGuardianGraphViewport(graph).scale).toBeGreaterThan(zoomedViewport.scale);
+    expect(
+      pannedViewport.translateX !== zoomedViewport.translateX ||
+        pannedViewport.translateY !== zoomedViewport.translateY
+    ).toBe(true);
 
     await user.click(resetButton);
 
-    expect(readGuardianGraphViewport(graph)).toEqual({
-      scale: 1,
-      translateX: 0,
-      translateY: 0
-    });
+    expect(readGuardianGraphViewport(graph)).toEqual(fitViewport);
     expect(resetButton).toBeDisabled();
   });
 
