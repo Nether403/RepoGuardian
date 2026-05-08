@@ -4,7 +4,10 @@ import {
   ListGitHubInstallationsResponseSchema,
   SyncGitHubInstallationResponseSchema
 } from "@repo-guardian/shared-types";
-import { syncInstallationRepositories } from "../lib/github-installations.js";
+import {
+  registerGitHubAppInstallation,
+  syncInstallationRepositories
+} from "../lib/github-installations.js";
 import { env } from "../lib/env.js";
 import { getGitHubInstallationRepository } from "../lib/persistence.js";
 import { requireAuth, requireWorkspaceRole } from "../middleware/auth.js";
@@ -14,66 +17,6 @@ function getSingleParam(value: string | string[] | undefined): string {
 }
 
 const installationRouter: ExpressRouter = Router();
-
-installationRouter.use(requireAuth);
-
-installationRouter.get(
-  "/workspaces/:workspaceId/installations",
-  requireWorkspaceRole(["owner", "maintainer", "reviewer", "viewer"]),
-  async (request, response, next) => {
-    try {
-      const workspaceId = getSingleParam(request.params.workspaceId);
-      if (workspaceId !== request.authContext!.activeWorkspaceId) {
-        response.status(403).json({ error: "Forbidden: workspace mismatch." });
-        return;
-      }
-
-      const store = getGitHubInstallationRepository();
-      response.json(
-        ListGitHubInstallationsResponseSchema.parse({
-          installations: await store.listInstallationsByWorkspace(workspaceId),
-          repositories: await store.listRepositoriesByWorkspace(workspaceId)
-        })
-      );
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-installationRouter.post(
-  "/workspaces/:workspaceId/installations/:installationId/sync",
-  requireWorkspaceRole(["owner", "maintainer"]),
-  async (request, response, next) => {
-    try {
-      const workspaceId = getSingleParam(request.params.workspaceId);
-      const installationId = getSingleParam(request.params.installationId);
-      if (workspaceId !== request.authContext!.activeWorkspaceId) {
-        response.status(403).json({ error: "Forbidden: workspace mismatch." });
-        return;
-      }
-
-      const store = getGitHubInstallationRepository();
-      const installation = await store.getInstallationById({
-        installationId,
-        workspaceId
-      });
-      const repositories = await syncInstallationRepositories({
-        installationId,
-        workspaceId
-      });
-
-      response.json(
-        SyncGitHubInstallationResponseSchema.parse({
-          installation,
-          repositories
-        })
-      );
-    } catch (error) {
-      next(error);
-    }
-  }
-);
 
 installationRouter.post("/github/webhooks", async (request, response, next) => {
   try {
@@ -138,5 +81,88 @@ installationRouter.post("/github/webhooks", async (request, response, next) => {
     next(error);
   }
 });
+
+installationRouter.use(requireAuth);
+
+installationRouter.get(
+  "/github/installations/setup",
+  requireWorkspaceRole(["owner", "maintainer"]),
+  async (request, response, next) => {
+    try {
+      const installationId = Number(request.query.installation_id);
+      if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+        response.status(400).json({ error: "GitHub installation_id is required." });
+        return;
+      }
+
+      await registerGitHubAppInstallation({
+        githubInstallationId: installationId,
+        workspaceId: request.authContext!.activeWorkspaceId
+      });
+
+      response.redirect(302, `/?githubInstallation=${installationId}`);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+installationRouter.get(
+  "/workspaces/:workspaceId/installations",
+  requireWorkspaceRole(["owner", "maintainer", "reviewer", "viewer"]),
+  async (request, response, next) => {
+    try {
+      const workspaceId = getSingleParam(request.params.workspaceId);
+      if (workspaceId !== request.authContext!.activeWorkspaceId) {
+        response.status(403).json({ error: "Forbidden: workspace mismatch." });
+        return;
+      }
+
+      const store = getGitHubInstallationRepository();
+      response.json(
+        ListGitHubInstallationsResponseSchema.parse({
+          installations: await store.listInstallationsByWorkspace(workspaceId),
+          repositories: await store.listRepositoriesByWorkspace(workspaceId)
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+installationRouter.post(
+  "/workspaces/:workspaceId/installations/:installationId/sync",
+  requireWorkspaceRole(["owner", "maintainer"]),
+  async (request, response, next) => {
+    try {
+      const workspaceId = getSingleParam(request.params.workspaceId);
+      const installationId = getSingleParam(request.params.installationId);
+      if (workspaceId !== request.authContext!.activeWorkspaceId) {
+        response.status(403).json({ error: "Forbidden: workspace mismatch." });
+        return;
+      }
+
+      const store = getGitHubInstallationRepository();
+      const installation = await store.getInstallationById({
+        installationId,
+        workspaceId
+      });
+      const repositories = await syncInstallationRepositories({
+        installationId,
+        workspaceId
+      });
+
+      response.json(
+        SyncGitHubInstallationResponseSchema.parse({
+          installation,
+          repositories
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 export default installationRouter;

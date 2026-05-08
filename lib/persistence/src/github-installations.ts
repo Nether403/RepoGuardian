@@ -13,9 +13,9 @@ import { resolveWorkspaceId } from "./scope.js";
 type InstallationRow = QueryResultRow & {
   installation_id: string;
   workspace_id: string;
-  github_installation_id: number;
+  github_installation_id: number | string;
   target_type: "Organization" | "User";
-  target_id: number;
+  target_id: number | string;
   target_login: string;
   status: GitHubInstallation["status"];
   permissions: unknown;
@@ -31,7 +31,7 @@ type InstallationRepositoryRow = QueryResultRow & {
   workspace_id: string;
   installation_id: string;
   repository_node_id: string | null;
-  github_repository_id: number;
+  github_repository_id: number | string;
   owner: string;
   repo: string;
   full_name: string;
@@ -53,13 +53,29 @@ function toIsoString(value: Date | string | null): string | null {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function parseBigIntNumber(value: number | string, fieldName: string): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new PersistenceError(
+      "conflict",
+      `${fieldName} is outside the supported integer range.`
+    );
+  }
+
+  return parsed;
+}
+
 function parseInstallation(row: InstallationRow): GitHubInstallation {
   return GitHubInstallationSchema.parse({
     id: row.installation_id,
     workspaceId: row.workspace_id,
-    githubInstallationId: row.github_installation_id,
+    githubInstallationId: parseBigIntNumber(
+      row.github_installation_id,
+      "github_installation_id"
+    ),
     targetType: row.target_type,
-    targetId: row.target_id,
+    targetId: parseBigIntNumber(row.target_id, "target_id"),
     targetLogin: row.target_login,
     status: row.status,
     permissions:
@@ -82,7 +98,10 @@ function parseInstallationRepository(
     workspaceId: row.workspace_id,
     githubInstallationId: row.installation_id,
     repositoryNodeId: row.repository_node_id,
-    githubRepositoryId: row.github_repository_id,
+    githubRepositoryId: parseBigIntNumber(
+      row.github_repository_id,
+      "github_repository_id"
+    ),
     owner: row.owner,
     repo: row.repo,
     fullName: row.full_name,

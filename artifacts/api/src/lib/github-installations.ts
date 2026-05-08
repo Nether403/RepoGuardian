@@ -1,6 +1,7 @@
 import {
   GitHubReadClient,
   GitHubWriteClient,
+  fetchGitHubAppInstallation,
   listRepositoriesForInstallation,
   mintGitHubInstallationToken
 } from "@repo-guardian/github";
@@ -107,4 +108,41 @@ export async function syncInstallationRepositories(input: {
     repositories,
     workspaceId: input.workspaceId
   });
+}
+
+export async function registerGitHubAppInstallation(input: {
+  githubInstallationId: number;
+  workspaceId: string;
+}) {
+  const config = requireGitHubAppConfiguration();
+  const store = getGitHubInstallationRepository();
+  await getWorkspaceRepository().getWorkspace(input.workspaceId);
+
+  const installationDetails = await fetchGitHubAppInstallation({
+    appId: config.appId,
+    installationId: input.githubInstallationId,
+    privateKey: config.privateKey
+  });
+
+  const installation = await store.upsertInstallation({
+    githubInstallationId: input.githubInstallationId,
+    permissions: installationDetails.permissions,
+    repositorySelection: installationDetails.repositorySelection,
+    status: installationDetails.suspendedAt ? "suspended" : "active",
+    suspendedAt: installationDetails.suspendedAt,
+    targetId: installationDetails.accountId,
+    targetLogin: installationDetails.accountLogin,
+    targetType: installationDetails.accountType,
+    workspaceId: input.workspaceId
+  });
+
+  const repositories = await syncInstallationRepositories({
+    installationId: installation.id,
+    workspaceId: input.workspaceId
+  });
+
+  return {
+    installation,
+    repositories
+  };
 }

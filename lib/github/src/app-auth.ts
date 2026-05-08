@@ -160,6 +160,53 @@ export async function mintGitHubInstallationToken(input: {
   };
 }
 
+export async function fetchGitHubAppInstallation(input: {
+  appId: string;
+  installationId: number;
+  privateKey: string;
+}): Promise<{
+  accountId: number;
+  accountLogin: string;
+  accountType: "Organization" | "User";
+  permissions: Record<string, string>;
+  repositorySelection: "all" | "selected";
+  suspendedAt: string | null;
+}> {
+  const jwt = createGitHubAppJwt({
+    appId: input.appId,
+    privateKey: input.privateKey
+  });
+  const payload = await fetchGitHubJson<{
+    account?: {
+      id?: number;
+      login?: string;
+      type?: string;
+    } | null;
+    permissions?: Record<string, string>;
+    repository_selection?: string;
+    suspended_at?: string | null;
+  }>(`https://api.github.com/app/installations/${input.installationId}`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${jwt}`,
+      "User-Agent": "RepoGuardian"
+    }
+  });
+
+  if (!payload.account?.id || !payload.account.login) {
+    throw new Error("GitHub App installation payload is missing account details.");
+  }
+
+  return {
+    accountId: payload.account.id,
+    accountLogin: payload.account.login,
+    accountType: payload.account.type === "Organization" ? "Organization" : "User",
+    permissions: payload.permissions ?? {},
+    repositorySelection: payload.repository_selection === "all" ? "all" : "selected",
+    suspendedAt: payload.suspended_at ?? null
+  };
+}
+
 export async function listRepositoriesForInstallation(input: {
   accessToken: string;
 }): Promise<
