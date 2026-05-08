@@ -31,7 +31,7 @@ type WorkspaceRow = QueryResultRow & {
 
 type UserRow = QueryResultRow & {
   user_id: string;
-  github_user_id: number;
+  github_user_id: number | string;
   github_login: string;
   display_name: string | null;
   avatar_url: string | null;
@@ -74,10 +74,23 @@ function parseWorkspace(row: WorkspaceRow): Workspace {
   });
 }
 
+function parseBigIntNumber(value: number | string, fieldName: string): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new PersistenceError(
+      "conflict",
+      `${fieldName} is outside the supported integer range.`
+    );
+  }
+
+  return parsed;
+}
+
 function parseUser(row: UserRow): AuthenticatedUser {
   return AuthenticatedUserSchema.parse({
     id: row.user_id,
-    githubUserId: row.github_user_id,
+    githubUserId: parseBigIntNumber(row.github_user_id, "github_user_id"),
     githubLogin: row.github_login,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
