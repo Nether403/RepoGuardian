@@ -1,6 +1,9 @@
 import { build } from "esbuild";
 
 await build({
+  banner: {
+    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+  },
   bundle: true,
   entryPoints: ["src/index.ts"],
   external: ["cors", "express", "pg", "zod"],
