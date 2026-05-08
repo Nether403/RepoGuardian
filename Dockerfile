@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM meteor/galaxy-node:22.9.0
+FROM node:22.11.0-bookworm-slim
 
-# Install pnpm via corepack (ships with Node 22)
+# Install the workspace package manager explicitly. Avoid Corepack here because
+# some hosted Docker builders can have stale Corepack signing keys.
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+RUN npm install --global pnpm@10.26.1
 
 WORKDIR /app
 

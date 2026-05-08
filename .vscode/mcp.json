@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "render": {
+      "type": "http",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:render-api-key}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "render-api-key",
+      "description": "Render API key for the Render MCP server",
+      "password": true
+    }
+  ]
+}
