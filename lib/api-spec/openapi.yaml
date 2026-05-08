@@ -329,6 +329,33 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/execution/batch/execute:
+    post:
+      operationId: executeExecutionBatch
+      summary: Execute a bounded supervised batch of existing approved execution plans
+      x-repo-guardian-request-type: ExecutionBatchExecuteRequest
+      x-repo-guardian-response-type: ExecutionBatchExecuteResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionBatchExecuteRequest"
+      responses:
+        "200":
+          description: Batch execution result with per-plan outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionBatchExecuteResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/execution/plan:
     post:
       operationId: createExecutionPlan
@@ -1120,6 +1147,14 @@ components:
       type: object
       description: Runtime schema is owned by ExecutionBatchPlanResponseSchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionBatchPlanResponseSchema
+    ExecutionBatchExecuteRequest:
+      type: object
+      description: Runtime schema is owned by ExecutionBatchExecuteRequestSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionBatchExecuteRequestSchema
+    ExecutionBatchExecuteResponse:
+      type: object
+      description: Runtime schema is owned by ExecutionBatchExecuteResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ExecutionBatchExecuteResponseSchema
     EnqueueExecutionPlanJobRequest:
       type: object
       description: Runtime schema is owned by EnqueueExecutionPlanJobRequestSchema in @repo-guardian/shared-types.

@@ -32,6 +32,7 @@ describe("Repo Guardian OpenAPI contract", () => {
       "createWorkspace",
       "enqueueAnalysisJob",
       "enqueueExecutionPlanJob",
+      "executeExecutionBatch",
       "executeExecutionPlan",
       "getAnalysisJob",
       "getAnalysisRun",

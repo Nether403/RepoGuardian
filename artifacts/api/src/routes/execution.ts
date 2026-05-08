@@ -23,11 +23,14 @@ import {
 import {
   ExecutionBatchPlanRequestSchema,
   ExecutionBatchPlanResponseSchema,
+  ExecutionBatchExecuteRequestSchema,
+  ExecutionBatchExecuteResponseSchema,
   ExecutionExecuteRequestSchema,
   ExecutionPlanRequestSchema,
   ExecutionResultSchema,
   type ExecutionActionPlan,
   type ExecutionBatchPlanItem,
+  type ExecutionBatchExecutePlanResult,
   type ExecutionPlanRegenerationContext,
   type ExecutionResult
 } from "@repo-guardian/shared-types";
@@ -81,6 +84,18 @@ type PolicyDecisionRepositoryLike = Pick<
 const BATCH_APPROVAL_CONFIRMATION_TEXT =
   "I approve this supervised batch execution.";
 const MAX_BATCH_PLANS = 5;
+
+class ExecutionRequestError extends Error {
+  readonly body: Record<string, unknown>;
+  readonly status: number;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    super(typeof body.error === "string" ? body.error : "Execution request failed.");
+    this.name = "ExecutionRequestError";
+    this.body = body;
+    this.status = status;
+  }
+}
 
 function hashActions(actions: unknown[]): string {
   return `sha256:${crypto.createHash("sha256").update(JSON.stringify(actions)).digest("hex")}`;
@@ -411,6 +426,193 @@ export function createExecutionRouter(
     }
   }
 
+  async function executePersistedPlan(input: {
+    actorUserId: string;
+    planHash: string;
+    planId: string;
+    workspaceId: string;
+  }): Promise<ExecutionResult> {
+    const detail = await planRepository.getPlanDetail(input.planId, input.workspaceId);
+    const planHashMatches = detail.planHash === input.planHash;
+    const policyDecision = evaluateExecutionWritePolicy({
+      actions: detail.actions,
+      planHashMatches,
+      planStatus: detail.status
+    });
+
+    await recordExecutionPolicyDecision({
+      actorUserId: input.actorUserId,
+      decision: policyDecision,
+      detail,
+      policyDecisionRepository,
+      workspaceId: input.workspaceId
+    });
+
+    if (!planHashMatches) {
+      throw new ExecutionRequestError(400, {
+        error: "Token does not match plan details."
+      });
+    }
+
+    if (detail.status === "expired") {
+      throw new ExecutionRequestError(400, { error: "Plan has expired." });
+    }
+
+    if (detail.status !== "planned") {
+      throw new ExecutionRequestError(409, {
+        error: "Plan is already executing or no longer active."
+      });
+    }
+
+    const validationReadClient =
+      dependencies.readClient ??
+      (await createInstallationReadClient({
+        repositoryFullName: detail.repository.fullName,
+        workspaceId: input.workspaceId
+      }));
+    const preExecRun = await runRepository.getRun(detail.analysisRunId, input.workspaceId);
+    const validation = await validateApprovedPlan({
+      actions: detail.actions,
+      analysis: preExecRun.run.analysis,
+      readClient: validationReadClient,
+      selectedPRCandidateIds: detail.selectedPRCandidateIds
+    });
+
+    if (validation.kind !== "match") {
+      const decision = mapValidationToPolicyDecision(validation);
+      await recordExecutionPolicyDecision({
+        actorUserId: input.actorUserId,
+        decision,
+        detail,
+        policyDecisionRepository,
+        workspaceId: input.workspaceId
+      });
+      publishPlanNotification({
+        planId: detail.planId,
+        reason: validation.message,
+        repositoryFullName: detail.repository.fullName,
+        status: "plan.failed",
+        workspaceId: input.workspaceId
+      });
+      const status = validation.kind === "drift" ? 409 : 422;
+      throw new ExecutionRequestError(status, {
+        error: validation.message,
+        kind: validation.kind,
+        ...(validation.kind === "drift"
+          ? { driftDetails: validation.details }
+          : {}),
+        ...(validation.kind === "synthesis_error"
+          ? { synthesisErrors: validation.details }
+          : {}),
+        ...(validation.kind === "missing_preview"
+          ? { missingPreview: validation.details }
+          : {})
+      });
+    }
+
+    const claimedPlan = await planRepository.claimExecution({
+      actorUserId: input.actorUserId,
+      planId: input.planId,
+      workspaceId: input.workspaceId
+    });
+    publishPlanNotification({
+      executionId: claimedPlan.executionId,
+      planId: claimedPlan.planId,
+      repositoryFullName: claimedPlan.repositoryFullName,
+      status: "plan.claimed",
+      workspaceId: claimedPlan.workspaceId
+    });
+    const run = await runRepository.getRun(claimedPlan.analysisRunId, input.workspaceId);
+    const startedAt = new Date().toISOString();
+    const callbacks = createLifecycleCallbacks({
+      actorUserId: input.actorUserId,
+      claimedPlan,
+      planRepository
+    });
+    const resolvedDependencies: ExecutionServiceDependencies = dependencies.writeClient
+      ? {
+          ...dependencies,
+          readClient: dependencies.readClient ?? validationReadClient
+        }
+      : {
+          ...dependencies,
+          readClient: validationReadClient,
+          writeClient: await createInstallationWriteClient({
+            repositoryFullName: claimedPlan.repositoryFullName,
+            workspaceId: input.workspaceId
+          })
+        };
+    const executionInput = {
+      analysis: run.run.analysis,
+      approvalGranted: true,
+      mode: "execute_approved" as const,
+      selectedIssueCandidateIds: claimedPlan.selectedIssueCandidateIds,
+      selectedPRCandidateIds: claimedPlan.selectedPRCandidateIds
+    };
+
+    try {
+      await executeApprovedActions(
+        executionInput,
+        claimedPlan.actions,
+        resolvedDependencies,
+        callbacks
+      );
+      const result = buildExecutionResponse({
+        actions: claimedPlan.actions,
+        executionId: claimedPlan.executionId,
+        selectedIssueCandidateIds: claimedPlan.selectedIssueCandidateIds,
+        selectedPRCandidateIds: claimedPlan.selectedPRCandidateIds,
+        startedAt
+      });
+      await planRepository.finalizeExecution({
+        actorUserId: input.actorUserId,
+        executionId: claimedPlan.executionId,
+        githubInstallationId: claimedPlan.githubInstallationId,
+        planId: claimedPlan.planId,
+        repositoryFullName: claimedPlan.repositoryFullName,
+        result,
+        workspaceId: claimedPlan.workspaceId
+      });
+      await persistOpenedPullRequests({
+        executionId: claimedPlan.executionId,
+        planId: claimedPlan.planId,
+        planRepository,
+        trackedPullRequestRepository,
+        workspaceId: claimedPlan.workspaceId
+      });
+      publishPlanNotification({
+        executionId: claimedPlan.executionId,
+        planId: claimedPlan.planId,
+        repositoryFullName: claimedPlan.repositoryFullName,
+        status: result.status === "completed" ? "plan.completed" : "plan.failed",
+        reason: result.status === "completed" ? null : result.errors[0] ?? null,
+        workspaceId: claimedPlan.workspaceId
+      });
+      return result;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unexpected execution failure";
+      await planRepository.markExecutionFailure({
+        actorUserId: input.actorUserId,
+        errorMessage,
+        executionId: claimedPlan.executionId,
+        githubInstallationId: claimedPlan.githubInstallationId,
+        planId: claimedPlan.planId,
+        repositoryFullName: claimedPlan.repositoryFullName,
+        workspaceId: claimedPlan.workspaceId
+      });
+      publishPlanNotification({
+        executionId: claimedPlan.executionId,
+        planId: claimedPlan.planId,
+        reason: errorMessage,
+        repositoryFullName: claimedPlan.repositoryFullName,
+        status: "plan.failed",
+        workspaceId: claimedPlan.workspaceId
+      });
+      throw error;
+    }
+  }
+
   executionRouter.post(
     "/execution/plan",
     requireAuth,
@@ -646,6 +848,207 @@ export function createExecutionRouter(
 
         if (mapped) {
           response.status(mapped.status).json(mapped.body);
+          return;
+        }
+
+        next(error);
+      }
+    }
+  );
+
+  executionRouter.post(
+    "/execution/batch/execute",
+    requireAuth,
+    requireWorkspaceRole(["owner", "maintainer"]),
+    async (request, response, next) => {
+      const parsedRequest = ExecutionBatchExecuteRequestSchema.safeParse(request.body);
+
+      if (!parsedRequest.success) {
+        response.status(400).json({
+          error: parsedRequest.error.issues[0]?.message ?? "Invalid request body"
+        });
+        return;
+      }
+
+      if (parsedRequest.data.confirmationText !== BATCH_APPROVAL_CONFIRMATION_TEXT) {
+        response.status(400).json({ error: "Invalid confirmation text." });
+        return;
+      }
+
+      if (new Set(parsedRequest.data.plans.map((plan) => plan.planId)).size !== parsedRequest.data.plans.length) {
+        response.status(400).json({ error: "Batch plan ids must be unique." });
+        return;
+      }
+
+      try {
+        const workspaceId =
+          parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+        const tokenPayload = verifyApprovalToken(parsedRequest.data.approvalToken);
+
+        if (
+          tokenPayload.planId !== parsedRequest.data.batchId ||
+          tokenPayload.planHash !== parsedRequest.data.batchHash ||
+          tokenPayload.workspaceId !== workspaceId
+        ) {
+          response.status(400).json({ error: "Token does not match batch details." });
+          return;
+        }
+
+        const planDetails = await Promise.all(
+          parsedRequest.data.plans.map((plan) =>
+            planRepository.getPlanDetail(plan.planId, workspaceId)
+          )
+        );
+        const requestedHashes = new Map(
+          parsedRequest.data.plans.map((plan) => [plan.planId, plan.planHash] as const)
+        );
+        const hashMismatch = planDetails.find(
+          (detail) => requestedHashes.get(detail.planId) !== detail.planHash
+        );
+
+        if (hashMismatch) {
+          response.status(400).json({ error: "Token does not match batch details." });
+          return;
+        }
+
+        const expectedBatchHash = hashActions(
+          parsedRequest.data.plans.map((plan) => ({
+            planHash: plan.planHash,
+            planId: plan.planId
+          }))
+        );
+
+        if (expectedBatchHash !== parsedRequest.data.batchHash) {
+          response.status(400).json({ error: "Token does not match batch details." });
+          return;
+        }
+
+        const policyDecision = evaluateBatchExecutionPolicy({
+          maxPlans: MAX_BATCH_PLANS,
+          plans: planDetails.map((detail) => {
+            const summary = buildExecutionSummary(detail.actions, {
+              selectedIssueCandidateIds: detail.selectedIssueCandidateIds,
+              selectedPRCandidateIds: detail.selectedPRCandidateIds
+            });
+
+            return {
+              eligibleActions: summary.eligibleActions,
+              planId: detail.planId,
+              status: detail.status,
+              totalActions: summary.totalActions
+            };
+          })
+        });
+
+        await recordBatchExecutionPolicyDecision({
+          actorUserId: request.authContext!.user.id,
+          decision: policyDecision,
+          policyDecisionRepository,
+          workspaceId
+        });
+
+        if (policyDecision.decision !== "allowed") {
+          response.status(403).json({ error: policyDecision.reason });
+          return;
+        }
+
+        const startedAt = new Date().toISOString();
+        const results: ExecutionBatchExecutePlanResult[] = [];
+
+        for (const plan of parsedRequest.data.plans) {
+          const detail = planDetails.find((candidate) => candidate.planId === plan.planId);
+          const repositoryFullName = detail?.repository.fullName ?? "unknown/unknown";
+
+          try {
+            const result = await executePersistedPlan({
+              actorUserId: request.authContext!.user.id,
+              planHash: plan.planHash,
+              planId: plan.planId,
+              workspaceId
+            });
+            results.push({
+              errors: result.errors,
+              executionId: result.executionId,
+              planId: plan.planId,
+              repositoryFullName,
+              result,
+              status: result.status === "completed" ? "completed" : "failed"
+            });
+          } catch (error) {
+            if (error instanceof ExecutionRequestError) {
+              results.push({
+                errors: [String(error.body.error ?? error.message)],
+                executionId: null,
+                planId: plan.planId,
+                repositoryFullName,
+                result: null,
+                status: "failed"
+              });
+              continue;
+            }
+
+            const message =
+              error instanceof Error ? error.message : "Unexpected execution failure";
+            results.push({
+              errors: [message],
+              executionId: null,
+              planId: plan.planId,
+              repositoryFullName,
+              result: null,
+              status: "failed"
+            });
+          }
+        }
+
+        const retryablePlanIds = results
+          .filter((result) => result.status === "failed" && result.result === null)
+          .map((result) => result.planId);
+        const blockedPlanIds = results
+          .filter((result) => result.status === "failed" && result.result !== null)
+          .map((result) => result.planId);
+        const completedPlans = results.filter(
+          (result) => result.status === "completed"
+        ).length;
+        const failedPlans = results.length - completedPlans;
+        const status =
+          failedPlans === 0
+            ? "completed"
+            : completedPlans > 0
+              ? "partial_success"
+              : "failed";
+
+        response.json(
+          ExecutionBatchExecuteResponseSchema.parse({
+            batchHash: parsedRequest.data.batchHash,
+            batchId: parsedRequest.data.batchId,
+            completedAt: new Date().toISOString(),
+            results,
+            retry: {
+              blockedPlanIds,
+              guidance:
+                "Regenerate failed plans before retrying so each approved plan still maps to one concern.",
+              retryablePlanIds
+            },
+            startedAt,
+            status,
+            summary: {
+              completedPlans,
+              failedPlans,
+              planCount: results.length,
+              retryablePlans: retryablePlanIds.length
+            }
+          })
+        );
+      } catch (error) {
+        const mapped = mapPersistenceError(error);
+
+        if (mapped) {
+          response.status(mapped.status).json(mapped.body);
+          return;
+        }
+
+        if (error instanceof Error) {
+          response.status(401).json({ error: error.message });
           return;
         }
 

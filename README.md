@@ -1,6 +1,6 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9C alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, dry-run autonomy simulation for workspace fleet operations, and the first supervised batch-approval preview contract.
+Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9C alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, dry-run autonomy simulation for workspace fleet operations, and supervised batch execution for bounded approved plan sets.
 
 ## Current scope
 
@@ -28,7 +28,7 @@ Repo Guardian is a supervised GitHub repository triage and maintenance assistant
 - server-side paginated policy-decision history via `GET /api/policy-decisions`
 - server-side policy-decision filtering by action, decision, repository, and occurrence window
 - dry-run autonomy simulation in Fleet Overview with would-allow, would-block, and manual-review action previews
-- `POST /api/execution/batch/plan` for bounded supervised batch approval previews over existing execution plans
+- `POST /api/execution/batch/plan` and `POST /api/execution/batch/execute` for bounded supervised batch approval and execution over existing execution plans
 - on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
 - deterministic Guardian Graph view for visual traceability
 - Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode
@@ -111,9 +111,10 @@ Current 8A foundation behavior:
 - API routes enforce active-workspace boundaries for workspace and installation surfaces; explicit analysis workspace ids must match the authenticated workspace
 - GitHub OAuth callback state is validated before token exchange
 - GitHub writes remain approval-gated through the execution plan and execute routes; scheduled work does not perform unattended writes
+- Fleet Admin includes a supervised batch queue for selecting existing planned executable records, approving the bounded batch, and executing with per-plan outcomes and retry guidance.
 
 ## Roadmap
 
-The current state reflects **Milestone 9B autonomy simulation and recommendations**. The platform now layers dry-run proposed-autonomy outcomes on top of workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history while keeping write execution supervised.
+The current state reflects **Milestone 9C supervised batch execution**. The platform now layers dry-run proposed-autonomy outcomes and bounded batch approval/execution on top of workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history while keeping write execution supervised.
 
-The next goals are deeper policy recommendation controls without unattended writes. The controlled-autonomy path after that should proceed through supervised batch execution and only then opt-in policy-scoped automation. See `docs/roadmap.md`.
+The next goals are deeper policy recommendation controls without unattended writes. Any controlled-autonomy path should remain opt-in, policy-scoped, and observable. See `docs/roadmap.md`.

@@ -2,6 +2,7 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  ExecutionBatchExecuteResponseSchema,
   type ExecutionActionPlan,
   ExecutionBatchPlanResponseSchema,
   type ExecutionPlanDetailResponse,
@@ -1171,6 +1172,170 @@ describe("POST /api/execution/plan", () => {
         workspaceId: "workspace_local_default"
       })
     );
+    expect(writeClient.createIssue).not.toHaveBeenCalled();
+    expect(writeClient.openPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("executes an approved batch with partial success and per-plan policy decisions", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn().mockResolvedValue({
+        baseCommitSha: "base-sha",
+        branchName: "repo-guardian/test-branch"
+      }),
+      commitFileChanges: vi.fn().mockResolvedValue({
+        branchName: "repo-guardian/test-branch",
+        commitSha: "commit-sha"
+      }),
+      createIssue: vi.fn().mockResolvedValue({
+        issueNumber: 8,
+        issueUrl: "https://github.com/openai/openai-node/issues/8"
+      }),
+      openPullRequest: vi.fn().mockRejectedValue(new Error("GitHub rejected the pull request."))
+    };
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn().mockResolvedValue(
+          "name: CI\non:\n  push:\npermissions: write-all\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+        )
+      },
+      writeClient
+    });
+    const firstRunId = testApp.saveRun(createAnalysisContext());
+    const secondRunId = testApp.saveRun(
+      createAnalysisContext({
+        repository: {
+          defaultBranch: "main",
+          fullName: "openai/another-repo",
+          owner: "openai",
+          repo: "another-repo"
+        }
+      })
+    );
+    const firstPlan = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: firstRunId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+    const secondPlan = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: secondRunId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      });
+    const batchPlan = await request(testApp.app)
+      .post("/api/execution/batch/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        planIds: [firstPlan.body.planId, secondPlan.body.planId]
+      });
+
+    const response = await request(testApp.app)
+      .post("/api/execution/batch/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: batchPlan.body.approvalToken,
+        batchHash: batchPlan.body.batchHash,
+        batchId: batchPlan.body.batchId,
+        confirm: true,
+        confirmationText: "I approve this supervised batch execution.",
+        plans: batchPlan.body.plans.map((plan: { planHash: string; planId: string }) => ({
+          planHash: plan.planHash,
+          planId: plan.planId
+        }))
+      });
+
+    expect(response.status).toBe(200);
+    expect(ExecutionBatchExecuteResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body).toMatchObject({
+      batchId: batchPlan.body.batchId,
+      status: "partial_success",
+      summary: {
+        completedPlans: 1,
+        failedPlans: 1,
+        planCount: 2,
+        retryablePlans: 0
+      }
+    });
+    expect(response.body.results).toEqual([
+      expect.objectContaining({
+        planId: firstPlan.body.planId,
+        repositoryFullName: "openai/openai-node",
+        status: "completed"
+      }),
+      expect.objectContaining({
+        errors: expect.arrayContaining(["GitHub rejected the pull request."]),
+        planId: secondPlan.body.planId,
+        repositoryFullName: "openai/another-repo",
+        status: "failed"
+      })
+    ]);
+    expect(writeClient.createIssue).toHaveBeenCalledTimes(1);
+    expect(writeClient.openPullRequest).toHaveBeenCalledTimes(1);
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_batch",
+        actorUserId: "usr_local_default",
+        decision: "allowed",
+        scopeType: "workspace",
+        workspaceId: "workspace_local_default"
+      })
+    );
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_write",
+        decision: "allowed",
+        planId: firstPlan.body.planId,
+        repositoryFullName: "openai/openai-node"
+      })
+    );
+    expect(testApp.policyDecisionRepository.recordDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "execute_write",
+        decision: "allowed",
+        planId: secondPlan.body.planId,
+        repositoryFullName: "openai/another-repo"
+      })
+    );
+  });
+
+  it("rejects batch execution without the exact confirmation text", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient
+    });
+
+    const response = await request(testApp.app)
+      .post("/api/execution/batch/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: "token",
+        batchHash: "sha256:test",
+        batchId: "batch_test",
+        confirm: true,
+        confirmationText: "I approve something else.",
+        plans: [
+          {
+            planHash: "sha256:plan",
+            planId: "plan_test"
+          }
+        ]
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Invalid confirmation text.");
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.openPullRequest).not.toHaveBeenCalled();
   });

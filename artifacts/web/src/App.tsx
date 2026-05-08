@@ -4,6 +4,8 @@ import type {
   AnalyzeRepoResponse,
   AuthSession,
   CompareAnalysisRunsResponse,
+  ExecutionBatchExecuteResponse,
+  ExecutionBatchPlanResponse,
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
   ExecutionPlanResponse,
@@ -31,6 +33,10 @@ import {
 } from "@repo-guardian/shared-types";
 import { AnalysisJobsPanel } from "./components/AnalysisJobsPanel";
 import { AppModeToggle } from "./components/AppModeToggle";
+import {
+  BatchExecutionPanel,
+  type BatchExecutionPlanOption
+} from "./components/BatchExecutionPanel";
 import { CompareRunsPanel } from "./components/CompareRunsPanel";
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { ExecutionNotificationsToast } from "./components/ExecutionNotificationsToast";
@@ -78,6 +84,8 @@ import {
 } from "./lib/api-client";
 import {
   ExecutionClientError,
+  requestExecutionBatchExecute,
+  requestExecutionBatchPlan,
   requestExecutionPlan,
   requestExecutionExecute
 } from "./lib/execution-client";
@@ -540,6 +548,16 @@ function App() {
   >({});
   const [fleetRepositoryActivityQuery, setFleetRepositoryActivityQuery] =
     useState<FleetRepositoryActivityQuery>(loadFleetRepositoryActivityQuery);
+  const [batchSelectedPlanIds, setBatchSelectedPlanIds] = useState<string[]>([]);
+  const [batchPreview, setBatchPreview] = useState<ExecutionBatchPlanResponse | null>(
+    null
+  );
+  const [batchExecuteResult, setBatchExecuteResult] =
+    useState<ExecutionBatchExecuteResponse | null>(null);
+  const [batchApprovalGranted, setBatchApprovalGranted] = useState(false);
+  const [batchErrorMessage, setBatchErrorMessage] = useState<string | null>(null);
+  const [isBatchPreviewLoading, setIsBatchPreviewLoading] = useState(false);
+  const [isBatchExecuting, setIsBatchExecuting] = useState(false);
   const fleetInspectorRequestIdRef = useRef(0);
 
   const executionNotifications = useExecutionNotifications({
@@ -600,6 +618,19 @@ function App() {
     fleetStatus,
     trackedRepositories
   });
+  const batchPlanOptions: BatchExecutionPlanOption[] = trackedRepositoryStatuses
+    .filter(
+      (entry) =>
+        entry.latestPlanId &&
+        entry.latestPlanStatus === "planned" &&
+        entry.patchPlanCounts.executable > 0
+    )
+    .map((entry) => ({
+      eligibleActions: entry.patchPlanCounts.executable,
+      planId: entry.latestPlanId!,
+      repositoryFullName: entry.trackedRepository.fullName,
+      totalActions: entry.patchPlanCounts.executable + entry.patchPlanCounts.blocked
+    }));
   const selectedJobDetail =
     fleetInspectorSelection?.kind === "job"
       ? analysisJobDetailsById[fleetInspectorSelection.id] ?? null
@@ -1034,6 +1065,84 @@ function App() {
     failure: ExecutionValidationFailure
   ): void {
     void handleRequestPlan({ regenerationContext: failure });
+  }
+
+  function handleBatchPlanToggle(planId: string): void {
+    setBatchSelectedPlanIds((current) =>
+      current.includes(planId)
+        ? current.filter((candidate) => candidate !== planId)
+        : current.length >= 5
+          ? current
+          : [...current, planId]
+    );
+    setBatchPreview(null);
+    setBatchExecuteResult(null);
+    setBatchApprovalGranted(false);
+    setBatchErrorMessage(null);
+  }
+
+  async function handleRequestBatchPreview() {
+    if (batchSelectedPlanIds.length === 0) {
+      setBatchErrorMessage("Select at least one execution plan first.");
+      return;
+    }
+
+    setBatchErrorMessage(null);
+    setBatchPreview(null);
+    setBatchExecuteResult(null);
+    setBatchApprovalGranted(false);
+    setIsBatchPreviewLoading(true);
+
+    try {
+      const preview = await requestExecutionBatchPlan({
+        planIds: batchSelectedPlanIds
+      });
+      setBatchPreview(preview);
+    } catch (error) {
+      setBatchErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not create the batch preview."
+      );
+    } finally {
+      setIsBatchPreviewLoading(false);
+    }
+  }
+
+  async function handleRequestBatchExecute() {
+    if (!batchPreview) return;
+
+    if (!batchApprovalGranted) {
+      setBatchErrorMessage("Explicit approval is required before batch execution.");
+      return;
+    }
+
+    setBatchErrorMessage(null);
+    setIsBatchExecuting(true);
+
+    try {
+      const result = await requestExecutionBatchExecute({
+        approvalToken: batchPreview.approvalToken,
+        batchHash: batchPreview.batchHash,
+        batchId: batchPreview.batchId,
+        confirm: true,
+        confirmationText: batchPreview.approval.confirmationText,
+        plans: batchPreview.plans.map((plan) => ({
+          planHash: plan.planHash,
+          planId: plan.planId
+        }))
+      });
+      setBatchExecuteResult(result);
+      await handleRefreshFleetAdmin();
+    } catch (error) {
+      setBatchErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Repo Guardian could not execute the approved batch."
+      );
+    } finally {
+      setIsBatchExecuting(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2062,6 +2171,20 @@ function App() {
             fleetStatus={fleetStatus}
             isLoading={isFleetLoading}
             onRefresh={handleRefreshFleetAdmin}
+          />
+          <BatchExecutionPanel
+            approvalGranted={batchApprovalGranted}
+            errorMessage={batchErrorMessage}
+            executeResult={batchExecuteResult}
+            isExecuting={isBatchExecuting}
+            isPreviewLoading={isBatchPreviewLoading}
+            onApprovalChange={setBatchApprovalGranted}
+            onRequestExecute={() => void handleRequestBatchExecute()}
+            onRequestPreview={() => void handleRequestBatchPreview()}
+            onTogglePlan={handleBatchPlanToggle}
+            planOptions={batchPlanOptions}
+            preview={batchPreview}
+            selectedPlanIds={batchSelectedPlanIds}
           />
           <PolicyDecisionsPanel
             actionFilter={policyActionFilter}

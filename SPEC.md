@@ -441,7 +441,7 @@ Initial foundation and basic write-back slices.
 
 ### Post-9A controlled autonomy path
 - Milestone 9B: simulate proposed autonomy rules and show would-allow, would-block, and manual-review outcomes without unattended writes [ALPHA SLICE]
-- Milestone 9C: introduce supervised batch execution with explicit approval for bounded sets of selected deterministic plans [IN PROGRESS]
+- Milestone 9C: introduce supervised batch execution with explicit approval for bounded sets of selected deterministic plans [ALPHA SLICE]
 - Milestone 9D: consider opt-in controlled autonomy profiles for low-risk deterministic actions, starting with analysis and plan-only sweeps before any policy-gated PR opening
 - continue to prohibit auto-merge, broad refactors, force-pushes, and open-ended autonomous repository rewriting
 

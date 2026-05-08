@@ -2303,6 +2303,48 @@ p {
   color: var(--danger-strong);
 }
 
+.batch-execution-panel,
+.batch-preview {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.batch-plan-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.batch-plan-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+}
+
+.batch-plan-row > span {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.batch-plan-row strong,
+.batch-plan-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-plan-row-meta {
+  justify-self: end;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
 .reachability-block {
   display: flex;
   flex-direction: column;

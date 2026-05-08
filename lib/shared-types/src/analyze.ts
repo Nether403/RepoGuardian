@@ -682,6 +682,21 @@ export const ExecutionBatchPlanRequestSchema = z.object({
   workspaceId: z.string().min(1).optional()
 });
 
+export const ExecutionBatchExecutePlanSchema = z.object({
+  planId: z.string().min(1),
+  planHash: z.string().min(1)
+});
+
+export const ExecutionBatchExecuteRequestSchema = z.object({
+  batchId: z.string().min(1),
+  batchHash: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  approvalToken: z.string().min(1),
+  confirm: z.literal(true),
+  confirmationText: z.string().min(1),
+  plans: z.array(ExecutionBatchExecutePlanSchema).min(1).max(5)
+});
+
 export const ApprovalRequirementSchema = z.object({
   required: z.boolean(),
   confirmationText: z.string().min(1)
@@ -803,6 +818,35 @@ export const ExecutionBatchPlanResponseSchema = z.object({
   summary: ExecutionBatchPlanSummarySchema,
   plans: z.array(ExecutionBatchPlanItemSchema),
   approval: ApprovalRequirementSchema
+});
+
+export const ExecutionBatchExecutePlanResultSchema = z.object({
+  planId: z.string().min(1),
+  repositoryFullName: z.string().min(3),
+  executionId: z.string().min(1).nullable(),
+  status: z.enum(["completed", "failed"]),
+  errors: z.array(z.string()),
+  result: ExecutionResultSchema.nullable()
+});
+
+export const ExecutionBatchExecuteResponseSchema = z.object({
+  batchId: z.string().min(1),
+  batchHash: z.string().min(1),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime(),
+  status: z.enum(["completed", "partial_success", "failed"]),
+  summary: z.object({
+    planCount: z.number().int().nonnegative(),
+    completedPlans: z.number().int().nonnegative(),
+    failedPlans: z.number().int().nonnegative(),
+    retryablePlans: z.number().int().nonnegative()
+  }),
+  results: z.array(ExecutionBatchExecutePlanResultSchema),
+  retry: z.object({
+    retryablePlanIds: z.array(z.string().min(1)),
+    blockedPlanIds: z.array(z.string().min(1)),
+    guidance: z.string().min(1)
+  })
 });
 
 export const PersistedExecutionActionSchema = ExecutionActionPlanSchema.extend({
@@ -1934,6 +1978,12 @@ export type ExecutionExecuteRequest = z.infer<typeof ExecutionExecuteRequestSche
 export type ExecutionBatchPlanRequest = z.infer<
   typeof ExecutionBatchPlanRequestSchema
 >;
+export type ExecutionBatchExecutePlan = z.infer<
+  typeof ExecutionBatchExecutePlanSchema
+>;
+export type ExecutionBatchExecuteRequest = z.infer<
+  typeof ExecutionBatchExecuteRequestSchema
+>;
 export type ApprovalRequirement = z.infer<typeof ApprovalRequirementSchema>;
 export type ExecutionPlanResponse = z.infer<typeof ExecutionPlanResponseSchema>;
 export type ExecutionBatchPlanSummary = z.infer<
@@ -1942,6 +1992,12 @@ export type ExecutionBatchPlanSummary = z.infer<
 export type ExecutionBatchPlanItem = z.infer<typeof ExecutionBatchPlanItemSchema>;
 export type ExecutionBatchPlanResponse = z.infer<
   typeof ExecutionBatchPlanResponseSchema
+>;
+export type ExecutionBatchExecutePlanResult = z.infer<
+  typeof ExecutionBatchExecutePlanResultSchema
+>;
+export type ExecutionBatchExecuteResponse = z.infer<
+  typeof ExecutionBatchExecuteResponseSchema
 >;
 export type ExecutionActionPlan = z.infer<typeof ExecutionActionPlanSchema>;
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;

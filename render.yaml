@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: repo-guardian
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOW_LEGACY_API_KEY_AUTH
+        value: "false"
+      - key: API_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_APP_WEBHOOK_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_ID
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false

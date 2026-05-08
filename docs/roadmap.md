@@ -159,7 +159,7 @@ Initial implementation:
 
 Remaining 9B expansion can add sweep-schedule simulation and richer recommendation drill-downs, but the roadmap has moved into 9C by explicit user request.
 
-### Milestone 9C: Supervised Batch Execution [IN PROGRESS]
+### Milestone 9C: Supervised Batch Execution [ALPHA SLICE]
 
 Milestone 9C introduces higher-throughput supervised operation without crossing into default autonomy.
 
@@ -173,12 +173,14 @@ Focus:
 
 This milestone keeps write execution human-approved, but reduces repetitive approval work for well-understood deterministic actions.
 
-Initial implementation:
+Implemented alpha:
 
 - `POST /api/execution/batch/plan` creates a bounded batch approval preview for up to five existing execution plans
 - batch previews include one batch hash, short-lived approval token, explicit confirmation text, per-plan summaries, repository counts, and aggregate action counts
 - batch planning records a workspace-scoped policy decision with actor attribution before returning the approval preview
-- the initial 9C slice performs no GitHub writes and does not execute the batch
+- `POST /api/execution/batch/execute` requires the batch token, hash, plan hashes, and explicit confirmation text before executing selected plans
+- each plan still runs through the same per-plan write policy, validation, action audit events, and tracked-PR persistence as single-plan execution
+- batch execution reports per-plan outcomes, partial success, and retry guidance that requires regenerating failed plans when a write attempt has already occurred
 
 ### Milestone 9D: Opt-in Controlled Autonomy
 
