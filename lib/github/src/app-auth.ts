@@ -50,6 +50,7 @@ export async function exchangeGitHubOAuthCode(input: {
   clientId: string;
   clientSecret: string;
   code: string;
+  redirectUri?: string;
 }): Promise<{ accessToken: string }> {
   const payload = await fetchGitHubJson<{
     access_token?: string;
@@ -62,7 +63,8 @@ export async function exchangeGitHubOAuthCode(input: {
     body: JSON.stringify({
       client_id: input.clientId,
       client_secret: input.clientSecret,
-      code: input.code
+      code: input.code,
+      ...(input.redirectUri ? { redirect_uri: input.redirectUri } : {})
     })
   });
 

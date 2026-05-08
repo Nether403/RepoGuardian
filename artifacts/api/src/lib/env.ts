@@ -12,6 +12,7 @@ const envSchema = z.object({
   GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  PUBLIC_APP_URL: z.string().url().optional(),
   API_SECRET_KEY: z.string().min(1).default("dev-secret-key-do-not-use-in-production"),
   DATABASE_URL: z.string().min(1).optional(),
   NODE_ENV: z

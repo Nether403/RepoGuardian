@@ -24,6 +24,33 @@ function createOauthState(): string {
 
 const authRouter: ExpressRouter = Router();
 
+function getForwardedHeaderValue(value: string | string[] | undefined): string | null {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const firstValue = rawValue?.split(",")[0]?.trim();
+  return firstValue && firstValue.length > 0 ? firstValue : null;
+}
+
+function getPublicOrigin(request: Request): string {
+  if (env.PUBLIC_APP_URL) {
+    return env.PUBLIC_APP_URL.replace(/\/+$/u, "");
+  }
+
+  const forwardedProto = getForwardedHeaderValue(request.headers["x-forwarded-proto"]);
+  const forwardedHost = getForwardedHeaderValue(request.headers["x-forwarded-host"]);
+  const protocol = forwardedProto ?? request.protocol;
+  const host = forwardedHost ?? request.get("host");
+
+  if (!host) {
+    throw new Error("Unable to resolve public host for GitHub OAuth callback.");
+  }
+
+  return `${protocol}://${host}`;
+}
+
+function getGitHubOAuthCallbackUrl(request: Request): string {
+  return new URL("/api/auth/github/callback", getPublicOrigin(request)).toString();
+}
+
 function createLocalSessionWorkspaces(authContext: NonNullable<Request["authContext"]>) {
   const timestamp = authContext.membership.createdAt;
 
@@ -59,7 +86,7 @@ authRouter.get("/auth/session", requireAuth, async (request, response) => {
   );
 });
 
-authRouter.get("/auth/github/start", (_request, response) => {
+authRouter.get("/auth/github/start", (request, response) => {
   if (!env.GITHUB_OAUTH_CLIENT_ID) {
     response.status(500).json({ error: "GitHub OAuth is not configured." });
     return;
@@ -68,6 +95,7 @@ authRouter.get("/auth/github/start", (_request, response) => {
   const state = createOauthState();
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", env.GITHUB_OAUTH_CLIENT_ID);
+  url.searchParams.set("redirect_uri", getGitHubOAuthCallbackUrl(request));
   url.searchParams.set("scope", "read:user");
   url.searchParams.set("state", state);
   response.setHeader("Set-Cookie", createOAuthStateSetCookieHeader(state));
@@ -97,7 +125,8 @@ authRouter.get("/auth/github/callback", async (request, response) => {
   const { accessToken } = await exchangeGitHubOAuthCode({
     clientId: env.GITHUB_OAUTH_CLIENT_ID,
     clientSecret: env.GITHUB_OAUTH_CLIENT_SECRET,
-    code
+    code,
+    redirectUri: getGitHubOAuthCallbackUrl(request)
   });
   const viewer = await fetchGitHubViewer({ accessToken });
   const user = await workspaceRepository.upsertGitHubUser({

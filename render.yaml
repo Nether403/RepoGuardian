@@ -23,5 +23,7 @@ services:
         sync: false
       - key: GITHUB_OAUTH_CLIENT_SECRET
         sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
       - key: SESSION_SECRET
         sync: false

@@ -48,6 +48,10 @@ Set:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/repo_guardian
 ```
 
+For production GitHub OAuth, set `PUBLIC_APP_URL` to the deployed app origin,
+for example `https://repo-guardian.onrender.com`. The OAuth callback URL in
+GitHub must be `${PUBLIC_APP_URL}/api/auth/github/callback`.
+
 Then run:
 
 ```bash
