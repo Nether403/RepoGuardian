@@ -10,7 +10,7 @@ RUN npm install --global pnpm@10.26.1
 WORKDIR /app
 
 # Copy workspace manifests first for better layer caching
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
 
 # Copy all package.json files so pnpm can resolve the workspace graph
 COPY artifacts/api/package.json ./artifacts/api/

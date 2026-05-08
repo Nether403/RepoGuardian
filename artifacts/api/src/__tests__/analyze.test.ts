@@ -377,8 +377,24 @@ describe("POST /api/analyze", () => {
           reachability: {
             band: "unknown",
             referencedPaths: [],
-            score: 0,
-            signals: []
+            score: 45,
+            signals: [
+              {
+                detail: "Listed as a direct dependency in the manifest.",
+                kind: "direct-dependency",
+                weight: 30
+              },
+              {
+                detail: "Advisory match has high confidence.",
+                kind: "confidence",
+                weight: 15
+              },
+              {
+                detail: "No reviewed source files were available to scan for references.",
+                kind: "no-reviewed-files",
+                weight: 0
+              }
+            ]
           },
           severity: "high",
           sourceType: "dependency",
