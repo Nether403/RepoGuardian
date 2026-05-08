@@ -40,10 +40,25 @@ async function fetchGitHubJson<T>(
   init: RequestInit
 ): Promise<T> {
   const response = await fetch(url, init);
+  const payload = (await response.json().catch(() => null)) as unknown;
+
   if (!response.ok) {
-    throw new Error(`GitHub request failed with status ${response.status}.`);
+    const message =
+      payload &&
+      typeof payload === "object" &&
+      "error_description" in payload &&
+      typeof payload.error_description === "string"
+        ? payload.error_description
+        : payload &&
+            typeof payload === "object" &&
+            "message" in payload &&
+            typeof payload.message === "string"
+          ? payload.message
+          : `GitHub request failed with status ${response.status}.`;
+    throw new Error(message);
   }
-  return (await response.json()) as T;
+
+  return payload as T;
 }
 
 export async function exchangeGitHubOAuthCode(input: {

@@ -103,58 +103,73 @@ authRouter.get("/auth/github/start", (request, response) => {
 });
 
 authRouter.get("/auth/github/callback", async (request, response) => {
-  const code = typeof request.query.code === "string" ? request.query.code : "";
-  const state = typeof request.query.state === "string" ? request.query.state : "";
-  if (!code) {
-    response.status(400).json({ error: "Missing GitHub OAuth code." });
-    return;
-  }
+  try {
+    const code = typeof request.query.code === "string" ? request.query.code : "";
+    const state = typeof request.query.state === "string" ? request.query.state : "";
+    if (!code) {
+      response.status(400).json({ error: "Missing GitHub OAuth code." });
+      return;
+    }
 
-  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
-    response.status(500).json({ error: "GitHub OAuth is not configured." });
-    return;
-  }
+    if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+      response.status(500).json({ error: "GitHub OAuth is not configured." });
+      return;
+    }
 
-  if (!verifyOAuthStateCookie({ cookieHeader: request.headers.cookie, state })) {
-    response.setHeader("Set-Cookie", createClearedOAuthStateSetCookieHeader());
-    response.status(400).json({ error: "Invalid GitHub OAuth state." });
-    return;
-  }
+    if (!verifyOAuthStateCookie({ cookieHeader: request.headers.cookie, state })) {
+      response.setHeader("Set-Cookie", createClearedOAuthStateSetCookieHeader());
+      response.status(400).json({ error: "Invalid GitHub OAuth state." });
+      return;
+    }
 
-  const workspaceRepository = getWorkspaceRepository();
-  const { accessToken } = await exchangeGitHubOAuthCode({
-    clientId: env.GITHUB_OAUTH_CLIENT_ID,
-    clientSecret: env.GITHUB_OAUTH_CLIENT_SECRET,
-    code,
-    redirectUri: getGitHubOAuthCallbackUrl(request)
-  });
-  const viewer = await fetchGitHubViewer({ accessToken });
-  const user = await workspaceRepository.upsertGitHubUser({
-    avatarUrl: viewer.avatarUrl,
-    displayName: viewer.name,
-    githubLogin: viewer.login,
-    githubUserId: viewer.id
-  });
-  let workspaces = await workspaceRepository.listWorkspacesForUser(user.id);
-
-  if (workspaces.length === 0) {
-    await workspaceRepository.createWorkspace({
-      name: `${viewer.login}'s Workspace`,
-      ownerUserId: user.id
+    const workspaceRepository = getWorkspaceRepository();
+    const { accessToken } = await exchangeGitHubOAuthCode({
+      clientId: env.GITHUB_OAUTH_CLIENT_ID,
+      clientSecret: env.GITHUB_OAUTH_CLIENT_SECRET,
+      code,
+      redirectUri: getGitHubOAuthCallbackUrl(request)
     });
-    workspaces = await workspaceRepository.listWorkspacesForUser(user.id);
-  }
+    const viewer = await fetchGitHubViewer({ accessToken });
+    const user = await workspaceRepository.upsertGitHubUser({
+      avatarUrl: viewer.avatarUrl,
+      displayName: viewer.name,
+      githubLogin: viewer.login,
+      githubUserId: viewer.id
+    });
+    let workspaces = await workspaceRepository.listWorkspacesForUser(user.id);
 
-  const activeWorkspaceId = workspaces[0]?.workspace.id ?? null;
-  response.setHeader("Set-Cookie", [
-    createSessionSetCookieHeader({
-      activeWorkspaceId,
-      authMode: "session",
-      userId: user.id
-    }),
-    createClearedOAuthStateSetCookieHeader()
-  ]);
-  response.redirect("/");
+    if (workspaces.length === 0) {
+      await workspaceRepository.createWorkspace({
+        name: `${viewer.login}'s Workspace`,
+        ownerUserId: user.id
+      });
+      workspaces = await workspaceRepository.listWorkspacesForUser(user.id);
+    }
+
+    const activeWorkspaceId = workspaces[0]?.workspace.id ?? null;
+    response.setHeader("Set-Cookie", [
+      createSessionSetCookieHeader({
+        activeWorkspaceId,
+        authMode: "session",
+        userId: user.id
+      }),
+      createClearedOAuthStateSetCookieHeader()
+    ]);
+    response.redirect("/");
+  } catch (error) {
+    console.error("GitHub OAuth callback failed", {
+      error: error instanceof Error ? error.message : error,
+      host: request.get("host"),
+      path: request.path
+    });
+    response.setHeader("Set-Cookie", createClearedOAuthStateSetCookieHeader());
+    response.status(502).json({
+      error:
+        error instanceof Error
+          ? `GitHub OAuth callback failed: ${error.message}`
+          : "GitHub OAuth callback failed."
+    });
+  }
 });
 
 authRouter.post("/auth/logout", (_request, response) => {
