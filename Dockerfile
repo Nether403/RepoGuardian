@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22.11.0-bookworm-slim
+FROM node:22.12.0-bookworm-slim
 
 # Install the workspace package manager explicitly. Avoid Corepack here because
 # some hosted Docker builders can have stale Corepack signing keys.
