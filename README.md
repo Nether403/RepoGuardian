@@ -1,80 +1,80 @@
 # Repo Guardian
 
-Repo Guardian is a supervised GitHub repository triage and maintenance assistant. The current repo should be treated as a Milestone 9C alpha rather than a finished V1: it implements the Milestone 1 through 8A foundation plus fleet remediation intelligence, default policy gates, policy-decision audit history, dry-run autonomy simulation for workspace fleet operations, and supervised batch execution for bounded approved plan sets.
+> **Status: REVIVE (2026-07)** — active priority product.  
+> Milestone **9C alpha** (supervised batch execution), not a finished V1.  
+> See [`STATUS.md`](./STATUS.md) and [`docs/REVIVE-2026.md`](./docs/REVIVE-2026.md).
 
-## Current scope
+**Repo Guardian** is a supervised GitHub repository triage and maintenance assistant.
 
-- pnpm workspace monorepo
-- `POST /api/analyze` for public GitHub repository intake
-- GitHub OAuth session context for workspace-scoped production access, with `Authorization: Bearer <API_SECRET_KEY>` retained as a local-development fallback
-- recursive tree fetch for the default branch
-- manifest and lockfile detection
-- ecosystem inference and notable repository signals
-- dependency file fetches from GitHub
-- normalized dependency snapshot parsing for 20+ formats across Node.js, Python, Go, Rust, JVM, and Ruby
-- OSV-backed advisory lookup behind a swappable provider interface
-- structured dependency findings with severity, confidence, evidence, and remediation hints
-- targeted code-review findings for secret-like literals, dangerous execution, and workflow hardening risks
-- deterministic issue-candidate grouping and PR-candidate drafting
-- linked patch-planning records with visibility into patchability and validation status
-- `POST /api/execution/plan` and `POST /api/execution/execute` for security-hardened, two-phase approval-gated write-back
-- `GET /api/execution/plans/{planId}` and `GET /api/execution/plans/{planId}/events` for durable execution state and audit history
-- real GitHub Issue creation and bounded Pull Request write-back for supported deterministic slices
-- Vite + React UI for analysis, candidate selection, two-phase execution previews, and results
-- Fleet Admin mode for tracked repositories, fleet status, async job control, sweep schedules, and tracked PR visibility
-- Workspace Access UI for GitHub sign-in state, workspace selection, GitHub App installation sync, and installation-backed tracked repository registration
-- Milestone 9A fleet remediation metrics and explicit policy gates before controlled autonomy
-- repository history and cursor-native timeline reads for Fleet Admin drill-downs
-- server-side paginated policy-decision history via `GET /api/policy-decisions`
-- server-side policy-decision filtering by action, decision, repository, and occurrence window
-- dry-run autonomy simulation in Fleet Overview with would-allow, would-block, and manual-review action previews
-- `POST /api/execution/batch/plan` and `POST /api/execution/batch/execute` for bounded supervised batch approval and execution over existing execution plans
-- on-demand timeline event expansion with structured detail for execution events, execution plans, tracked PRs, analysis jobs, and analysis runs
-- deterministic Guardian Graph view for visual traceability
-- Postgres-backed `GET /api/runs`, `POST /api/runs`, etc. for durable saved analysis runs and compare mode
-- Postgres-backed tracked repositories, async analysis jobs, sweep schedules, PR lifecycle records, and repository activity/timeline state
-- `lib/api-spec/openapi.yaml` as the API contract
-- generated `@repo-guardian/api-client` and shared typed schemas
+Paste a repo → get structured analysis (ecosystems, dependency risk, code-review signals) → draft Issues and PRs → **approve** before anything is written back to GitHub.
 
-## Database setup
+It is **not** an autonomous maintainer. Write actions stay explicit, bounded, auditable, and reversible.
 
-Repo Guardian now requires Postgres for durable run and execution persistence.
+![Repo Guardian](./RepoGuardianlogo.png)
 
-Use `example.env` as the checklist for local and deployment variables. The app reads environment variables from the running process or hosting platform; if you keep a private `.env`, load it before running API commands and never commit it.
+## Why it exists
 
-Set:
+Maintainers and operators often face the same mess:
 
-```bash
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/repo_guardian
-```
+- dozens of idle forks, husks, and half-finished experiments
+- dependency drift and secret-like risks scattered across fleets
+- no safe middle ground between “manual chaos” and “unattended bots”
 
-For production GitHub OAuth, set `PUBLIC_APP_URL` to the deployed app origin,
-for example `https://repo-guardian.onrender.com`. The OAuth callback URL in
-GitHub must be `${PUBLIC_APP_URL}/api/auth/github/callback`.
+Repo Guardian aims at that middle ground: **deterministic analysis first**, human approval before write-back, fleet visibility when you grow beyond one repo.
 
-Then run:
+## Product at a glance
 
-```bash
-pnpm --filter @repo-guardian/api run db:migrate
-```
+| Capability | State |
+|---|---|
+| Public GitHub repo intake + recursive tree | Implemented |
+| Ecosystem / manifest / lockfile detection | Implemented (Node, Python, Go, Rust, JVM, Ruby, …) |
+| OSV-backed dependency findings | Implemented |
+| Targeted code-review findings | Implemented |
+| Issue / PR candidate drafting | Implemented |
+| Two-phase plan → execute write-back | Implemented (approval-gated) |
+| Workspace + GitHub OAuth + App installs | Implemented (alpha) |
+| Fleet Admin (tracked repos, jobs, sweeps) | Implemented (alpha) |
+| Policy-decision audit history | Implemented |
+| Dry-run autonomy simulation | Implemented |
+| Supervised batch execution | Implemented (9C) |
+| Unattended writes / auto-merge | **Out of scope** |
 
-If you need to import older filesystem-backed run and plan JSON artifacts from `.repo-guardian/runs` and `.repo-guardian/plans`, run:
+Canonical product source of truth: [`SPEC.md`](./SPEC.md)  
+Agent/contributor rules: [`AGENTS.md`](./AGENTS.md)  
+Roadmap: [`docs/roadmap.md`](./docs/roadmap.md)
 
-```bash
-pnpm --filter @repo-guardian/api run db:import-legacy
+## Architecture
 
-Legacy import only carries forward saved analysis runs and pending legacy plans. It does not reconstruct full historical execution state from legacy `executing`, `completed`, or `failed` plan files; those are skipped and reported by reason in the import output.
-```
+pnpm monorepo:
 
-## Commands
+- `artifacts/web` — Vite + React UI
+- `artifacts/api` — Express API
+- `lib/*` — GitHub adapters, ecosystems, dependencies, advisory, review, execution, persistence, shared types
+- `lib/api-spec/openapi.yaml` — API contract → generated `@repo-guardian/api-client`
+
+Postgres is required for durable runs, plans, fleet state, and policy audit.
+
+## Quick start (local)
 
 ```bash
 pnpm install
+
+# Required
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/repo_guardian
+
+# Recommended for full OAuth / App flows
+export PUBLIC_APP_URL=http://localhost:5173
+# plus GitHub OAuth app + App credentials as used by artifacts/api
+
+pnpm --filter @repo-guardian/api run db:migrate
 pnpm run dev
+```
+
+Useful scripts:
+
+```bash
 pnpm run dev:api
 pnpm run dev:web
-pnpm --filter @repo-guardian/api run db:migrate
-pnpm --filter @repo-guardian/api run db:import-legacy
 pnpm run generate:api-client
 pnpm run lint
 pnpm run typecheck
@@ -82,43 +82,84 @@ pnpm run test
 pnpm run build
 ```
 
-## Fleet APIs and UI
+> **Note:** older docs mention `example.env`. That file is not currently in the tree; treat env setup as process/hosting config and never commit secrets.
 
-The supervised analysis flow remains the default web mode, and the current alpha also includes a Fleet Admin mode for multi-repository operations.
+If you still have legacy filesystem runs under `.repo-guardian/runs` or `.repo-guardian/plans`:
 
-Implemented fleet surfaces:
+```bash
+pnpm --filter @repo-guardian/api run db:import-legacy
+```
 
-- `GET /api/tracked-repositories`
-- `POST /api/tracked-repositories`
-- `GET /api/tracked-repositories/{trackedRepositoryId}/history`
-- `GET /api/tracked-repositories/{trackedRepositoryId}/activity`
-- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
-- `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
+Legacy import only carries forward saved analysis runs and pending plans. Historical `executing` / `completed` / `failed` plan files are skipped and reported.
+
+### OAuth callback
+
+For production GitHub OAuth, set `PUBLIC_APP_URL` to the deployed origin (for example `https://repo-guardian.onrender.com`).  
+GitHub callback must be:
+
+```text
+${PUBLIC_APP_URL}/api/auth/github/callback
+```
+
+## Current scope (Milestone 9C alpha)
+
+High-level implemented surface:
+
+- `POST /api/analyze` — repository intake and analysis
+- GitHub OAuth session context for workspace-scoped access (`Authorization: Bearer` retained as local-dev fallback)
+- recursive tree fetch, manifest/lockfile detection, ecosystem inference
+- normalized dependency snapshots for 20+ formats
+- OSV advisory lookup behind a swappable provider
+- structured dependency + code-review findings (severity, confidence, evidence, remediation hints)
+- issue/PR candidate drafting with patch-planning records
+- two-phase execution: `POST /api/execution/plan` then `POST /api/execution/execute`
+- plan detail + events: `GET /api/execution/plans/{planId}` and `.../events`
+- real GitHub Issue creation and bounded PR write-back for supported deterministic slices
+- Fleet Admin: tracked repositories, fleet status, async jobs, sweep schedules, tracked PR visibility
+- Workspace Access UI: sign-in, workspace selection, App installation sync, installation-backed tracking
+- policy-decision history: `GET /api/policy-decisions`
+- dry-run autonomy simulation in Fleet Overview
+- supervised batch: `POST /api/execution/batch/plan` and `.../batch/execute`
+- Guardian Graph for visual traceability
+- durable Postgres-backed runs, jobs, schedules, timeline/activity state
+
+### Fleet surfaces (read + supervised)
+
+- `GET/POST /api/tracked-repositories` (+ history / activity / timeline)
 - `GET /api/fleet/status`
-- `GET /api/analyze/jobs`
-- `POST /api/analyze/jobs`
-- `GET /api/analyze/jobs/{jobId}`
-- `POST /api/analyze/jobs/{jobId}/retry`
-- `POST /api/analyze/jobs/{jobId}/cancel`
-- `GET /api/sweep-schedules`
-- `POST /api/sweep-schedules`
-- `POST /api/sweep-schedules/{scheduleId}/trigger`
+- `GET/POST /api/analyze/jobs` (+ retry / cancel)
+- `GET/POST /api/sweep-schedules` (+ trigger)
 
-Current 8A foundation behavior:
+Scheduled work does **not** perform unattended writes. GitHub writes remain approval-gated.
 
-- tracked repositories can be registered and manually queued for analysis
-- weekly sweep schedules can enqueue plan-only review passes
-- fleet status reports recent jobs, executable plans, blocked plans, stale plans, and tracked PR lifecycle
-- repository history and timeline reads stay read-only and supervised
-- timeline pages support filters, sorting, saved inspector state, cursor-native paging, and on-demand event expansion
-- workspace, user, membership, GitHub installation, and installation-repository records are persisted in Postgres
-- API routes enforce active-workspace boundaries for workspace and installation surfaces; explicit analysis workspace ids must match the authenticated workspace
-- GitHub OAuth callback state is validated before token exchange
-- GitHub writes remain approval-gated through the execution plan and execute routes; scheduled work does not perform unattended writes
-- Fleet Admin includes a supervised batch queue for selecting existing planned executable records, approving the bounded batch, and executing with per-plan outcomes and retry guidance.
+## Safety principles
 
-## Roadmap
+1. Deterministic checks first; model reasoning second.
+2. Never create Issues/PRs without explicit user approval.
+3. Every finding needs evidence.
+4. Prefer small, reviewable PRs (one concern each).
+5. Be honest about uncertainty and validation status.
+6. Any future controlled autonomy must be opt-in, policy-scoped, observable, and reversible.
 
-The current state reflects **Milestone 9C supervised batch execution**. The platform now layers dry-run proposed-autonomy outcomes and bounded batch approval/execution on top of workspace-scoped access, GitHub App installation repository visibility, fleet health metrics, attention queues, and policy-decision audit history while keeping write execution supervised.
+## Roadmap snapshot
 
-The next goals are deeper policy recommendation controls without unattended writes. Any controlled-autonomy path should remain opt-in, policy-scoped, and observable. See `docs/roadmap.md`.
+Current: **Milestone 9C supervised batch execution**.
+
+Next sensible revive goals (see `docs/REVIVE-2026.md`):
+
+1. Local + deploy boot reliability
+2. Production-grade GitHub App ↔ workspace linking
+3. Harden policy gates and fleet metrics
+4. Keep write surface bounded while the foundation matures
+
+## Related / donor patterns (reference only)
+
+Historical sibling inspiration mentioned in `AGENTS.md` (not submodules):
+
+- RepoRadar — GitHub interaction / issue-PR flow ideas
+- Visuvoid — visual language inspiration
+- dev-due-diligence — monorepo and API contract discipline
+
+## License / stars
+
+Public repo under [Nether403/RepoGuardian](https://github.com/Nether403/RepoGuardian). No SPDX license file is present yet — add one when you decide distribution terms.
