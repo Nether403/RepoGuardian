@@ -1,14 +1,17 @@
 # Repo Guardian
 
-> **Status: REVIVE (2026-07)** — active priority product.  
+> **Status: FURTHER DEVELOP (2026-07)** — live product, unfinished alpha.  
+> **Live:** [https://RepoGuardian.101dev.xyz](https://RepoGuardian.101dev.xyz)  
 > Milestone **9C alpha** (supervised batch execution), not a finished V1.  
-> See [`STATUS.md`](./STATUS.md) and [`docs/REVIVE-2026.md`](./docs/REVIVE-2026.md).
+> See [`STATUS.md`](./STATUS.md) and [`docs/FURTHER-DEVELOP-2026.md`](./docs/FURTHER-DEVELOP-2026.md).
 
 **Repo Guardian** is a supervised GitHub repository triage and maintenance assistant.
 
 Paste a repo → get structured analysis (ecosystems, dependency risk, code-review signals) → draft Issues and PRs → **approve** before anything is written back to GitHub.
 
 It is **not** an autonomous maintainer. Write actions stay explicit, bounded, auditable, and reversible.
+
+It is already **deployed and functional** — continue building, don’t treat this as a cold revive.
 
 ![Repo Guardian](./RepoGuardianlogo.png)
 
@@ -143,14 +146,15 @@ Scheduled work does **not** perform unattended writes. GitHub writes remain appr
 
 ## Roadmap snapshot
 
-Current: **Milestone 9C supervised batch execution**.
+Current: **Milestone 9C supervised batch execution** (live at production).
 
-Next sensible revive goals (see `docs/REVIVE-2026.md`):
+Next sensible further-develop goals (see `docs/FURTHER-DEVELOP-2026.md`):
 
-1. Local + deploy boot reliability
+1. Local ↔ prod boot reliability
 2. Production-grade GitHub App ↔ workspace linking
 3. Harden policy gates and fleet metrics
 4. Keep write surface bounded while the foundation matures
+5. Use it on personal fleets (with Witness exclusions) so the builder is also a daily user
 
 ## Related / donor patterns (reference only)
 
