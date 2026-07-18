@@ -221,3 +221,25 @@ When finishing a task, report:
 5. the next sensible step
 
 Keep summaries concise and honest.
+
+---
+
+## Cursor Cloud specific instructions
+
+Environment baseline: Node 22 + pnpm 10.26.1 (matches the `packageManager` field). Dependencies are already installed by the startup update script (`pnpm install`); do not re-run it unless the lockfile changed.
+
+Standard commands live in `README.md` and the root `package.json` scripts (`dev`, `dev:api`, `dev:web`, `lint`, `typecheck`, `test`, `build`). Prefer those; the notes below are only the non-obvious gotchas.
+
+Services:
+- `pnpm run dev` runs the API (Express, port 3000) and web (Vite, port 5000) in parallel. The web dev server proxies `/api` to `http://localhost:3000`.
+- Both services start and run fully without a database. Postgres is optional in dev and only required for durable "saved runs", execution plans, fleet, and installation persistence.
+
+Postgres (optional, for full functionality and DB-backed tests):
+- A local server can be started with `sudo pg_ctlcluster 16 main start`, then use `DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres` (password set to `postgres`).
+- Apply schema with `pnpm --filter @repo-guardian/api run db:migrate` before using DB features or DB tests.
+
+Web UI auth gotcha: the frontend attaches a bearer token from `localStorage["repo-guardian-token"]` or the build-time `VITE_API_SECRET_KEY`. In dev the API accepts the default key `dev-secret-key-do-not-use-in-production`. To exercise the UI end-to-end, start the web server with `VITE_API_SECRET_KEY=dev-secret-key-do-not-use-in-production` (or set that localStorage key), otherwise authenticated API calls from the UI 401.
+
+Testing gotcha: `pnpm run test` passes and skips the Postgres integration tests unless `TEST_DATABASE_URL` is set. When `TEST_DATABASE_URL` is set, two tests in `artifacts/api/src/__tests__/db-scripts.test.ts` currently fail for reasons unrelated to the environment: the migration-count assertion is hardcoded to 4 (the repo now ships 7), and a legacy-plan fixture uses an `expiresAt` in the past so its status resolves to `expired` instead of `planned`. Treat these as pre-existing stale-test issues.
+
+Build gotcha: pnpm reports "Ignored build scripts: esbuild" (interactive `approve-builds` is not run); builds still succeed because esbuild ships prebuilt binaries.
