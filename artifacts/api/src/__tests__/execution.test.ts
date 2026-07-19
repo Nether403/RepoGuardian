@@ -20,6 +20,7 @@ import {
 } from "@repo-guardian/shared-types";
 import { PersistenceError } from "@repo-guardian/persistence";
 import { createAnalysisRunSummary } from "@repo-guardian/runs";
+import { mintApprovalToken } from "../lib/token.js";
 import { createExecutionRouter } from "../routes/execution.js";
 
 function createIssueCandidate(
@@ -1166,6 +1167,13 @@ describe("POST /api/execution/plan", () => {
         actionType: "execute_batch",
         actorUserId: "usr_local_default",
         decision: "allowed",
+        details: expect.objectContaining({
+          batchHash: response.body.batchHash,
+          batchId: response.body.batchId,
+          phase: "plan",
+          planHashes: [firstPlan.body.planHash, secondPlan.body.planHash],
+          planIds: [firstPlan.body.planId, secondPlan.body.planId]
+        }),
         reason:
           "Supervised batch execution planning may proceed for selected plans.",
         scopeType: "workspace",
@@ -1281,6 +1289,17 @@ describe("POST /api/execution/plan", () => {
         actionType: "execute_batch",
         actorUserId: "usr_local_default",
         decision: "allowed",
+        details: expect.objectContaining({
+          batchHash: batchPlan.body.batchHash,
+          batchId: batchPlan.body.batchId,
+          phase: "execute",
+          planHashes: [
+            firstPlan.body.planHash,
+            secondPlan.body.planHash
+          ],
+          planIds: [firstPlan.body.planId, secondPlan.body.planId],
+          status: "partial_success"
+        }),
         scopeType: "workspace",
         workspaceId: "workspace_local_default"
       })
@@ -1301,6 +1320,69 @@ describe("POST /api/execution/plan", () => {
         repositoryFullName: "openai/another-repo"
       })
     );
+  });
+
+  it("rejects batch execution when the approval token belongs to another actor", async () => {
+    const writeClient = {
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      createIssue: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn().mockResolvedValue(
+          "name: CI\non:\n  push:\npermissions: write-all\njobs:\n  test:\n    runs-on: ubuntu-latest\n"
+        )
+      },
+      writeClient
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+    const plan = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+    const batchPlan = await request(testApp.app)
+      .post("/api/execution/batch/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        planIds: [plan.body.planId]
+      });
+    const foreignToken = mintApprovalToken(
+      batchPlan.body.batchId,
+      batchPlan.body.batchHash,
+      "usr_other_actor",
+      "workspace_local_default",
+      15
+    );
+
+    const response = await request(testApp.app)
+      .post("/api/execution/batch/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: foreignToken,
+        batchHash: batchPlan.body.batchHash,
+        batchId: batchPlan.body.batchId,
+        confirm: true,
+        confirmationText: "I approve this supervised batch execution.",
+        plans: [
+          {
+            planHash: plan.body.planHash,
+            planId: plan.body.planId
+          }
+        ]
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe(
+      "Approval token was issued for a different actor."
+    );
+    expect(writeClient.createIssue).not.toHaveBeenCalled();
+    expect(writeClient.openPullRequest).not.toHaveBeenCalled();
   });
 
   it("rejects batch execution without the exact confirmation text", async () => {
@@ -1338,6 +1420,54 @@ describe("POST /api/execution/plan", () => {
     expect(response.body.error).toBe("Invalid confirmation text.");
     expect(writeClient.createIssue).not.toHaveBeenCalled();
     expect(writeClient.openPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects single-plan execution when the approval token belongs to another actor", async () => {
+    const writeClient = {
+      createIssue: vi.fn(),
+      createBranchFromDefaultBranch: vi.fn(),
+      commitFileChanges: vi.fn(),
+      openPullRequest: vi.fn()
+    };
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+    const planRes = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: ["issue:workflow-hardening:.github/workflows/ci.yml"],
+        selectedPRCandidateIds: []
+      });
+    const foreignToken = mintApprovalToken(
+      planRes.body.planId,
+      planRes.body.planHash,
+      "usr_other_actor",
+      "workspace_local_default",
+      15
+    );
+
+    const response = await request(testApp.app)
+      .post("/api/execution/execute")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        approvalToken: foreignToken,
+        confirm: true,
+        confirmationText: "I approve this GitHub write-back plan.",
+        planHash: planRes.body.planHash,
+        planId: planRes.body.planId
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe(
+      "Approval token was issued for a different actor."
+    );
+    expect(writeClient.createIssue).not.toHaveBeenCalled();
   });
 
   it("executes an approved issue creation request", async () => {

@@ -76,7 +76,7 @@ A user pastes a GitHub repo and gets:
 - billing and subscriptions
 - enterprise RBAC
 - CI/CD orchestration
-- multi-repo batch workflows
+- unbounded multi-repo batch workflows beyond the supervised batch approval preview (max 5 existing plans)
 - broad refactors without tight scope
 
 ---
@@ -308,10 +308,22 @@ Canonical supervised routes:
 - `POST /api/analyze`
 - `POST /api/execution/plan`
 - `POST /api/execution/execute`
+- `POST /api/execution/batch/plan`
+- `POST /api/execution/batch/execute`
 - `GET /api/runs`
 - `POST /api/runs`
 - `GET /api/runs/{runId}`
 - `POST /api/runs/compare`
+
+Auth and workspace routes:
+- `GET /api/auth/session`
+- `GET /api/auth/github/start`
+- `GET /api/auth/github/callback`
+- `POST /api/auth/logout`
+- `GET /api/workspaces`
+- `POST /api/workspaces`
+- `GET /api/workspaces/{workspaceId}/installations`
+- `POST /api/workspaces/{workspaceId}/installations/{installationId}/sync`
 
 Fleet operations routes:
 - `GET /api/tracked-repositories`
@@ -321,6 +333,7 @@ Fleet operations routes:
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
 - `GET /api/fleet/status`
+- `GET /api/policy-decisions`
 - `GET /api/analyze/jobs`
 - `POST /api/analyze/jobs`
 - `GET /api/analyze/jobs/{jobId}`
@@ -335,9 +348,10 @@ Contract rules:
 - `AnalyzeRepoResponse` stays backward-compatible while dependency coverage expands.
 - `POST /api/execution/plan` and `POST /api/execution/execute` form the canonical two-phase execution model.
 - `plan` creates a short-lived approval token and hashes the actions; it performs no write-back.
-- `execute` requires the token, a matching hash, and an explicit confirmation string; it performs the actual GitHub writes.
-- All canonical routes require `Authorization: Bearer <API_SECRET_KEY>`.
-- Fleet operations routes also require `Authorization: Bearer <API_SECRET_KEY>` in the current alpha.
+- `execute` requires the token, a matching hash, matching actor (`sub`), and an explicit confirmation string; it performs the actual GitHub writes.
+- `POST /api/execution/batch/plan` and `POST /api/execution/batch/execute` provide bounded supervised batch approval over existing planned records (max 5), with the same actor-bound token checks and durable `execute_batch` policy-decision audit details.
+- Production access uses GitHub OAuth session context, workspace membership, and installation-scoped repository visibility.
+- The legacy `Authorization: Bearer <API_SECRET_KEY>` path remains as a local-development fallback only.
 - Scheduled and async fleet routes are read-only or plan-generation-only with respect to unattended operation; they do not perform GitHub writes.
 - the older split write routes such as `/api/issues/create` and `/api/prs/create` are not part of the canonical contract.
 
