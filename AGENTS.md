@@ -240,6 +240,6 @@ Postgres (optional, for full functionality and DB-backed tests):
 
 Web UI auth gotcha: the frontend attaches a bearer token from `localStorage["repo-guardian-token"]` or the build-time `VITE_API_SECRET_KEY`. In dev the API accepts the default key `dev-secret-key-do-not-use-in-production`. To exercise the UI end-to-end, start the web server with `VITE_API_SECRET_KEY=dev-secret-key-do-not-use-in-production` (or set that localStorage key), otherwise authenticated API calls from the UI 401.
 
-Testing gotcha: `pnpm run test` passes and skips the Postgres integration tests unless `TEST_DATABASE_URL` is set. When `TEST_DATABASE_URL` is set, two tests in `artifacts/api/src/__tests__/db-scripts.test.ts` currently fail for reasons unrelated to the environment: the migration-count assertion is hardcoded to 4 (the repo now ships 7), and a legacy-plan fixture uses an `expiresAt` in the past so its status resolves to `expired` instead of `planned`. Treat these as pre-existing stale-test issues.
+Testing gotcha: `pnpm run test` passes and skips the Postgres integration tests unless `TEST_DATABASE_URL` is set. With `TEST_DATABASE_URL` set, CI and local DB-backed suites both exercise migration and legacy-import coverage in `artifacts/api/src/__tests__/db-scripts.test.ts`.
 
 Build gotcha: pnpm reports "Ignored build scripts: esbuild" (interactive `approve-builds` is not run); builds still succeed because esbuild ships prebuilt binaries.
