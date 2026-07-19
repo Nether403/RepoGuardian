@@ -45,6 +45,11 @@ export function BatchExecutionPanel({
   const selectedCount = selectedPlanIds.length;
   const isPreviewDisabled = isPreviewLoading || selectedCount === 0;
   const isExecuteDisabled = isExecuting || !approvalGranted || !preview;
+  const showRetryGuidance = Boolean(
+    executeResult &&
+      (executeResult.retry.retryablePlanIds.length > 0 ||
+        executeResult.retry.blockedPlanIds.length > 0)
+  );
 
   return (
     <Panel
@@ -89,7 +94,7 @@ export function BatchExecutionPanel({
             ))}
           </div>
         ) : (
-          <EmptyState>No executable planned records are available in the current fleet snapshot.</EmptyState>
+          <EmptyState>No executable planned records are available for this workspace.</EmptyState>
         )}
 
         {preview ? (
@@ -116,7 +121,35 @@ export function BatchExecutionPanel({
               {executeResult.summary.completedPlans} completed,{" "}
               {executeResult.summary.failedPlans} failed.
             </p>
-            {executeResult.retry.retryablePlanIds.length > 0 ? (
+            <div className="batch-result-list" role="list">
+              {executeResult.results.map((result) => (
+                <div className="batch-result-row" key={result.planId} role="listitem">
+                  <span>
+                    <strong>{result.repositoryFullName}</strong>
+                    <code>{result.planId}</code>
+                  </span>
+                  <span className="batch-result-row-meta">
+                    <StatusBadge
+                      label={result.status}
+                      tone={result.status === "completed" ? "active" : "danger"}
+                    />
+                    <span>
+                      {result.executionId ? (
+                        <code>{result.executionId}</code>
+                      ) : (
+                        "not claimed"
+                      )}
+                    </span>
+                  </span>
+                  {result.errors.length > 0 ? (
+                    <p className="execution-note batch-result-errors">
+                      {result.errors.join(" ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            {showRetryGuidance ? (
               <p className="execution-note">{executeResult.retry.guidance}</p>
             ) : null}
           </div>

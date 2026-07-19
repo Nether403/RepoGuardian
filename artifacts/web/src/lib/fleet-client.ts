@@ -11,6 +11,7 @@ import {
   FleetStatusResponseSchema,
   GetAnalysisJobResponseSchema,
   ListAnalysisJobsResponseSchema,
+  ListExecutionPlansResponseSchema,
   ListPolicyDecisionEventsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
@@ -29,6 +30,8 @@ import {
   type CreateSweepScheduleRequest,
   type ExecutionPlanDetailResponse,
   type ExecutionPlanEventsResponse,
+  type ExecutionPlanLifecycleStatus,
+  type ExecutionPlanSummary,
   type FleetStatusResponse,
   type ListPolicyDecisionEventsResponse,
   type PolicyActionType,
@@ -51,6 +54,7 @@ import {
   getTrackedRepositoryTimelineEvent as requestGetTrackedRepositoryTimelineEvent,
   listAnalysisJobs as requestListAnalysisJobs,
   listExecutionPlanEvents as requestListExecutionPlanEvents,
+  listExecutionPlans as requestListExecutionPlans,
   listPolicyDecisions as requestListPolicyDecisions,
   listSweepSchedules as requestListSweepSchedules,
   listTrackedRepositories as requestListTrackedRepositories,
@@ -232,6 +236,22 @@ export async function listPolicyDecisions(input: {
     return ListPolicyDecisionEventsResponseSchema.parse(response);
   } catch (error) {
     throw toFleetClientError(error, "Repo Guardian could not load policy decisions");
+  }
+}
+
+export async function listExecutionPlans(input: {
+  status?: ExecutionPlanLifecycleStatus;
+} = {}): Promise<ExecutionPlanSummary[]> {
+  try {
+    const response = await requestListExecutionPlans(
+      {
+        status: input.status
+      },
+      getApiOptions()
+    );
+    return ListExecutionPlansResponseSchema.parse(response).plans;
+  } catch (error) {
+    throw toFleetClientError(error, "Repo Guardian could not load execution plans");
   }
 }
 

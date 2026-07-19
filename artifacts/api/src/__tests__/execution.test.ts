@@ -10,6 +10,7 @@ import {
   type ExecutionPlanResponse,
   ExecutionResultSchema,
   ExecutionPlanResponseSchema,
+  ListExecutionPlansResponseSchema,
   type AnalyzeRepoResponse,
   type CodeReviewFinding,
   type DependencyFinding,
@@ -684,6 +685,52 @@ function createTestApp(
             planId
           };
         },
+        async listPlanSummaries(input = {}) {
+          return [...plans.values()]
+            .filter((state) =>
+              input.status ? state.detail.status === input.status : true
+            )
+            .map((state) => ({
+              analysisRunId: state.detail.analysisRunId,
+              approvalStatus: state.detail.approval.status,
+              cancelledAt: state.detail.cancelledAt,
+              completedAt: state.detail.completedAt,
+              createdAt: state.detail.createdAt,
+              executionId: state.detail.executionId,
+              executionResultStatus: state.detail.executionResultStatus,
+              expiresAt: state.detail.expiresAt,
+              failedAt: state.detail.failedAt,
+              githubInstallationId: state.detail.githubInstallationId ?? null,
+              planId: state.detail.planId,
+              repositoryFullName: state.detail.repository.fullName,
+              selectedIssueCandidateCount:
+                state.detail.selectedIssueCandidateIds.length,
+              selectedPRCandidateCount: state.detail.selectedPRCandidateIds.length,
+              startedAt: state.detail.startedAt,
+              status: state.detail.status,
+              summary: state.executionSummary ?? {
+                approvalRequiredActions: state.actions.filter(
+                  (action) => action.approvalRequired
+                ).length,
+                blockedActions: state.actions.filter(
+                  (action) => action.eligibility === "blocked"
+                ).length,
+                eligibleActions: state.actions.filter(
+                  (action) => action.eligibility === "eligible"
+                ).length,
+                issueSelections: state.detail.selectedIssueCandidateIds.length,
+                prSelections: state.detail.selectedPRCandidateIds.length,
+                skippedActions: state.actions.filter(
+                  (action) => action.actionType === "skip"
+                ).length,
+                totalActions: state.actions.length,
+                totalSelections:
+                  state.detail.selectedIssueCandidateIds.length +
+                  state.detail.selectedPRCandidateIds.length
+              },
+              workspaceId: state.detail.workspaceId
+            }));
+        },
         async markExecutionFailure(input) {
           const state = plans.get(input.planId);
 
@@ -1077,6 +1124,54 @@ describe("POST /api/execution/plan", () => {
         planId: planResponse.body.planId
       })
     ]);
+  });
+
+  it("lists workspace-scoped planned execution summaries and rejects invalid status", async () => {
+    const testApp = createTestApp({
+      readClient: {
+        fetchRepositoryFileText: vi.fn()
+      },
+      writeClient: {
+        createBranchFromDefaultBranch: vi.fn(),
+        commitFileChanges: vi.fn(),
+        createIssue: vi.fn(),
+        openPullRequest: vi.fn()
+      }
+    });
+    const runId = testApp.saveRun(createAnalysisContext());
+
+    const planResponse = await request(testApp.app)
+      .post("/api/execution/plan")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production")
+      .send({
+        analysisRunId: runId,
+        selectedIssueCandidateIds: [],
+        selectedPRCandidateIds: ["pr:workflow-hardening:.github/workflows/ci.yml"]
+      });
+
+    expect(planResponse.status).toBe(200);
+
+    const listed = await request(testApp.app)
+      .get("/api/execution/plans?status=planned")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(listed.status).toBe(200);
+    expect(ListExecutionPlansResponseSchema.parse(listed.body).plans).toEqual([
+      expect.objectContaining({
+        planId: planResponse.body.planId,
+        repositoryFullName: "openai/openai-node",
+        status: "planned"
+      })
+    ]);
+
+    const invalid = await request(testApp.app)
+      .get("/api/execution/plans?status=not-a-status")
+      .set("Authorization", "Bearer dev-secret-key-do-not-use-in-production");
+
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toMatchObject({
+      error: expect.any(String)
+    });
   });
 
   it("creates a bounded supervised batch approval preview from existing plans", async () => {

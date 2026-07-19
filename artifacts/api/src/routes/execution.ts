@@ -26,8 +26,10 @@ import {
   ExecutionBatchExecuteRequestSchema,
   ExecutionBatchExecuteResponseSchema,
   ExecutionExecuteRequestSchema,
+  ExecutionPlanLifecycleStatusSchema,
   ExecutionPlanRequestSchema,
   ExecutionResultSchema,
+  ListExecutionPlansResponseSchema,
   type ExecutionActionPlan,
   type ExecutionBatchPlanItem,
   type ExecutionBatchExecutePlanResult,
@@ -78,6 +80,7 @@ type PlanRepositoryLike = Pick<
   | "finalizeExecution"
   | "getPlanDetail"
   | "getPlanEvents"
+  | "listPlanSummaries"
   | "markExecutionFailure"
   | "recordActionCompleted"
   | "recordActionStarted"
@@ -1517,6 +1520,43 @@ export function createExecutionRouter(
       response.on("close", cleanup);
     }
   );
+
+  executionRouter.get("/execution/plans", requireAuth, async (request, response, next) => {
+    const rawStatus =
+      typeof request.query.status === "string"
+        ? request.query.status
+        : Array.isArray(request.query.status) && typeof request.query.status[0] === "string"
+          ? request.query.status[0]
+          : undefined;
+    const parsedStatus = ExecutionPlanLifecycleStatusSchema.safeParse(rawStatus);
+
+    if (rawStatus && !parsedStatus.success) {
+      response.status(400).json({
+        error: parsedStatus.error.issues[0]?.message ?? "Invalid query string"
+      });
+      return;
+    }
+
+    try {
+      response.json(
+        ListExecutionPlansResponseSchema.parse({
+          plans: await planRepository.listPlanSummaries({
+            status: parsedStatus.success ? parsedStatus.data : undefined,
+            workspaceId: request.authContext!.activeWorkspaceId
+          })
+        })
+      );
+    } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
+        return;
+      }
+
+      next(error);
+    }
+  });
 
   executionRouter.get("/execution/plans/:planId", requireAuth, async (request, response, next) => {
     try {

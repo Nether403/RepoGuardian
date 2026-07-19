@@ -3,7 +3,8 @@ import {
   ExecutionBatchExecuteRequestSchema,
   ExecutionBatchExecuteResponseSchema,
   ExecutionPlanRequestSchema,
-  ExecutionResultSchema
+  ExecutionResultSchema,
+  ListExecutionPlansResponseSchema
 } from "../analyze.js";
 
 describe("execution schemas", () => {
@@ -153,6 +154,42 @@ describe("execution schemas", () => {
           planCount: 2,
           retryablePlans: 0
         }
+      }).success
+    ).toBe(true);
+  });
+
+  it("accepts the list execution plans response contract", () => {
+    expect(
+      ListExecutionPlansResponseSchema.safeParse({
+        plans: [
+          {
+            analysisRunId: "run_one",
+            approvalStatus: "required",
+            cancelledAt: null,
+            completedAt: null,
+            createdAt: "2026-04-06T12:00:00.000Z",
+            executionId: null,
+            executionResultStatus: null,
+            expiresAt: "2026-04-06T13:00:00.000Z",
+            failedAt: null,
+            planId: "plan_one",
+            repositoryFullName: "openai/openai-node",
+            selectedIssueCandidateCount: 0,
+            selectedPRCandidateCount: 1,
+            startedAt: null,
+            status: "planned",
+            summary: {
+              approvalRequiredActions: 1,
+              blockedActions: 0,
+              eligibleActions: 1,
+              issueSelections: 0,
+              prSelections: 1,
+              skippedActions: 0,
+              totalActions: 1,
+              totalSelections: 1
+            }
+          }
+        ]
       }).success
     ).toBe(true);
   });

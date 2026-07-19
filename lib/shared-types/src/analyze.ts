@@ -1519,6 +1519,10 @@ export const ExecutionPlanSummarySchema = z.object({
   summary: ExecutionResultSummarySchema
 });
 
+export const ListExecutionPlansResponseSchema = z.object({
+  plans: z.array(ExecutionPlanSummarySchema)
+});
+
 export const RepositoryActivityKindSchema = z.enum([
   "analysis_job",
   "analysis_run",
@@ -2152,6 +2156,9 @@ export type AutonomySimulationSummary = z.infer<
 >;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
+export type ListExecutionPlansResponse = z.infer<
+  typeof ListExecutionPlansResponseSchema
+>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;
 export type RepositoryExecutionEventType = z.infer<
   typeof RepositoryExecutionEventTypeSchema

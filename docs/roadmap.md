@@ -64,10 +64,14 @@ The next work should finish the 9C alpha and remaining 9B operator surfaces rath
 Immediate priorities:
 
 - preserve stability of the current two-phase and batch execution contracts
-- finish 9C UX for per-plan batch outcomes and broader planned-plan selection
 - surface full 9B autonomy simulation drill-downs in Fleet Admin
 - keep deterministic write-back bounded while the product foundation matures
 - keep tenant and actor boundaries ahead of broader write-back or 9D autonomy
+
+Recently completed (9C UX polish):
+
+- per-plan batch outcomes and retry guidance in Fleet Admin
+- workspace-scoped planned-plan listing for broader batch queue selection
 
 ## Next milestones
 

@@ -431,6 +431,35 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "409":
           $ref: "#/components/responses/ErrorResponse"
+  /api/execution/plans:
+    get:
+      operationId: listExecutionPlans
+      summary: List workspace-scoped execution plan summaries
+      x-repo-guardian-response-type: ListExecutionPlansResponse
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - planned
+              - executing
+              - completed
+              - failed
+              - expired
+              - cancelled
+      responses:
+        "200":
+          description: Workspace-scoped execution plan summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListExecutionPlansResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
   /api/execution/plans/{planId}:
     get:
       operationId: getExecutionPlan
@@ -1247,6 +1276,10 @@ components:
       type: object
       description: Runtime schema is owned by ExecutionPlanSummarySchema in @repo-guardian/shared-types.
       x-repo-guardian-zod-schema: ExecutionPlanSummarySchema
+    ListExecutionPlansResponse:
+      type: object
+      description: Runtime schema is owned by ListExecutionPlansResponseSchema in @repo-guardian/shared-types.
+      x-repo-guardian-zod-schema: ListExecutionPlansResponseSchema
     RepositoryActivityKind:
       type: string
       description: Runtime schema is owned by RepositoryActivityKindSchema in @repo-guardian/shared-types.
