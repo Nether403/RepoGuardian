@@ -2452,6 +2452,50 @@ p {
   color: var(--text-muted);
 }
 
+.batch-result-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.batch-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+}
+
+.batch-result-row > span:first-child {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.batch-result-row strong,
+.batch-result-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-result-row-meta {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.batch-result-errors {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger-strong);
+}
+
 .reachability-block {
   display: flex;
   flex-direction: column;

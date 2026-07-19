@@ -49,6 +49,7 @@ describe("Repo Guardian OpenAPI contract", () => {
       "listAnalysisJobs",
       "listAnalysisRuns",
       "listExecutionPlanEvents",
+      "listExecutionPlans",
       "listGitHubInstallations",
       "listPolicyDecisions",
       "listSweepSchedules",

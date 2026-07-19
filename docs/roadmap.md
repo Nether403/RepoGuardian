@@ -2,7 +2,7 @@
 
 ## Current status
 
-Repo Guardian has completed Milestone 9A fleet remediation intelligence and policy gates. The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration, workspace-scoped GitHub App access, fleet health metrics, and policy-decision audit history layered alongside it:
+Repo Guardian is in Milestone 9C supervised batch execution alpha (9A complete; 9B alpha also present). The implemented contract is centered on a security-hardened, two-phase supervised execution model, with fleet orchestration, workspace-scoped GitHub App access, fleet health metrics, dry-run autonomy simulation, bounded batch approval/execution, and policy-decision audit history layered alongside it:
 
 - `GET /api/auth/session`
 - `GET /api/auth/github/start`
@@ -16,6 +16,8 @@ Repo Guardian has completed Milestone 9A fleet remediation intelligence and poli
 - `POST /api/analyze`
 - `POST /api/execution/plan` (Planning)
 - `POST /api/execution/execute` (Execution)
+- `POST /api/execution/batch/plan` (Batch planning)
+- `POST /api/execution/batch/execute` (Batch execution)
 - `GET /api/execution/plans/{planId}`
 - `GET /api/execution/plans/{planId}/events`
 - `GET /api/runs`
@@ -45,26 +47,31 @@ The current platform focus is still bounded, deterministic, and approval-gated:
 - deterministic repository analysis across the currently supported ecosystems
 - deterministic patch planning for bounded issue and PR candidate slices
 - explicit approval before any GitHub write-capable execution step
+- actor-bound approval tokens for single-plan and batch execute
 - durable saved-run history, plan detail reads, and execution audit history for supervised review workflows
+- durable `execute_batch` policy-decision audit details with batch identity, plan ids/hashes, phase, and outcome status
 - tracked repositories, async analysis jobs, and sweep schedules for multi-repository oversight
-- Fleet Admin web surfaces for fleet status, remediation health, attention queues, job control, schedule control, and repository timeline drill-downs
+- Fleet Admin web surfaces for fleet status, remediation health, attention queues, job control, schedule control, repository timeline drill-downs, and supervised batch queues
 - cursor-native repository timelines with on-demand typed event detail expansion
 - workspace, membership, installation, and installation-repository persistence for the first 8A boundary
 - server-side filtered and paginated policy-decision history
+- dry-run autonomy simulation attached to fleet status (9B alpha)
 
 ## Current priorities
 
-The next work should turn the current installation-aware alpha into a measurable, policy-governed fleet product rather than broaden the write surface prematurely.
+The next work should finish the 9C alpha and remaining 9B operator surfaces rather than broaden the write surface prematurely.
 
 Immediate priorities:
 
-- preserve stability of the current two-phase execution contract
-- validate and harden workspace, role, and installation boundaries
-- finish production-grade GitHub App installation-to-workspace linking
-- add fleet remediation metrics on top of durable execution history
-- add explicit policy gates for analysis, planning, scheduling, and execution decisions
+- preserve stability of the current two-phase and batch execution contracts
+- surface full 9B autonomy simulation drill-downs in Fleet Admin
 - keep deterministic write-back bounded while the product foundation matures
-- keep tenant and actor boundaries ahead of broader write-back
+- keep tenant and actor boundaries ahead of broader write-back or 9D autonomy
+
+Recently completed (9C UX polish):
+
+- per-plan batch outcomes and retry guidance in Fleet Admin
+- workspace-scoped planned-plan listing for broader batch queue selection
 
 ## Next milestones
 
@@ -177,10 +184,11 @@ Implemented alpha:
 
 - `POST /api/execution/batch/plan` creates a bounded batch approval preview for up to five existing execution plans
 - batch previews include one batch hash, short-lived approval token, explicit confirmation text, per-plan summaries, repository counts, and aggregate action counts
-- batch planning records a workspace-scoped policy decision with actor attribution before returning the approval preview
-- `POST /api/execution/batch/execute` requires the batch token, hash, plan hashes, and explicit confirmation text before executing selected plans
+- batch planning records a workspace-scoped policy decision with actor attribution and durable batch identity details (`batchId`, `batchHash`, plan ids/hashes, phase)
+- `POST /api/execution/batch/execute` requires the batch token, hash, plan hashes, matching actor (`sub`), and explicit confirmation text before executing selected plans
 - each plan still runs through the same per-plan write policy, validation, action audit events, and tracked-PR persistence as single-plan execution
-- batch execution reports per-plan outcomes, partial success, and retry guidance that requires regenerating failed plans when a write attempt has already occurred
+- batch execution records an `execute_batch` policy decision with outcome status and reports per-plan outcomes, partial success, and retry guidance that requires regenerating failed plans when a write attempt has already occurred
+- single-plan execute also requires the approval token actor to match the authenticated user
 
 ### Milestone 9D: Opt-in Controlled Autonomy
 

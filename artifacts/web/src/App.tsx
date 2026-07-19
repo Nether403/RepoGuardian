@@ -9,6 +9,7 @@ import type {
   ExecutionPlanDetailResponse,
   ExecutionPlanEventsResponse,
   ExecutionPlanResponse,
+  ExecutionPlanSummary,
   ExecutionResult,
   FleetStatusResponse,
   FleetTrackedRepositoryStatus,
@@ -104,6 +105,7 @@ import {
   getTrackedRepositoryTimelineEvent,
   listAnalysisJobs,
   listExecutionPlanEvents,
+  listExecutionPlans,
   listPolicyDecisions,
   listSweepSchedules,
   listTrackedRepositories,
@@ -136,6 +138,7 @@ type FleetInspectorSelection =
 type FleetAdminSnapshot = {
   analysisJobs: AnalysisJob[];
   fleetStatus: FleetStatusResponse;
+  plannedExecutionPlans: ExecutionPlanSummary[];
   policyDecisions: ListPolicyDecisionEventsResponse;
   sweepSchedules: SweepSchedule[];
   trackedRepositories: TrackedRepository[];
@@ -315,12 +318,14 @@ async function loadFleetAdminSnapshot(): Promise<FleetAdminSnapshot> {
     trackedRepositories,
     fleetStatus,
     analysisJobs,
+    plannedExecutionPlans,
     sweepSchedules,
     policyDecisions
   ] = await Promise.all([
     listTrackedRepositories(),
     getFleetStatus(),
     listAnalysisJobs(),
+    listExecutionPlans({ status: "planned" }),
     listSweepSchedules(),
     listPolicyDecisions({
       page: 1,
@@ -331,6 +336,7 @@ async function loadFleetAdminSnapshot(): Promise<FleetAdminSnapshot> {
   return {
     analysisJobs,
     fleetStatus,
+    plannedExecutionPlans,
     policyDecisions,
     sweepSchedules,
     trackedRepositories
@@ -479,6 +485,9 @@ function App() {
 
   const [analysisJobs, setAnalysisJobs] = useState<AnalysisJob[]>([]);
   const [fleetStatus, setFleetStatus] = useState<FleetStatusResponse | null>(null);
+  const [plannedExecutionPlans, setPlannedExecutionPlans] = useState<
+    ExecutionPlanSummary[]
+  >([]);
   const [fleetErrorMessage, setFleetErrorMessage] = useState<string | null>(null);
   const [isFleetLoading, setIsFleetLoading] = useState(false);
   const [isPolicyDecisionsLoading, setIsPolicyDecisionsLoading] = useState(false);
@@ -618,18 +627,15 @@ function App() {
     fleetStatus,
     trackedRepositories
   });
-  const batchPlanOptions: BatchExecutionPlanOption[] = trackedRepositoryStatuses
+  const batchPlanOptions: BatchExecutionPlanOption[] = plannedExecutionPlans
     .filter(
-      (entry) =>
-        entry.latestPlanId &&
-        entry.latestPlanStatus === "planned" &&
-        entry.patchPlanCounts.executable > 0
+      (plan) => plan.status === "planned" && plan.summary.eligibleActions > 0
     )
-    .map((entry) => ({
-      eligibleActions: entry.patchPlanCounts.executable,
-      planId: entry.latestPlanId!,
-      repositoryFullName: entry.trackedRepository.fullName,
-      totalActions: entry.patchPlanCounts.executable + entry.patchPlanCounts.blocked
+    .map((plan) => ({
+      eligibleActions: plan.summary.eligibleActions,
+      planId: plan.planId,
+      repositoryFullName: plan.repositoryFullName,
+      totalActions: plan.summary.totalActions
     }));
   const selectedJobDetail =
     fleetInspectorSelection?.kind === "job"
@@ -702,6 +708,12 @@ function App() {
   function applyFleetAdminSnapshot(snapshot: FleetAdminSnapshot) {
     setAnalysisJobs(snapshot.analysisJobs);
     setFleetStatus(snapshot.fleetStatus);
+    setPlannedExecutionPlans(snapshot.plannedExecutionPlans);
+    setBatchSelectedPlanIds((current) =>
+      current.filter((planId) =>
+        snapshot.plannedExecutionPlans.some((plan) => plan.planId === planId)
+      )
+    );
     setPolicyDecisionsPage(snapshot.policyDecisions);
     setSweepSchedules(snapshot.sweepSchedules);
     setTrackedRepositories(snapshot.trackedRepositories);
@@ -1214,6 +1226,12 @@ function App() {
       setGitHubInstallations([]);
       setInstallationRepositories([]);
       setFleetStatus(null);
+      setPlannedExecutionPlans([]);
+      setBatchSelectedPlanIds([]);
+      setBatchPreview(null);
+      setBatchExecuteResult(null);
+      setBatchApprovalGranted(false);
+      setBatchErrorMessage(null);
       setPolicyDecisionsPage({
         decisions: [],
         page: 1,
@@ -1243,6 +1261,12 @@ function App() {
     setStoredActiveWorkspaceId(workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setFleetStatus(null);
+    setPlannedExecutionPlans([]);
+    setBatchSelectedPlanIds([]);
+    setBatchPreview(null);
+    setBatchExecuteResult(null);
+    setBatchApprovalGranted(false);
+    setBatchErrorMessage(null);
     setPolicyDecisionsPage({
       decisions: [],
       page: 1,

@@ -21,10 +21,12 @@ import {
   GitHubInstallationSchema,
   GetAnalysisRunResponseSchema,
   ListAnalysisJobsResponseSchema,
+  ListExecutionPlansResponseSchema,
   ListGitHubInstallationsResponseSchema,
   ListPolicyDecisionEventsResponseSchema,
   ListSweepSchedulesResponseSchema,
   ListTrackedRepositoriesResponseSchema,
+  ExecutionPlanSummarySchema,
   SweepScheduleSchema,
   TrackedRepositoryHistoryResponseSchema,
   TrackedRepositorySchema,
@@ -111,6 +113,40 @@ function mockAuthenticatedFetch(inner: (url: string, init?: RequestInit) => Prom
           pageSize: 12,
           totalDecisions: policyDecisions.length,
           totalPages: 1
+        })
+      );
+    }
+
+    if (url === "/api/execution/plans" || url.startsWith("/api/execution/plans?")) {
+      const fleetStatus = createFleetStatusFixture();
+      const plans = fleetStatus.trackedRepositories
+        .filter(
+          (entry) =>
+            entry.latestPlanId &&
+            entry.latestPlanStatus === "planned" &&
+            entry.patchPlanCounts.executable > 0
+        )
+        .map((entry) =>
+          createExecutionPlanSummaryFixture({
+            planId: entry.latestPlanId!,
+            repositoryFullName: entry.trackedRepository.fullName,
+            summary: {
+              approvalRequiredActions: entry.patchPlanCounts.executable,
+              blockedActions: entry.patchPlanCounts.blocked,
+              eligibleActions: entry.patchPlanCounts.executable,
+              issueSelections: 0,
+              prSelections: entry.patchPlanCounts.executable,
+              skippedActions: 0,
+              totalActions:
+                entry.patchPlanCounts.executable + entry.patchPlanCounts.blocked,
+              totalSelections: entry.patchPlanCounts.executable
+            }
+          })
+        );
+
+      return createJsonResponse(
+        ListExecutionPlansResponseSchema.parse({
+          plans
         })
       );
     }
@@ -1042,6 +1078,37 @@ function createTrackedRepositoryFixture(overrides: Record<string, unknown> = {})
     owner: "openai",
     repo: "openai-node",
     updatedAt: "2026-04-12T10:00:00.000Z",
+    ...overrides
+  });
+}
+
+function createExecutionPlanSummaryFixture(overrides: Record<string, unknown> = {}) {
+  return ExecutionPlanSummarySchema.parse({
+    analysisRunId: "run_one",
+    approvalStatus: "required",
+    cancelledAt: null,
+    completedAt: null,
+    createdAt: "2026-04-12T10:03:00.000Z",
+    executionId: null,
+    executionResultStatus: null,
+    expiresAt: "2026-04-12T11:03:00.000Z",
+    failedAt: null,
+    planId: "plan_one",
+    repositoryFullName: "openai/openai-node",
+    selectedIssueCandidateCount: 0,
+    selectedPRCandidateCount: 1,
+    startedAt: null,
+    status: "planned",
+    summary: {
+      approvalRequiredActions: 1,
+      blockedActions: 0,
+      eligibleActions: 1,
+      issueSelections: 0,
+      prSelections: 1,
+      skippedActions: 0,
+      totalActions: 1,
+      totalSelections: 1
+    },
     ...overrides
   });
 }
@@ -3582,6 +3649,94 @@ describe("App", () => {
     expect(queueBadge).not.toHaveAttribute("aria-live");
   });
 
+  it("loads planned execution plans beyond latestPlanId into the batch queue", async () => {
+    const user = userEvent.setup();
+    const fleetStatus = createFleetStatusFixture();
+    const planRequests: string[] = [];
+
+    vi.stubGlobal(
+      "fetch",
+      mockAuthenticatedFetch(async (url) => {
+        if (url === "/api/tracked-repositories") {
+          return createJsonResponse(
+            ListTrackedRepositoriesResponseSchema.parse({
+              repositories: [createTrackedRepositoryFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/fleet/status") {
+          return createJsonResponse(fleetStatus);
+        }
+
+        if (url === "/api/analyze/jobs") {
+          return createJsonResponse(
+            ListAnalysisJobsResponseSchema.parse({
+              jobs: fleetStatus.recentJobs
+            })
+          );
+        }
+
+        if (url === "/api/sweep-schedules") {
+          return createJsonResponse(
+            ListSweepSchedulesResponseSchema.parse({
+              schedules: [createSweepScheduleFixture()]
+            })
+          );
+        }
+
+        if (url === "/api/execution/plans" || url.startsWith("/api/execution/plans?")) {
+          planRequests.push(url);
+          return createJsonResponse(
+            ListExecutionPlansResponseSchema.parse({
+              plans: [
+                createExecutionPlanSummaryFixture({
+                  planId: "plan_older",
+                  repositoryFullName: "openai/openai-node",
+                  summary: {
+                    approvalRequiredActions: 1,
+                    blockedActions: 0,
+                    eligibleActions: 1,
+                    issueSelections: 0,
+                    prSelections: 1,
+                    skippedActions: 0,
+                    totalActions: 1,
+                    totalSelections: 1
+                  }
+                }),
+                createExecutionPlanSummaryFixture({
+                  planId: "plan_one",
+                  repositoryFullName: "openai/openai-node",
+                  summary: {
+                    approvalRequiredActions: 2,
+                    blockedActions: 1,
+                    eligibleActions: 2,
+                    issueSelections: 0,
+                    prSelections: 2,
+                    skippedActions: 0,
+                    totalActions: 3,
+                    totalSelections: 2
+                  }
+                })
+              ]
+            })
+          );
+        }
+
+        return createJsonResponse({ error: "Unhandled" }, false, 500);
+      })
+    );
+
+    render(<App />);
+    await openFleetAdmin(user);
+
+    expect(planRequests[0]).toBe("/api/execution/plans?status=planned");
+    const batchPanel = within(getPanelByHeading(/Supervised batch queue/i));
+    expect(batchPanel.getByText("plan_older")).toBeInTheDocument();
+    expect(batchPanel.getByText("plan_one")).toBeInTheDocument();
+    expect(batchPanel.getAllByText("openai/openai-node")).toHaveLength(2);
+  });
+
   it("filters policy decisions and expands policy decision details in fleet admin", async () => {
     const user = userEvent.setup();
     const fleetStatus = createFleetStatusFixture();
@@ -3943,6 +4098,14 @@ describe("App", () => {
         return createJsonResponse(
           ListSweepSchedulesResponseSchema.parse({
             schedules: [createSweepScheduleFixture()]
+          })
+        );
+      }
+
+      if (url === "/api/execution/plans" || url.startsWith("/api/execution/plans?")) {
+        return createJsonResponse(
+          ListExecutionPlansResponseSchema.parse({
+            plans: []
           })
         );
       }

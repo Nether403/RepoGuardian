@@ -95,6 +95,9 @@ Implemented fleet surfaces:
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline`
 - `GET /api/tracked-repositories/{trackedRepositoryId}/timeline/{activityId}`
 - `GET /api/fleet/status`
+- `GET /api/policy-decisions`
+- `POST /api/execution/batch/plan`
+- `POST /api/execution/batch/execute`
 - `GET /api/analyze/jobs`
 - `POST /api/analyze/jobs`
 - `GET /api/analyze/jobs/{jobId}`
