@@ -787,12 +787,13 @@ export function createFleetRouter(input: {
 
   fleetRouter.get("/fleet/status", async (request, response, next) => {
     try {
-      const [fleetStatus, policyDecisions] = await Promise.all([
+      const [fleetStatus, policyDecisions, sweepSchedules] = await Promise.all([
         input.analysisJobProcessor.getFleetStatus(),
         policyDecisionRepository.listRecentDecisions({
           limit: 12,
           workspaceId: request.authContext?.activeWorkspaceId
-        })
+        }),
+        input.analysisJobProcessor.listSweepSchedules()
       ]);
       const normalizedFleetStatus = FleetStatusResponseSchema.parse({
         ...fleetStatus,
@@ -804,6 +805,8 @@ export function createFleetRouter(input: {
           ...normalizedFleetStatus,
           autonomySimulation: simulateAutonomyPolicy({
             generatedAt: normalizedFleetStatus.generatedAt,
+            recentJobs: normalizedFleetStatus.recentJobs,
+            sweepSchedules,
             trackedPullRequests: normalizedFleetStatus.trackedPullRequests,
             trackedRepositories: normalizedFleetStatus.trackedRepositories
           }),

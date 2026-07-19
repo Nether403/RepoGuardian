@@ -332,4 +332,133 @@ describe("simulateAutonomyPolicy", () => {
       )?.readiness
     ).toBe("blocked");
   });
+
+  it("simulates plan-only sweep schedules without unattended writes", () => {
+    const summary = simulateAutonomyPolicy({
+      generatedAt: "2026-04-12T11:00:00.000Z",
+      recentJobs: [
+        {
+          attemptCount: 1,
+          completedAt: null,
+          errorMessage: "rate limited",
+          failedAt: "2026-04-12T10:30:00.000Z",
+          jobId: "job_sweep_failed",
+          jobKind: "run_scheduled_sweep",
+          label: null,
+          maxAttempts: 1,
+          planId: null,
+          queuedAt: "2026-04-12T10:20:00.000Z",
+          repoInput: "[scheduled-sweep]",
+          repositoryFullName: "[scheduled-sweep]",
+          requestedByUserId: "usr_system",
+          runId: null,
+          scheduledSweepId: "sweep_review",
+          startedAt: "2026-04-12T10:21:00.000Z",
+          status: "failed",
+          trackedRepositoryId: null,
+          updatedAt: "2026-04-12T10:30:00.000Z"
+        }
+      ],
+      sweepSchedules: [
+        {
+          cadence: "weekly",
+          createdAt: "2026-04-12T10:00:00.000Z",
+          isActive: true,
+          label: "Ready sweep",
+          lastTriggeredAt: null,
+          nextRunAt: "2026-04-19T10:00:00.000Z",
+          scheduleId: "sweep_ready",
+          selectionStrategy: "all_executable_prs",
+          updatedAt: "2026-04-12T10:00:00.000Z"
+        },
+        {
+          cadence: "weekly",
+          createdAt: "2026-04-12T10:00:00.000Z",
+          isActive: false,
+          label: "Inactive sweep",
+          lastTriggeredAt: null,
+          nextRunAt: "2026-04-19T10:00:00.000Z",
+          scheduleId: "sweep_inactive",
+          selectionStrategy: "all_executable_prs",
+          updatedAt: "2026-04-12T10:00:00.000Z"
+        },
+        {
+          cadence: "weekly",
+          createdAt: "2026-04-12T10:00:00.000Z",
+          isActive: true,
+          label: "Failed sweep",
+          lastTriggeredAt: "2026-04-12T10:20:00.000Z",
+          nextRunAt: "2026-04-19T10:00:00.000Z",
+          scheduleId: "sweep_review",
+          selectionStrategy: "all_executable_prs",
+          updatedAt: "2026-04-12T10:20:00.000Z"
+        }
+      ],
+      trackedPullRequests: [],
+      trackedRepositories: [createTrackedStatus()]
+    });
+
+    expect(summary.comparison.simulatedAutonomousFlow.unattendedWrites).toBe(0);
+    expect(summary.sweepScheduleOutcomeCounts).toEqual({
+      manualReview: 1,
+      wouldAllow: 1,
+      wouldBlock: 1
+    });
+    expect(
+      summary.sweepSchedulePreviews.find(
+        (preview) => preview.scheduleId === "sweep_ready"
+      )
+    ).toMatchObject({
+      mode: "plan_only_dry_run",
+      outcome: "would_allow"
+    });
+    expect(
+      summary.sweepSchedulePreviews.find(
+        (preview) => preview.scheduleId === "sweep_inactive"
+      )?.outcome
+    ).toBe("would_block");
+    expect(
+      summary.sweepSchedulePreviews.find(
+        (preview) => preview.scheduleId === "sweep_review"
+      )?.outcome
+    ).toBe("manual_review");
+    expect(
+      summary.recommendations.some(
+        (recommendation) =>
+          recommendation.recommendationId === "keep-plan-only-sweep-schedules"
+      )
+    ).toBe(true);
+  });
+
+  it("adds richer readiness warnings for stale plans and inactive plan lifecycle", () => {
+    const summary = simulateAutonomyPolicy({
+      generatedAt: "2026-04-12T11:00:00.000Z",
+      trackedPullRequests: [],
+      trackedRepositories: [
+        {
+          ...createTrackedStatus(),
+          latestPlanStatus: "expired",
+          patchPlanCounts: {
+            blocked: 0,
+            executable: 2,
+            stale: 3
+          }
+        }
+      ]
+    });
+
+    expect(summary.repositoryReadiness[0]?.readiness).toBe("needs_review");
+    expect(summary.repositoryReadiness[0]?.warnings).toEqual(
+      expect.arrayContaining([
+        "3 patch plans are stale.",
+        "Latest execution plan is expired."
+      ])
+    );
+    expect(summary.actionPreviews[0]?.evidence).toEqual(
+      expect.arrayContaining([
+        "stalePatchPlans=3",
+        "blockedPatchPlans=0"
+      ])
+    );
+  });
 });

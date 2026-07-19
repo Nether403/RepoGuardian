@@ -1451,11 +1451,39 @@ function createFleetStatusFixture() {
           trackedRepositoryId: "tracked_one",
           warnings: [
             "Repository is not linked to a GitHub App installation.",
+            "2 patch plans are stale.",
             "Repository already has an open tracked remediation PR."
           ]
         }
       ],
-      simulationMode: "dry_run"
+      simulationMode: "dry_run",
+      sweepScheduleOutcomeCounts: {
+        manualReview: 0,
+        wouldAllow: 1,
+        wouldBlock: 0
+      },
+      sweepSchedulePreviews: [
+        {
+          cadence: "weekly",
+          candidateRepositoryCount: 1,
+          evidence: [
+            "cadence=weekly",
+            "selectionStrategy=all_executable_prs",
+            "isActive=true",
+            "candidateRepositories=1",
+            "lastTriggeredAt=never"
+          ],
+          isActive: true,
+          label: "Weekly dependency review",
+          mode: "plan_only_dry_run",
+          outcome: "would_allow",
+          reasons: [
+            "Plan-only sweep would enqueue analysis and execution-plan generation without unattended writes."
+          ],
+          scheduleId: "sweep_one",
+          selectionStrategy: "all_executable_prs"
+        }
+      ]
     },
     trackedPullRequests: [
       {
@@ -3622,6 +3650,18 @@ describe("App", () => {
     expect(screen.getAllByText("Manual review").length).toBeGreaterThan(0);
     expect(screen.getByText("Would block")).toBeInTheDocument();
     expect(screen.getByText("No unattended writes")).toBeInTheDocument();
+    expect(screen.getByText(/Autonomy drill-down/i)).toBeInTheDocument();
+    expect(screen.getByText(/Manual vs simulated flow/i)).toBeInTheDocument();
+    const readiness = within(screen.getByLabelText("Repository readiness"));
+    expect(readiness.getByText("Latest analysis is stale.")).toBeInTheDocument();
+    expect(readiness.getByText("2 patch plans are stale.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Block autonomy where no safe deterministic action exists")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Blast radius:/i)).toBeInTheDocument();
+    const sweeps = within(screen.getByLabelText("Sweep schedule dry-run"));
+    expect(sweeps.getByText(/plan only dry run/i)).toBeInTheDocument();
+    expect(screen.getByText("dry-run would allow")).toBeInTheDocument();
     const policyDecisionsPanel = within(getPanelByHeading(/Policy decisions/i));
     expect(policyDecisionsPanel.getByText("Approved write execution may proceed.")).toBeInTheDocument();
     expect(policyDecisionsPanel.getByText("openai/openai-node")).toBeInTheDocument();

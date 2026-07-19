@@ -1955,6 +1955,29 @@ p {
   line-height: 1.5;
 }
 
+.autonomy-drilldown,
+.autonomy-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.autonomy-section {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.autonomy-signal-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--danger-strong);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.autonomy-signal-list-muted {
+  color: var(--text-muted);
+}
+
 .fleet-entity-card {
   display: grid;
   gap: var(--space-3);

@@ -1,5 +1,6 @@
 import type { FleetStatusResponse } from "@repo-guardian/shared-types";
 import { formatTimestamp } from "../features/analysis/view-model";
+import { AutonomySimulationDrilldown } from "./AutonomySimulationDrilldown";
 import { Panel } from "./Panel";
 import { StatusBadge } from "./StatusBadge";
 import { Button, EmptyState } from "./ui";
@@ -223,6 +224,7 @@ export function FleetOverviewPanel({
                     value: simulation.outcomeCounts.wouldBlock
                   })}
                 </div>
+                <AutonomySimulationDrilldown simulation={simulation} />
               </>
             ) : null}
           </>
