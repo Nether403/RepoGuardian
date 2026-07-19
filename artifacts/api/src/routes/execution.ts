@@ -26,8 +26,10 @@ import {
   ExecutionBatchExecuteRequestSchema,
   ExecutionBatchExecuteResponseSchema,
   ExecutionExecuteRequestSchema,
+  ExecutionPlanLifecycleStatusSchema,
   ExecutionPlanRequestSchema,
   ExecutionResultSchema,
+  ListExecutionPlansResponseSchema,
   type ExecutionActionPlan,
   type ExecutionBatchPlanItem,
   type ExecutionBatchExecutePlanResult,
@@ -51,8 +53,21 @@ import {
   type ExecutionPlanNotificationInput,
   type ExecutionPlanNotificationType
 } from "../lib/notifications.js";
-import { mintApprovalToken, verifyApprovalToken } from "../lib/token.js";
+import {
+  mintApprovalToken,
+  verifyApprovalToken,
+  type ApprovalTokenPayload
+} from "../lib/token.js";
 import { requireAuth, requireSseAuth, requireWorkspaceRole } from "../middleware/auth.js";
+
+type BatchExecutionAuditDetails = {
+  batchHash?: string;
+  batchId?: string;
+  phase: "plan" | "execute";
+  planHashes: string[];
+  planIds: string[];
+  status?: string;
+};
 
 type RunRepositoryLike = Pick<
   AnalysisRunRepository,
@@ -65,6 +80,7 @@ type PlanRepositoryLike = Pick<
   | "finalizeExecution"
   | "getPlanDetail"
   | "getPlanEvents"
+  | "listPlanSummaries"
   | "markExecutionFailure"
   | "recordActionCompleted"
   | "recordActionStarted"
@@ -274,17 +290,48 @@ async function recordExecutionPlanPolicyDecision(input: {
   });
 }
 
+function assertApprovalTokenActor(
+  tokenPayload: ApprovalTokenPayload,
+  actorUserId: string
+): void {
+  if (tokenPayload.sub !== actorUserId) {
+    throw new ExecutionRequestError(403, {
+      error: "Approval token was issued for a different actor."
+    });
+  }
+}
+
 async function recordBatchExecutionPolicyDecision(input: {
   actorUserId: string;
+  batchAudit: BatchExecutionAuditDetails;
   decision: ExecutionWritePolicyDecision;
   policyDecisionRepository: PolicyDecisionRepositoryLike;
   workspaceId: string;
 }): Promise<void> {
+  const details: Record<string, unknown> = {
+    ...(input.decision.details ?? {}),
+    phase: input.batchAudit.phase,
+    planHashes: input.batchAudit.planHashes,
+    planIds: input.batchAudit.planIds
+  };
+
+  if (input.batchAudit.batchId) {
+    details.batchId = input.batchAudit.batchId;
+  }
+
+  if (input.batchAudit.batchHash) {
+    details.batchHash = input.batchAudit.batchHash;
+  }
+
+  if (input.batchAudit.status) {
+    details.status = input.batchAudit.status;
+  }
+
   await input.policyDecisionRepository.recordDecision({
     actionType: "execute_batch",
     actorUserId: input.actorUserId,
     decision: input.decision.decision,
-    details: input.decision.details,
+    details,
     githubInstallationId: null,
     planId: null,
     reason: input.decision.reason,
@@ -796,15 +843,21 @@ export function createExecutionRouter(
             totalActions: plan.summary.totalActions
           }))
         });
-
-        await recordBatchExecutionPolicyDecision({
-          actorUserId: request.authContext!.user.id,
-          decision: policyDecision,
-          policyDecisionRepository,
-          workspaceId
-        });
+        const planIds = plans.map((plan) => plan.planId);
+        const planHashes = plans.map((plan) => plan.planHash);
 
         if (policyDecision.decision !== "allowed") {
+          await recordBatchExecutionPolicyDecision({
+            actorUserId: request.authContext!.user.id,
+            batchAudit: {
+              phase: "plan",
+              planHashes,
+              planIds
+            },
+            decision: policyDecision,
+            policyDecisionRepository,
+            workspaceId
+          });
           response.status(403).json({ error: policyDecision.reason });
           return;
         }
@@ -824,6 +877,20 @@ export function createExecutionRouter(
           workspaceId,
           15
         );
+
+        await recordBatchExecutionPolicyDecision({
+          actorUserId: request.authContext!.user.id,
+          batchAudit: {
+            batchHash,
+            batchId,
+            phase: "plan",
+            planHashes,
+            planIds
+          },
+          decision: policyDecision,
+          policyDecisionRepository,
+          workspaceId
+        });
 
         response.json(
           ExecutionBatchPlanResponseSchema.parse({
@@ -883,6 +950,7 @@ export function createExecutionRouter(
       try {
         const workspaceId =
           parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+        const actorUserId = request.authContext!.user.id;
         const tokenPayload = verifyApprovalToken(parsedRequest.data.approvalToken);
 
         if (
@@ -893,6 +961,8 @@ export function createExecutionRouter(
           response.status(400).json({ error: "Token does not match batch details." });
           return;
         }
+
+        assertApprovalTokenActor(tokenPayload, actorUserId);
 
         const planDetails = await Promise.all(
           parsedRequest.data.plans.map((plan) =>
@@ -923,6 +993,8 @@ export function createExecutionRouter(
           return;
         }
 
+        const planIds = parsedRequest.data.plans.map((plan) => plan.planId);
+        const planHashes = parsedRequest.data.plans.map((plan) => plan.planHash);
         const policyDecision = evaluateBatchExecutionPolicy({
           maxPlans: MAX_BATCH_PLANS,
           plans: planDetails.map((detail) => {
@@ -940,14 +1012,20 @@ export function createExecutionRouter(
           })
         });
 
-        await recordBatchExecutionPolicyDecision({
-          actorUserId: request.authContext!.user.id,
-          decision: policyDecision,
-          policyDecisionRepository,
-          workspaceId
-        });
-
         if (policyDecision.decision !== "allowed") {
+          await recordBatchExecutionPolicyDecision({
+            actorUserId,
+            batchAudit: {
+              batchHash: parsedRequest.data.batchHash,
+              batchId: parsedRequest.data.batchId,
+              phase: "execute",
+              planHashes,
+              planIds
+            },
+            decision: policyDecision,
+            policyDecisionRepository,
+            workspaceId
+          });
           response.status(403).json({ error: policyDecision.reason });
           return;
         }
@@ -961,7 +1039,7 @@ export function createExecutionRouter(
 
           try {
             const result = await executePersistedPlan({
-              actorUserId: request.authContext!.user.id,
+              actorUserId,
               planHash: plan.planHash,
               planId: plan.planId,
               workspaceId
@@ -1017,6 +1095,21 @@ export function createExecutionRouter(
               ? "partial_success"
               : "failed";
 
+        await recordBatchExecutionPolicyDecision({
+          actorUserId,
+          batchAudit: {
+            batchHash: parsedRequest.data.batchHash,
+            batchId: parsedRequest.data.batchId,
+            phase: "execute",
+            planHashes,
+            planIds,
+            status
+          },
+          decision: policyDecision,
+          policyDecisionRepository,
+          workspaceId
+        });
+
         response.json(
           ExecutionBatchExecuteResponseSchema.parse({
             batchHash: parsedRequest.data.batchHash,
@@ -1040,6 +1133,11 @@ export function createExecutionRouter(
           })
         );
       } catch (error) {
+        if (error instanceof ExecutionRequestError) {
+          response.status(error.status).json(error.body);
+          return;
+        }
+
         const mapped = mapPersistenceError(error);
 
         if (mapped) {
@@ -1077,20 +1175,22 @@ export function createExecutionRouter(
     }
 
     try {
+      const workspaceId =
+        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+      const actorUserId = request.authContext!.user.id;
       const tokenPayload = verifyApprovalToken(parsedRequest.data.approvalToken);
 
       if (
         tokenPayload.planId !== parsedRequest.data.planId ||
         tokenPayload.planHash !== parsedRequest.data.planHash ||
-        tokenPayload.workspaceId !==
-          (parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId)
+        tokenPayload.workspaceId !== workspaceId
       ) {
         response.status(400).json({ error: "Token does not match plan details." });
         return;
       }
 
-      const workspaceId =
-        parsedRequest.data.workspaceId ?? request.authContext!.activeWorkspaceId;
+      assertApprovalTokenActor(tokenPayload, actorUserId);
+
       const detail = await planRepository.getPlanDetail(parsedRequest.data.planId, workspaceId);
       const planHashMatches = detail.planHash === parsedRequest.data.planHash;
       const policyDecision = evaluateExecutionWritePolicy({
@@ -1274,6 +1374,11 @@ export function createExecutionRouter(
         next(error);
       }
     } catch (error) {
+      if (error instanceof ExecutionRequestError) {
+        response.status(error.status).json(error.body);
+        return;
+      }
+
       const mapped = mapPersistenceError(error);
 
       if (mapped) {
@@ -1415,6 +1520,43 @@ export function createExecutionRouter(
       response.on("close", cleanup);
     }
   );
+
+  executionRouter.get("/execution/plans", requireAuth, async (request, response, next) => {
+    const rawStatus =
+      typeof request.query.status === "string"
+        ? request.query.status
+        : Array.isArray(request.query.status) && typeof request.query.status[0] === "string"
+          ? request.query.status[0]
+          : undefined;
+    const parsedStatus = ExecutionPlanLifecycleStatusSchema.safeParse(rawStatus);
+
+    if (rawStatus && !parsedStatus.success) {
+      response.status(400).json({
+        error: parsedStatus.error.issues[0]?.message ?? "Invalid query string"
+      });
+      return;
+    }
+
+    try {
+      response.json(
+        ListExecutionPlansResponseSchema.parse({
+          plans: await planRepository.listPlanSummaries({
+            status: parsedStatus.success ? parsedStatus.data : undefined,
+            workspaceId: request.authContext!.activeWorkspaceId
+          })
+        })
+      );
+    } catch (error) {
+      const mapped = mapPersistenceError(error);
+
+      if (mapped) {
+        response.status(mapped.status).json(mapped.body);
+        return;
+      }
+
+      next(error);
+    }
+  });
 
   executionRouter.get("/execution/plans/:planId", requireAuth, async (request, response, next) => {
     try {

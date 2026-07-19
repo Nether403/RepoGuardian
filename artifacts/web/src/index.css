@@ -1955,6 +1955,29 @@ p {
   line-height: 1.5;
 }
 
+.autonomy-drilldown,
+.autonomy-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.autonomy-section {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.autonomy-signal-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--danger-strong);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.autonomy-signal-list-muted {
+  color: var(--text-muted);
+}
+
 .fleet-entity-card {
   display: grid;
   gap: var(--space-3);
@@ -2450,6 +2473,50 @@ p {
   font-family: var(--font-mono);
   font-size: 0.74rem;
   color: var(--text-muted);
+}
+
+.batch-result-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.batch-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+}
+
+.batch-result-row > span:first-child {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.batch-result-row strong,
+.batch-result-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-result-row-meta {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.batch-result-errors {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger-strong);
 }
 
 .reachability-block {

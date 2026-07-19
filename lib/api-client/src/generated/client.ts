@@ -31,6 +31,7 @@ import type {
   GetAnalysisRunResponse,
   ListAnalysisJobsResponse,
   ListAnalysisRunsResponse,
+  ListExecutionPlansResponse,
   ListGitHubInstallationsResponse,
   ListPolicyDecisionEventsResponse,
   ListSweepSchedulesResponse,
@@ -259,6 +260,15 @@ export async function enqueueExecutionPlanJob(requestBody: EnqueueExecutionPlanJ
     method: "POST",
     path: `/api/execution/plan/jobs`,
     body: requestBody,
+    options
+  });
+}
+
+export async function listExecutionPlans(query: { "status"?: string | number | boolean | readonly (string | number | boolean)[] }, options: RepoGuardianApiRequestOptions = {}): Promise<ListExecutionPlansResponse> {
+  return requestJson<ListExecutionPlansResponse>({
+    method: "GET",
+    path: `/api/execution/plans`,
+    query,
     options
   });
 }

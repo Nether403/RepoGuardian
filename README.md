@@ -130,6 +130,8 @@ High-level implemented surface:
 
 - `GET/POST /api/tracked-repositories` (+ history / activity / timeline)
 - `GET /api/fleet/status`
+- `GET /api/policy-decisions`
+- `POST /api/execution/batch/plan` and `POST /api/execution/batch/execute`
 - `GET/POST /api/analyze/jobs` (+ retry / cancel)
 - `GET/POST /api/sweep-schedules` (+ trigger)
 

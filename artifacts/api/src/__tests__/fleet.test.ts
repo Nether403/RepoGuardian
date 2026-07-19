@@ -689,6 +689,24 @@ describe("fleet routes", () => {
       readiness: "needs_review",
       repositoryFullName: "openai/openai-node"
     });
+    expect(
+      fleetStatusResponse.body.autonomySimulation.sweepSchedulePreviews
+    ).toEqual([
+      expect.objectContaining({
+        candidateRepositoryCount: 1,
+        mode: "plan_only_dry_run",
+        outcome: "would_allow",
+        scheduleId: "sweep_one"
+      })
+    ]);
+    expect(
+      fleetStatusResponse.body.autonomySimulation.sweepScheduleOutcomeCounts
+    ).toEqual({
+      manualReview: 0,
+      wouldAllow: 1,
+      wouldBlock: 0
+    });
+    expect(analysisJobProcessor.listSweepSchedules).toHaveBeenCalled();
     expect(policyDecisionRepository.listRecentDecisions).toHaveBeenCalledWith({
       limit: 12,
       workspaceId: "workspace_local_default"

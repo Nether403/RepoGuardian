@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchExecutionPanel } from "../BatchExecutionPanel";
@@ -115,5 +115,65 @@ describe("BatchExecutionPanel", () => {
     );
     expect(onApprovalChange).toHaveBeenCalledWith(true);
     expect(onRequestExecute).not.toHaveBeenCalled();
+  });
+
+  it("renders per-plan batch outcomes and retry guidance for retryable and blocked failures", () => {
+    render(
+      <BatchExecutionPanel
+        {...baseProps}
+        executeResult={{
+          batchHash: "sha256:batch",
+          batchId: "batch_one",
+          completedAt: "2026-05-08T12:05:00.000Z",
+          results: [
+            {
+              errors: [],
+              executionId: "exec_one",
+              planId: "plan_one",
+              repositoryFullName: "openai/openai-node",
+              result: null,
+              status: "completed"
+            },
+            {
+              errors: ["Plan hash no longer matches."],
+              executionId: null,
+              planId: "plan_two",
+              repositoryFullName: "openai/another-repo",
+              result: null,
+              status: "failed"
+            }
+          ],
+          retry: {
+            blockedPlanIds: ["plan_two"],
+            guidance:
+              "Retry only the retryable plans after regenerating blocked plans.",
+            retryablePlanIds: []
+          },
+          startedAt: "2026-05-08T12:00:00.000Z",
+          status: "partial_success",
+          summary: {
+            completedPlans: 1,
+            failedPlans: 1,
+            planCount: 2,
+            retryablePlans: 0
+          }
+        }}
+        selectedPlanIds={["plan_one", "plan_two"]}
+      />
+    );
+
+    expect(screen.getByText(/Batch finished as/i)).toHaveTextContent("partial_success");
+    const resultRows = within(
+      document.querySelector(".batch-result-list") as HTMLElement
+    );
+    expect(resultRows.getByText("openai/openai-node")).toBeInTheDocument();
+    expect(resultRows.getByText("exec_one")).toBeInTheDocument();
+    expect(resultRows.getByText("not claimed")).toBeInTheDocument();
+    expect(resultRows.getByText("Plan hash no longer matches.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Retry only the retryable plans after regenerating blocked plans."
+      )
+    ).toBeInTheDocument();
   });
 });

@@ -1,14 +1,17 @@
 import type {
+  AnalysisJob,
   AutonomyPolicyRecommendation,
   AutonomyRepositoryReadiness,
   AutonomySimulationActionPreview,
   AutonomySimulationOutcome,
   AutonomySimulationSummary,
+  AutonomySweepSchedulePreview,
   AsyncPlanSelectionStrategy,
   ExecutionActionPlan,
   ExecutionPlanLifecycleStatus,
   FleetTrackedRepositoryStatus,
   PolicyDecision,
+  SweepSchedule,
   TrackedPullRequest
 } from "@repo-guardian/shared-types";
 
@@ -56,6 +59,8 @@ export type EvaluateSweepSchedulePolicyInput = {
 
 export type SimulateAutonomyPolicyInput = {
   generatedAt: string;
+  recentJobs?: AnalysisJob[];
+  sweepSchedules?: SweepSchedule[];
   trackedPullRequests: TrackedPullRequest[];
   trackedRepositories: FleetTrackedRepositoryStatus[];
 };
@@ -258,6 +263,7 @@ function createRecommendation(input: {
   actionPreviews: AutonomySimulationActionPreview[];
   outcomeCounts: AutonomySimulationSummary["outcomeCounts"];
   readiness: AutonomyRepositoryReadiness[];
+  sweepSchedulePreviews: AutonomySweepSchedulePreview[];
 }): AutonomyPolicyRecommendation[] {
   const candidateActions = input.actionPreviews.reduce(
     (sum, preview) => sum + preview.candidateActionCount,
@@ -328,7 +334,118 @@ function createRecommendation(input: {
     });
   }
 
+  const allowSweepSchedules = input.sweepSchedulePreviews.filter(
+    (preview) => preview.outcome === "would_allow"
+  );
+
+  if (allowSweepSchedules.length > 0) {
+    recommendations.push({
+      blastRadius: {
+        candidateActions: allowSweepSchedules.reduce(
+          (sum, preview) => sum + preview.candidateRepositoryCount,
+          0
+        ),
+        repositoriesAffected: allowSweepSchedules.reduce(
+          (sum, preview) => sum + preview.candidateRepositoryCount,
+          0
+        )
+      },
+      evidence: allowSweepSchedules.map(
+        (preview) => `${preview.label} (${preview.scheduleId})`
+      ),
+      expectedActionCounts: {
+        manualReview: 0,
+        wouldAllow: allowSweepSchedules.length,
+        wouldBlock: 0
+      },
+      rationale:
+        "Active plan-only sweep schedules can continue enqueueing analysis and deterministic plan generation without unattended GitHub writes.",
+      recommendationId: "keep-plan-only-sweep-schedules",
+      title: "Keep plan-only sweep schedules in dry-run autonomy"
+    });
+  }
+
   return recommendations;
+}
+
+function simulateSweepSchedules(input: {
+  recentJobs: AnalysisJob[];
+  sweepSchedules: SweepSchedule[];
+  trackedRepositories: FleetTrackedRepositoryStatus[];
+}): {
+  outcomeCounts: AutonomySimulationSummary["sweepScheduleOutcomeCounts"];
+  previews: AutonomySweepSchedulePreview[];
+} {
+  let outcomeCounts: AutonomySimulationSummary["sweepScheduleOutcomeCounts"] = {
+    manualReview: 0,
+    wouldAllow: 0,
+    wouldBlock: 0
+  };
+  const previews: AutonomySweepSchedulePreview[] = [];
+  const executableRepositoryCount = input.trackedRepositories.filter(
+    (status) =>
+      status.trackedRepository.isActive && status.patchPlanCounts.executable > 0
+  ).length;
+
+  for (const schedule of input.sweepSchedules) {
+    const reasons: string[] = [];
+    const evidence = [
+      `cadence=${schedule.cadence}`,
+      `selectionStrategy=${schedule.selectionStrategy}`,
+      `isActive=${schedule.isActive}`,
+      `candidateRepositories=${executableRepositoryCount}`,
+      `lastTriggeredAt=${schedule.lastTriggeredAt ?? "never"}`
+    ];
+    const failedSweepJobs = input.recentJobs.filter(
+      (job) =>
+        job.jobKind === "run_scheduled_sweep" &&
+        job.scheduledSweepId === schedule.scheduleId &&
+        job.status === "failed"
+    );
+
+    if (failedSweepJobs.length > 0) {
+      evidence.push(`failedSweepJobs=${failedSweepJobs.length}`);
+    }
+
+    let outcome: AutonomySimulationOutcome;
+
+    if (!schedule.isActive) {
+      outcome = "would_block";
+      reasons.push("Schedule is inactive.");
+    } else if (executableRepositoryCount === 0) {
+      outcome = "would_block";
+      reasons.push(
+        "No active tracked repositories have executable deterministic PR candidates."
+      );
+    } else if (failedSweepJobs.length > 0) {
+      outcome = "manual_review";
+      reasons.push("Most recent scheduled sweep job failed.");
+    } else {
+      outcome = "would_allow";
+      reasons.push(
+        "Plan-only sweep would enqueue analysis and execution-plan generation without unattended writes."
+      );
+    }
+
+    previews.push({
+      cadence: schedule.cadence,
+      candidateRepositoryCount: executableRepositoryCount,
+      evidence,
+      isActive: schedule.isActive,
+      label: schedule.label,
+      mode: "plan_only_dry_run",
+      outcome,
+      reasons,
+      scheduleId: schedule.scheduleId,
+      selectionStrategy: schedule.selectionStrategy
+    });
+    outcomeCounts = toOutcomeCount(outcomeCounts, outcome, 1);
+  }
+
+  return {
+    outcomeCounts,
+    previews
+  };
 }
 
 export function simulateAutonomyPolicy(
@@ -373,6 +490,18 @@ export function simulateAutonomyPolicy(
       warnings.push(`${status.patchPlanCounts.blocked} patch plans are blocked.`);
     }
 
+    if (status.patchPlanCounts.stale > 0) {
+      warnings.push(`${status.patchPlanCounts.stale} patch plans are stale.`);
+    }
+
+    if (
+      status.latestPlanStatus === "expired" ||
+      status.latestPlanStatus === "failed" ||
+      status.latestPlanStatus === "cancelled"
+    ) {
+      warnings.push(`Latest execution plan is ${status.latestPlanStatus}.`);
+    }
+
     if (status.latestAnalysisJob?.status === "failed") {
       warnings.push("Most recent analysis job failed.");
     }
@@ -413,7 +542,9 @@ export function simulateAutonomyPolicy(
       evidence: [
         `latestPlanStatus=${status.latestPlanStatus ?? "none"}`,
         `installationBacked=${installationBacked}`,
-        `openPullRequests=${openPullRequests.length}`
+        `openPullRequests=${openPullRequests.length}`,
+        `stalePatchPlans=${status.patchPlanCounts.stale}`,
+        `blockedPatchPlans=${status.patchPlanCounts.blocked}`
       ],
       outcome,
       reasons: [...blockers, ...warnings],
@@ -426,6 +557,12 @@ export function simulateAutonomyPolicy(
       status.patchPlanCounts.executable
     );
   }
+
+  const sweepSimulation = simulateSweepSchedules({
+    recentJobs: input.recentJobs ?? [],
+    sweepSchedules: input.sweepSchedules ?? [],
+    trackedRepositories: input.trackedRepositories
+  });
 
   const candidateActions = actionPreviews.reduce(
     (sum, preview) => sum + preview.candidateActionCount,
@@ -451,9 +588,12 @@ export function simulateAutonomyPolicy(
     recommendations: createRecommendation({
       actionPreviews,
       outcomeCounts,
-      readiness: repositoryReadiness
+      readiness: repositoryReadiness,
+      sweepSchedulePreviews: sweepSimulation.previews
     }),
     repositoryReadiness,
-    simulationMode: "dry_run"
+    simulationMode: "dry_run",
+    sweepScheduleOutcomeCounts: sweepSimulation.outcomeCounts,
+    sweepSchedulePreviews: sweepSimulation.previews
   };
 }

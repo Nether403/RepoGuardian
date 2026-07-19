@@ -1433,6 +1433,19 @@ export const AutonomyPolicyRecommendationSchema = z.object({
   title: z.string().min(1)
 });
 
+export const AutonomySweepSchedulePreviewSchema = z.object({
+  cadence: SweepCadenceSchema,
+  candidateRepositoryCount: z.number().int().nonnegative(),
+  evidence: z.array(z.string().min(1)),
+  isActive: z.boolean(),
+  label: z.string().min(1),
+  mode: z.literal("plan_only_dry_run"),
+  outcome: AutonomySimulationOutcomeSchema,
+  reasons: z.array(z.string().min(1)),
+  scheduleId: z.string().min(1),
+  selectionStrategy: SweepSelectionStrategySchema
+});
+
 export const AutonomySimulationSummarySchema = z.object({
   actionPreviews: z.array(AutonomySimulationActionPreviewSchema),
   comparison: z.object({
@@ -1455,7 +1468,19 @@ export const AutonomySimulationSummarySchema = z.object({
   policyProfile: z.literal("proposed_low_risk_pr_opening"),
   recommendations: z.array(AutonomyPolicyRecommendationSchema),
   repositoryReadiness: z.array(AutonomyRepositoryReadinessSchema),
-  simulationMode: z.literal("dry_run")
+  simulationMode: z.literal("dry_run"),
+  sweepScheduleOutcomeCounts: z
+    .object({
+      manualReview: z.number().int().nonnegative(),
+      wouldAllow: z.number().int().nonnegative(),
+      wouldBlock: z.number().int().nonnegative()
+    })
+    .default({
+      manualReview: 0,
+      wouldAllow: 0,
+      wouldBlock: 0
+    }),
+  sweepSchedulePreviews: z.array(AutonomySweepSchedulePreviewSchema).default([])
 });
 
 export const FleetStatusResponseSchema = z.object({
@@ -1517,6 +1542,10 @@ export const ExecutionPlanSummarySchema = z.object({
   selectedIssueCandidateCount: z.number().int().nonnegative(),
   selectedPRCandidateCount: z.number().int().nonnegative(),
   summary: ExecutionResultSummarySchema
+});
+
+export const ListExecutionPlansResponseSchema = z.object({
+  plans: z.array(ExecutionPlanSummarySchema)
 });
 
 export const RepositoryActivityKindSchema = z.enum([
@@ -2147,11 +2176,17 @@ export type AutonomySimulationActionPreview = z.infer<
 export type AutonomyPolicyRecommendation = z.infer<
   typeof AutonomyPolicyRecommendationSchema
 >;
+export type AutonomySweepSchedulePreview = z.infer<
+  typeof AutonomySweepSchedulePreviewSchema
+>;
 export type AutonomySimulationSummary = z.infer<
   typeof AutonomySimulationSummarySchema
 >;
 export type FleetStatusResponse = z.infer<typeof FleetStatusResponseSchema>;
 export type ExecutionPlanSummary = z.infer<typeof ExecutionPlanSummarySchema>;
+export type ListExecutionPlansResponse = z.infer<
+  typeof ListExecutionPlansResponseSchema
+>;
 export type RepositoryActivityKind = z.infer<typeof RepositoryActivityKindSchema>;
 export type RepositoryExecutionEventType = z.infer<
   typeof RepositoryExecutionEventTypeSchema
