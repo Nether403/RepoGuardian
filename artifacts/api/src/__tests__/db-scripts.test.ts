@@ -198,7 +198,10 @@ describeIf("database scripts", () => {
       "0001_execution_backbone.sql",
       "0002_execution_plan_action_order_unique.sql",
       "0003_analysis_queue_foundation.sql",
-      "0004_scheduling_and_pr_lifecycle.sql"
+      "0004_scheduling_and_pr_lifecycle.sql",
+      "0005_workspaces_and_installations.sql",
+      "0006_policy_decision_events.sql",
+      "0007_policy_decision_execute_batch.sql"
     ]);
 
     await resetPersistenceCaches();
@@ -226,7 +229,7 @@ describeIf("database scripts", () => {
         actorUserId: "usr_authenticated",
         analysisRunId: run.id,
         createdAt: "2026-04-12T10:02:00.000Z",
-        expiresAt: "2026-04-12T10:17:00.000Z",
+        expiresAt: "2099-04-12T10:17:00.000Z",
         normalizedExecutionPayload: {
           actions: [
             {
