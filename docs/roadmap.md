@@ -64,14 +64,13 @@ The next work should finish the 9C alpha and remaining 9B operator surfaces rath
 Immediate priorities:
 
 - preserve stability of the current two-phase and batch execution contracts
-- surface full 9B autonomy simulation drill-downs in Fleet Admin
 - keep deterministic write-back bounded while the product foundation matures
 - keep tenant and actor boundaries ahead of broader write-back or 9D autonomy
 
-Recently completed (9C UX polish):
+Recently completed:
 
-- per-plan batch outcomes and retry guidance in Fleet Admin
-- workspace-scoped planned-plan listing for broader batch queue selection
+- 9C UX polish: per-plan batch outcomes, retry guidance, and broader planned-plan selection
+- 9B operator surfaces: autonomy simulation drill-downs, sweep-schedule dry-run previews, and richer readiness signals
 
 ## Next milestones
 
@@ -164,7 +163,13 @@ Initial implementation:
 - per-repository readiness reflects stale analysis, executable and blocked patch plans, GitHub App installation coverage, recent failures, and open tracked PRs
 - recommendations include deterministic evidence, blast-radius estimates, and expected action counts
 
-Remaining 9B expansion can add sweep-schedule simulation and richer recommendation drill-downs, but the roadmap has moved into 9C by explicit user request.
+Expanded 9B operator surfaces now include:
+
+- Fleet Admin drill-downs for comparison, repository readiness, action previews, and recommendations
+- plan-only sweep-schedule dry-run previews attached to fleet status
+- richer readiness warnings for stale patch plans and inactive plan lifecycle states
+
+Controlled autonomy profiles and unattended writes remain deferred to 9D.
 
 ### Milestone 9C: Supervised Batch Execution [ALPHA SLICE]
 

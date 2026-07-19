@@ -2283,6 +2283,9 @@ function App() {
             onTriggerSchedule={handleTriggerSweepSchedule}
             pendingScheduleId={pendingSweepScheduleId}
             schedules={sweepSchedules}
+            simulationPreviews={
+              fleetStatus?.autonomySimulation?.sweepSchedulePreviews ?? []
+            }
           />
           <TrackedPullRequestsPanel
             onOpenPlanDetails={(planId) =>
