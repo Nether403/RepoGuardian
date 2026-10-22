@@ -15,7 +15,7 @@ It is already **deployed and functional** — continue building, don’t treat t
 
 ![Repo Guardian](./RepoGuardianlogo.png)
 
-## Why it exists
+## Why it exists 
 
 Maintainers and operators often face the same mess:
 
